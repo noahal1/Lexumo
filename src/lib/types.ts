@@ -46,6 +46,7 @@ export interface WordList {
   sourceLang: string;
   targetLang: string;
   createdAt: number;
+  updatedAt: number;
 }
 
 export interface ReviewLog {
@@ -71,6 +72,27 @@ export interface Settings {
   reviewOrder: "due" | "random";
   /** Look the term up online and prefill the meaning when adding a word. */
   autoTranslate: boolean;
+  /** Push/pull changes automatically while signed in. */
+  autoSync: boolean;
+}
+
+/**
+ * Deletion tombstones. A delete cannot be expressed by absence (the other
+ * device would just re-upload the record), so removals are recorded here with
+ * the time they happened and pushed to the server like any other change.
+ */
+export interface Tombstones {
+  words: Record<string, number>;
+  lists: Record<string, number>;
+  logs: Record<string, number>;
+}
+
+/** Records that changed locally and still need to be pushed to the server. */
+export interface PendingChanges {
+  words: string[];
+  lists: string[];
+  logs: string[];
+  settings: boolean;
 }
 
 export interface AppData {
@@ -79,9 +101,48 @@ export interface AppData {
   words: Word[];
   logs: ReviewLog[];
   settings: Settings;
+  /** Epoch ms of the last local edit to `settings` (drives LWW on sync). */
+  settingsUpdatedAt: number;
+  tombstones: Tombstones;
+  pending: PendingChanges;
 }
 
-export const DATA_VERSION = 1;
+export const DATA_VERSION = 2;
+
+export const EMPTY_TOMBSTONES: Tombstones = { words: {}, lists: {}, logs: {} };
+
+export const EMPTY_PENDING: PendingChanges = {
+  words: [],
+  lists: [],
+  logs: [],
+  settings: false,
+};
+
+/* ------------------------------------------------------------------ */
+/* Sync wire format (see docs/sync-protocol.md)                        */
+/* ------------------------------------------------------------------ */
+
+/** Minimal record that says "this id was deleted at this time". */
+export interface Tombstone {
+  id: string;
+  updatedAt: number;
+  deleted: true;
+}
+
+export type WordRecord = Word | Tombstone;
+export type ListRecord = WordList | Tombstone;
+export type LogRecord = ReviewLog | { id: string; at: number; deleted: true };
+
+export interface SettingsRecord extends Settings {
+  updatedAt: number;
+}
+
+export interface ChangeSet {
+  lists: ListRecord[];
+  words: WordRecord[];
+  logs: LogRecord[];
+  settings: SettingsRecord | null;
+}
 
 export const DEFAULT_LIST_ID = "list_default";
 
@@ -96,6 +157,7 @@ export const DEFAULT_SETTINGS: Settings = {
   newCardsPerDay: 15,
   reviewOrder: "due",
   autoTranslate: true,
+  autoSync: true,
 };
 
 export const STATUS_ORDER: WordStatus[] = ["new", "reviewing", "learning", "mastered"];

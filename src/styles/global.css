@@ -1559,3 +1559,45 @@ mark {
     scroll-behavior: auto !important;
   }
 }
+
+/* --- Sync status chip (sidebar) ------------------------------------- */
+
+.sync-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+
+.sync-chip:hover {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+
+.sync-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app.rail .sync-chip-text {
+  display: none;
+}
+
+.app.rail .sync-chip {
+  justify-content: center;
+  padding: 7px 0;
+}

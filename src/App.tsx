@@ -1,5 +1,5 @@
 /** App shell: sidebar, theme application, page switching, global shortcuts. */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { Icon, type IconName } from "@/components/Icon";
 import { Modal, ShortcutRow } from "@/components/ui";
 import { useT } from "@/i18n";
@@ -10,6 +10,7 @@ import {
   dueWords,
   updateSettings,
 } from "@/lib/store";
+import { getSyncStatus, subscribeSyncStatus } from "@/lib/sync";
 import { useRouter, type PageId } from "@/app/router";
 import { cx } from "@/lib/utils";
 import { WordsPage } from "@/pages/words/WordsPage";
@@ -125,6 +126,23 @@ export function App() {
   const streak = streakDays(data);
   const today = reviewsToday(data);
   const dark = data.settings.theme === "dark";
+  const syncStatus = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
+  const syncTone =
+    syncStatus.state === "error"
+      ? "danger"
+      : syncStatus.state === "syncing"
+        ? "busy"
+        : syncStatus.pending > 0
+          ? "busy"
+          : "ok";
+  const syncLabel =
+    syncStatus.state === "error"
+      ? t("settings.syncStatusError")
+      : syncStatus.state === "syncing"
+        ? t("settings.syncStatusSyncing")
+        : syncStatus.pending > 0
+          ? t("settings.syncPendingHint", { n: syncStatus.pending })
+          : t("settings.syncStatusIdle");
 
   // Global shortcuts: Cmd/Ctrl+1..5 switch pages, "?" opens the shortcut sheet.
   useEffect(() => {
@@ -210,6 +228,17 @@ export function App() {
         </nav>
 
         <div className="sidebar-foot">
+          {syncStatus.state !== "signed-out" && (
+            <button
+              type="button"
+              className="sync-chip"
+              onClick={() => goTo("settings")}
+              title={syncStatus.email ? `${syncLabel} · ${syncStatus.email}` : syncLabel}
+            >
+              <span className={`sync-dot sync-dot-${syncTone}`} />
+              <span className="sync-chip-text">{syncLabel}</span>
+            </button>
+          )}
           <div className="streak-card">
             <span className="streak-flame" aria-hidden="true">
               <Icon name="flame" size={18} />

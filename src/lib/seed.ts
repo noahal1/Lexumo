@@ -210,6 +210,7 @@ export function seedData(now = Date.now()): AppData {
     updatedAt: now - i * 600_000,
   }));
 
+  const logs = makeLogs(words, now);
   return {
     version: DATA_VERSION,
     lists: [
@@ -219,10 +220,21 @@ export function seedData(now = Date.now()): AppData {
         sourceLang: "en",
         targetLang: "zh-CN",
         createdAt: now - 7 * DAY_MS,
+        updatedAt: now - 7 * DAY_MS,
       },
     ],
     words,
-    logs: makeLogs(words, now),
+    logs,
     settings: { ...DEFAULT_SETTINGS },
+    settingsUpdatedAt: now - 7 * DAY_MS,
+    tombstones: { words: {}, lists: {}, logs: {} },
+    // Everything the seed created is pending, so the first sign-in uploads the
+    // demo deck to the account instead of leaving the server empty.
+    pending: {
+      words: words.map((w) => w.id),
+      lists: [DEFAULT_LIST_ID],
+      logs: logs.map((l) => l.id),
+      settings: false,
+    },
   };
 }

@@ -4,25 +4,46 @@
  *
  * All writes go through `commit`, which bumps `updatedAt`, notifies
  * subscribers, and schedules a debounced persistence write.
+ *
+ * Every mutation also records what changed in `data.pending` so the sync
+ * engine knows what still has to be pushed, and deletions leave a tombstone in
+ * `data.tombstones` (a delete must be an explicit record — otherwise another
+ * device would simply upload the record again).
  */
 import { useSyncExternalStore } from "react";
 import { loadSnapshot, saveSnapshot, clearSnapshot } from "./db";
+import { emitLocalChange } from "./localChanges";
 import { applyGrade, statusForInterval, freshSrs } from "./srs";
 import { seedData } from "./seed";
+import { collectChanges, pendingCount, applyRemote } from "./syncMerge";
 import type {
   AppData,
+  ChangeSet,
   Grade,
   ReviewLog,
   Settings,
   SrsState,
+  Tombstones,
   Word,
   WordList,
   WordStatus,
 } from "./types";
-import { DATA_VERSION, DEFAULT_LIST_ID, DEFAULT_SETTINGS } from "./types";
+import {
+  DATA_VERSION,
+  DEFAULT_LIST_ID,
+  DEFAULT_SETTINGS,
+  EMPTY_PENDING,
+  EMPTY_TOMBSTONES,
+} from "./types";
 import { normalizeTerm, uid } from "./utils";
 
 export { DEFAULT_SETTINGS, DEFAULT_LIST_ID };
+
+const cloneTombstones = (t: Tombstones): Tombstones => ({
+  words: { ...t.words },
+  lists: { ...t.lists },
+  logs: { ...t.logs },
+});
 
 export function emptyData(): AppData {
   return {
@@ -31,6 +52,33 @@ export function emptyData(): AppData {
     words: [],
     logs: [],
     settings: { ...DEFAULT_SETTINGS },
+    settingsUpdatedAt: 0,
+    tombstones: cloneTombstones(EMPTY_TOMBSTONES),
+    pending: { ...EMPTY_PENDING, words: [], lists: [], logs: [] },
+  };
+}
+
+/**
+ * Bring any older snapshot up to the current shape. Data written before sync
+ * existed (version 1) simply gains empty tombstones/pending and an `updatedAt`
+ * on each list — nothing is dropped.
+ */
+export function migrateSnapshot(raw: unknown): AppData | null {
+  if (!raw || typeof raw !== "object") return null;
+  const snap = raw as Partial<AppData> & { version?: number };
+  if (!Array.isArray(snap.words) || !Array.isArray(snap.lists)) return null;
+  if (typeof snap.version !== "number" || snap.version > DATA_VERSION) return null;
+  const base = emptyData();
+  return {
+    ...base,
+    ...snap,
+    version: DATA_VERSION,
+    logs: Array.isArray(snap.logs) ? snap.logs : [],
+    settings: { ...DEFAULT_SETTINGS, ...(snap.settings ?? {}) },
+    settingsUpdatedAt: snap.settingsUpdatedAt ?? 0,
+    lists: snap.lists.map((l) => ({ ...l, updatedAt: l.updatedAt ?? l.createdAt ?? Date.now() })),
+    tombstones: { ...base.tombstones, ...(snap.tombstones ?? {}) },
+    pending: { ...base.pending, ...(snap.pending ?? {}) },
   };
 }
 
@@ -58,33 +106,52 @@ function commit(mutator: (draft: AppData) => void) {
     words: data.words.slice(),
     logs: data.logs.slice(),
     settings: { ...data.settings },
+    tombstones: cloneTombstones(data.tombstones),
+    pending: {
+      words: data.pending.words.slice(),
+      lists: data.pending.lists.slice(),
+      logs: data.pending.logs.slice(),
+      settings: data.pending.settings,
+    },
   };
   mutator(draft);
   data = draft;
   notify();
+  emitLocalChange();
   scheduleSave();
+}
+
+function markWordDirty(d: AppData, id: string) {
+  if (!d.pending.words.includes(id)) d.pending.words.push(id);
+}
+
+function markListDirty(d: AppData, id: string) {
+  if (!d.pending.lists.includes(id)) d.pending.lists.push(id);
+}
+
+function markLogDirty(d: AppData, id: string) {
+  if (!d.pending.logs.includes(id)) d.pending.logs.push(id);
 }
 
 /** Load the snapshot once at boot; first run seeds a demo deck. */
 export async function initStore(): Promise<void> {
   const snapshot = await loadSnapshot();
-  if (snapshot && snapshot.version === DATA_VERSION) {
-    data = {
-      ...emptyData(),
-      ...snapshot,
-      settings: { ...DEFAULT_SETTINGS, ...snapshot.settings },
-    };
+  const migrated = snapshot ? migrateSnapshot(snapshot) : null;
+  if (migrated) {
+    data = migrated;
   } else {
     data = seedData();
   }
   if (data.lists.length === 0) {
+    const now = Date.now();
     data.lists = [
       {
         id: DEFAULT_LIST_ID,
         name: "我的词库",
         sourceLang: "en",
         targetLang: "zh-CN",
-        createdAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
       },
     ];
   }
@@ -128,15 +195,18 @@ export function createList(input: {
   sourceLang: string;
   targetLang: string;
 }): WordList {
+  const now = Date.now();
   const list: WordList = {
     id: uid("list"),
     name: input.name.trim() || "未命名词库",
     sourceLang: input.sourceLang,
     targetLang: input.targetLang,
-    createdAt: Date.now(),
+    createdAt: now,
+    updatedAt: now,
   };
   commit((d) => {
     d.lists.push(list);
+    markListDirty(d, list.id);
   });
   return list;
 }
@@ -144,14 +214,25 @@ export function createList(input: {
 export function renameList(id: string, name: string) {
   commit((d) => {
     const list = d.lists.find((l) => l.id === id);
-    if (list) list.name = name.trim() || list.name;
+    if (!list) return;
+    list.name = name.trim() || list.name;
+    list.updatedAt = Date.now();
+    markListDirty(d, id);
   });
 }
 
 export function deleteList(id: string) {
+  const now = Date.now();
   commit((d) => {
+    const doomed = d.words.filter((w) => w.listId === id);
     d.lists = d.lists.filter((l) => l.id !== id);
     d.words = d.words.filter((w) => w.listId !== id);
+    for (const w of doomed) {
+      d.tombstones.words[w.id] = now;
+      markWordDirty(d, w.id);
+    }
+    d.tombstones.lists[id] = now;
+    markListDirty(d, id);
   });
 }
 
@@ -194,6 +275,7 @@ export function addWord(input: NewWordInput): Word {
   };
   commit((d) => {
     d.words.unshift(word);
+    markWordDirty(d, word.id);
   });
   return word;
 }
@@ -204,21 +286,40 @@ export function updateWord(id: string, patch: Partial<Word>) {
     if (!w) return;
     Object.assign(w, patch, { updatedAt: Date.now() });
     if (patch.tags) w.tags = dedupeTags(patch.tags);
+    markWordDirty(d, id);
   });
 }
 
 export function deleteWord(id: string) {
+  const now = Date.now();
   commit((d) => {
+    const gone = d.logs.filter((l) => l.wordId === id);
     d.words = d.words.filter((w) => w.id !== id);
     d.logs = d.logs.filter((l) => l.wordId !== id);
+    d.tombstones.words[id] = now;
+    markWordDirty(d, id);
+    for (const log of gone) {
+      d.tombstones.logs[log.id] = now;
+      markLogDirty(d, log.id);
+    }
   });
 }
 
 export function deleteWords(ids: string[]) {
   const set = new Set(ids);
+  const now = Date.now();
   commit((d) => {
+    const goneLogs = d.logs.filter((l) => set.has(l.wordId));
     d.words = d.words.filter((w) => !set.has(w.id));
     d.logs = d.logs.filter((l) => !set.has(l.wordId));
+    for (const id of ids) {
+      d.tombstones.words[id] = now;
+      markWordDirty(d, id);
+    }
+    for (const log of goneLogs) {
+      d.tombstones.logs[log.id] = now;
+      markLogDirty(d, log.id);
+    }
   });
 }
 
@@ -228,6 +329,7 @@ export function toggleFavorite(id: string) {
     if (w) {
       w.favorite = !w.favorite;
       w.updatedAt = Date.now();
+      markWordDirty(d, id);
     }
   });
 }
@@ -235,7 +337,11 @@ export function toggleFavorite(id: string) {
 export function bumpListen(id: string) {
   commit((d) => {
     const w = d.words.find((x) => x.id === id);
-    if (w) w.listenCount += 1;
+    if (w) {
+      w.listenCount += 1;
+      w.updatedAt = Date.now();
+      markWordDirty(d, id);
+    }
   });
 }
 
@@ -287,6 +393,8 @@ export function gradeWord(id: string, grade: Grade, now = Date.now()): GradeResu
     if (rank(status) > rank(w.status)) w.status = status;
     w.updatedAt = now;
     d.logs.push(log);
+    markWordDirty(d, id);
+    markLogDirty(d, log.id);
   });
   return { srs: next, status, logId: log.id };
 }
@@ -309,8 +417,11 @@ export function undoReview(
     w.srs = prevSrs;
     w.status = prevStatus;
     w.updatedAt = now;
+    markWordDirty(d, id);
     const at = d.logs.findIndex((log) => log.id === logId);
     if (at >= 0) d.logs.splice(at, 1);
+    d.tombstones.logs[logId] = now;
+    markLogDirty(d, logId);
   });
 }
 
@@ -324,6 +435,7 @@ export function setWordStatus(id: string, status: WordStatus) {
     if (w) {
       w.status = status;
       w.updatedAt = Date.now();
+      markWordDirty(d, id);
     }
   });
 }
@@ -336,6 +448,7 @@ export function resetSrs(id: string) {
       w.srs = null;
       w.status = "new";
       w.updatedAt = Date.now();
+      markWordDirty(d, id);
     }
   });
 }
@@ -347,21 +460,21 @@ export function resetSrs(id: string) {
 export function updateSettings(patch: Partial<Settings>) {
   commit((d) => {
     d.settings = { ...d.settings, ...patch };
+    d.settingsUpdatedAt = Date.now();
+    d.pending.settings = true;
   });
 }
 
 export function replaceAll(next: AppData) {
-  data = {
-    ...emptyData(),
-    ...next,
-    settings: { ...DEFAULT_SETTINGS, ...next.settings },
-  };
+  const migrated = migrateSnapshot(next) ?? emptyData();
+  data = migrated;
   notify();
   scheduleSave();
 }
 
 export async function wipeAll() {
   await clearSnapshot();
+  const now = Date.now();
   data = emptyData();
   data.lists = [
     {
@@ -369,9 +482,63 @@ export async function wipeAll() {
       name: "我的词库",
       sourceLang: "en",
       targetLang: "zh-CN",
-      createdAt: Date.now(),
+      createdAt: now,
+      updatedAt: now,
     },
   ];
+  notify();
+  scheduleSave();
+}
+
+/* ------------------------------------------------------------------ */
+/* Sync bridge                                                         */
+/* ------------------------------------------------------------------ */
+
+/** What still needs to be pushed to the server. */
+export function getChangesToPush(): ChangeSet {
+  return collectChanges(data);
+}
+
+export function pendingChangeCount(): number {
+  return pendingCount(data);
+}
+
+/**
+ * Mark records as accepted by the server (called after a successful push).
+ *
+ * Only clears a pending flag when the local copy is still the exact version we
+ * sent — if the user edited the record while the request was in flight, the
+ * newer version must stay pending so the next round uploads it.
+ */
+export function markPushed(pushed: ChangeSet) {
+  commit((d) => {
+    const wordStamp = (id: string) =>
+      d.words.find((w) => w.id === id)?.updatedAt ?? d.tombstones.words[id] ?? 0;
+    const listStamp = (id: string) =>
+      d.lists.find((l) => l.id === id)?.updatedAt ?? d.tombstones.lists[id] ?? 0;
+    const logStamp = (id: string) =>
+      d.logs.find((l) => l.id === id)?.at ?? d.tombstones.logs[id] ?? 0;
+
+    const settledWords = new Set(
+      pushed.words.filter((r) => wordStamp(r.id) === r.updatedAt).map((r) => r.id),
+    );
+    const settledLists = new Set(
+      pushed.lists.filter((r) => listStamp(r.id) === r.updatedAt).map((r) => r.id),
+    );
+    const settledLogs = new Set(pushed.logs.filter((r) => logStamp(r.id) === r.at).map((r) => r.id));
+
+    d.pending.words = d.pending.words.filter((id) => !settledWords.has(id));
+    d.pending.lists = d.pending.lists.filter((id) => !settledLists.has(id));
+    d.pending.logs = d.pending.logs.filter((id) => !settledLogs.has(id));
+    if (pushed.settings && d.settingsUpdatedAt === pushed.settings.updatedAt) {
+      d.pending.settings = false;
+    }
+  });
+}
+
+/** Merge a server change set into the local snapshot. */
+export function applyRemoteChanges(changes: ChangeSet) {
+  data = applyRemote(data, changes);
   notify();
   scheduleSave();
 }

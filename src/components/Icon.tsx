@@ -40,6 +40,7 @@ export type IconName =
   | "sun"
   | "moon"
   | "undo"
+  | "cloud"
   | "list";
 
 const PATHS: Record<IconName, string> = {
@@ -81,6 +82,7 @@ const PATHS: Record<IconName, string> = {
   sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z M12 2v2.2 M12 19.8V22 M2 12h2.2 M19.8 12H22 M4.9 4.9l1.6 1.6 M17.5 17.5l1.6 1.6 M19.1 4.9l-1.6 1.6 M6.5 17.5l-1.6 1.6",
   moon: "M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z",
   undo: "M4 9h9.5a5.5 5.5 0 0 1 0 11H8 M4 9l4-4 M4 9l4 4",
+  cloud: "M7 18.5a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.5 1.1A3.9 3.9 0 0 1 17.5 18.5H7Z",
   list: "M8 6h13 M8 12h13 M8 18h13 M3.5 6h.01 M3.5 12h.01 M3.5 18h.01",
 };
 

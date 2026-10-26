@@ -2,7 +2,7 @@
 
 Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进词砚，用间隔重复一点点记住它们。
 
-项目参考开源桌面词汇应用 **[Lingueez](https://lingueez.app)**（Python + PySide6，作者 Yurii Lysak）的功能理念，用 **Tauri 2 + React 19 + TypeScript + Vite 7** 重新实现。界面以中文为主，视觉基调是暖纸色背景与玉绿色点缀；数据全部保存在本机，不注册、不联网即可使用。
+项目参考开源桌面词汇应用 **[Lingueez](https://lingueez.app)**（Python + PySide6，作者 Yurii Lysak）的功能理念，用 **Tauri 2 + React 19 + TypeScript + Vite 7** 重新实现。界面以中文为主，视觉基调是暖纸色背景与玉绿色点缀；数据默认全部保存在本机，不注册、不联网即可使用，需要多设备时可选接入自带的同步后端。
 
 ![Lexumo 界面](docs/app-ui.png)
 
@@ -16,9 +16,10 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 - **闪卡复习**：四种组卡方式（到期卡片 / 新卡片 / 全部词语 / 收藏词语，各自显示数量）、到期队列 + 新卡队列（受每日新卡上限约束）、翻面后仍保留词形、评分按钮上直接预览「下次间隔」、可随时「撤销上一次」评分或跳过、中途可「结束本轮」、键盘快捷键、自动/手动 TTS 发音。
 - **测验**：看词选义 / 看义选词双向模式，4 选 1，即时对错反馈，结束页给出错题列表；测验不写入 SRS。
 - **统计**：总词数、已掌握、今日复习、连续天数、每日目标环、状态分布、学习活动柱状图（7 / 30 / 90 天可切换）、评分分布、记忆留存率、逾期词数。
-- **设置**：主题（浅色 / 深色 / 跟随系统）、界面语言（简体中文 / English）、每日目标、每日新卡上限、复习顺序、TTS 语速与音色、听力模式、自动翻译开关与翻译缓存管理。
+- **设置**：主题（浅色 / 深色 / 跟随系统）、界面语言（简体中文 / English）、每日目标、每日新卡上限、复习顺序、TTS 语速与音色、听力模式、自动翻译开关与翻译缓存管理、账号与同步（服务器地址 / 登录注册 / 自动同步开关 / 立即同步）。
 - **导入 / 导出**：JSON 快照、CSV 表格、Anki TXT 三种格式。
-- **本地优先**：IndexedDB 单快照持久化，localStorage 兜底；无账号体系，无遥测。
+- **多端同步（可选）**：仓库自带一个零依赖的 Node 同步后端（`server/`），注册账号后可在多台设备间增量同步词库、词条、复习日志与设置。本地优先：不登录、不联网也能完整使用，登录后离线改动会在恢复网络时自动补推。冲突按 `updatedAt` 后写胜出（LWW），删除以墓碑传播，日志按 id 并集去重。侧栏与设置页实时显示同步状态与待同步条数，可关闭自动同步。
+- **本地优先**：IndexedDB 单快照持久化，localStorage 兜底；默认无账号、无遥测，同步是可选的。
 - **界面与可用性**：暖纸色 / 深色双主题（跟随系统），侧栏可折叠为图标栏，启动骨架屏，词条行悬停才显示操作区，搜索命中高亮；全局快捷键与「?」快捷键帮助；弹窗带焦点陷阱，正文对比度满足 WCAG AA。
 
 ## 键盘操作
@@ -53,6 +54,8 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 | 持久化 | IndexedDB（`lexumo` 库，单键快照）+ localStorage 回退 |
 | 发音 | Web Speech API（`speechSynthesis`） |
 | 查词 / 翻译 | Rust 侧 `reqwest` 代理有道词典 JSON API（桌面）；浏览器降级到有道 `trans` → MyMemory → Google |
+| 同步后端 | Node 24（`node:http` + `node:fs`，零第三方依赖），每用户一个 JSON 文件 |
+| 同步协议 | 自建 JSON API，见 [`docs/sync-protocol.md`](docs/sync-protocol.md)：增量 `rev`、LWW、墓碑删除、日志并集 |
 | 样式 | 原生 CSS（设计令牌 + 全局样式），无 UI 框架 |
 | 图标 | Pillow 脚本生成，衬线体「L」字形 |
 
@@ -69,6 +72,18 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 ├── LICENSE.txt                 # GNU AGPL-3.0 全文
 ├── NOTICE                      # 上游署名与 AGPL-3.0 §7(b) 附加条款
 ├── THIRD-PARTY-LICENSES.md     # 第三方组件许可
+├── docs/
+│   ├── app-ui.png              # README 界面截图
+│   └── sync-protocol.md        # 同步接口契约（后端与客户端共同的唯一规范）
+├── server/                     # 自建同步后端（零依赖 Node）
+│   ├── package.json            # npm start / npm test
+│   ├── README.md               # 部署、环境变量、端点说明
+│   ├── src/
+│   │   ├── index.js            # HTTP 路由、CORS、body 限制
+│   │   ├── auth.js             # 注册/登录/登出、scrypt 口令、令牌
+│   │   └── store.js            # 每用户 JSON 落盘与 LWW 合并
+│   ├── test/                   # node:test 用例（auth / cors / sync）
+│   └── test-utils/             # 临时服务与 curl 冒烟脚本
 ├── src/
 │   ├── main.tsx                # React 挂载 + Provider 组装
 │   ├── App.tsx                 # 应用外壳：侧边栏、主题、页面切换
@@ -90,6 +105,9 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   │   ├── seed.ts             # 首次启动的演示词库与复习历史
 │   │   ├── languages.ts        # 语言元数据
 │   │   ├── translate.ts        # 查词/翻译：有道解析、多源降级、缓存
+│   │   ├── sync.ts             # 同步客户端：会话、增量推送/拉取、自动同步循环
+│   │   ├── syncMerge.ts        # 纯函数：收集待推改动、合并远端改动（LWW/墓碑）
+│   │   ├── localChanges.ts     # 无依赖的本地变更事件总线（避免 store ↔ sync 循环）
 │   │   └── tts.ts              # 语音合成封装
 │   ├── __tests__/
 │   │   └── app.smoke.test.tsx  # jsdom 整应用挂载冒烟测试
@@ -97,7 +115,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   │   ├── words/              # WordsPage.tsx / WordEditor.tsx
 │   │   ├── study/              # FlashcardsPage.tsx / QuizPage.tsx
 │   │   ├── stats/              # StatsPage.tsx
-│   │   └── settings/           # SettingsPage.tsx
+│   │   └── settings/           # SettingsPage.tsx / SyncSection.tsx / parts.tsx
 │   └── styles/                 # tokens.css（设计令牌）+ global.css + 页面级 study.css / insights.css
 └── src-tauri/
     ├── Cargo.toml              # tauri 2 / tauri-build 2 / reqwest（查词代理）
@@ -172,9 +190,10 @@ npm test
 | `src/lib/srs.test.ts` | 50 | 三档评分调度、ease 上下限、间隔上限、状态边界、间隔文案、不可变性 |
 | `src/lib/utils.test.ts` | 20 | 文本归一化、clamp、shuffle、日期差值、dayKey、cx、uid、相对时间 |
 | `src/lib/translate.test.ts` | 24 | 有道词典 / 机器翻译 / MyMemory / Google 各源解析、释义格式化、缓存命中、429 降级与冷却 |
+| `src/lib/syncMerge.test.ts` | 25 | 待推改动收集、LWW 合并、墓碑删除、日志并集去重、`markPushed` 时间戳比对 |
 | `src/__tests__/app.smoke.test.tsx` | 5 | 在 jsdom 中真实挂载整个应用：五个页面渲染、主题切换、弹窗开关、搜索过滤 |
 
-共 **99** 个用例。
+共 **124** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
 
 冒烟测试通过 `// @vitest-environment jsdom` 单独指定环境，其余用例仍跑在 Node 环境。
 
@@ -184,18 +203,21 @@ npm test
 
   ```ts
   interface AppData {
-    version: number;      // 当前 DATA_VERSION = 1
+    version: number;            // 当前 DATA_VERSION = 2
     lists: WordList[];
     words: Word[];
-    logs: ReviewLog[];    // 每次评分的复习日志
+    logs: ReviewLog[];          // 每次评分的复习日志
     settings: Settings;
+    settingsUpdatedAt: number;  // 设置项参与同步时的 LWW 时间戳
+    tombstones: Tombstones;     // 已删除的词/词库/日志 id → 删除时间
+    pending: PendingChanges;    // 尚未推送到服务器的改动（id 列表）
   }
   ```
 
 - **写入策略**：所有变更走 `store.ts` 的 `commit()`，先通知订阅者，再以 220ms 防抖写入快照。
 - **回退链**：IndexedDB 不可用或读写失败 → localStorage 键 `lexumo:data`（JSON 字符串）→ 再失败则仅保存在内存（刷新即丢失）。
-- **版本迁移**：启动时若快照 `version` 与 `DATA_VERSION` 不一致，会丢弃旧快照并重新播种演示数据；`settings` 字段缺失时用默认值补齐。
-- **隐私**：数据只在本机，不上传任何服务器；清除 WebView 数据或卸载应用会删除词库，建议定期导出 JSON 备份。
+- **版本迁移**：启动时若快照 `version` 低于 `DATA_VERSION`，会就地补齐新字段（`updatedAt` / `tombstones` / `pending` / `settingsUpdatedAt`）并保留原有数据；只有 `version` 高于当前版本（降级运行）才会重新播种。
+- **隐私**：数据默认只在本机。只有在「设置 → 账号与同步」中显式登录后，词库、复习日志与设置才会推送到你填写的服务器地址；不登录则没有任何网络上传。
 
 ## 导入 / 导出格式
 
@@ -235,6 +257,40 @@ serendipity	意外发现美好事物的能力	a serendipitous meeting
 - 与目标词库中已有词条重复（按归一化后的词形比较）的行会被跳过，并在结果中提示跳过数量；
 - 导入前会显示预览（识别出的格式、条数、跳过数、前 8 个词条），确认后才写入。
 
+## 多端同步
+
+同步是**可选的**：不登录时应用与单机版完全一致。需要多设备共享时，自己跑一个后端即可——不需要任何云服务商。
+
+### 1. 启动后端
+
+```bash
+cd server
+npm start
+# 默认 http://127.0.0.1:8787，数据写在 server/data/
+```
+
+零第三方依赖，只需要 Node 20+。`PORT` / `HOST` / `DATA_DIR` 三个环境变量可调；想让手机和电脑都连上，把 `HOST` 设为 `0.0.0.0` 并用局域网 IP 访问。详见 [`server/README.md`](server/README.md)。
+
+### 2. 在应用里登录
+
+打开「设置 → 账号与同步」：
+
+1. 服务器地址填后端地址（例如 `http://192.168.1.10:8787`），可先点「测试连接」；
+2. 填邮箱与密码，首次点「创建账号」，之后在别的设备上点「登录」；
+3. 登录成功后会自动推一次本地改动并拉取服务器上的数据。
+
+登录后侧栏底部会出现同步状态（已同步 / 同步中 / 同步失败 / 待同步条数），点它可直接跳到设置页。默认开启自动同步：本地编辑后 2.5 秒防抖推送、每 15 秒轮询一次未推送的改动、窗口重新获得焦点或网络恢复时立即同步。也可以手动点「立即同步」。
+
+### 3. 冲突与删除的处理
+
+- **词条与词库**：整条记录同步，按 `updatedAt` 后写胜出（LWW）。本地有未推送的改动且比服务器上的更新时，保留本地版本并在下一轮推送。
+- **复习日志**：只追加，按 `id` 去重做并集，不会互相覆盖；撤销评分时会写入日志墓碑，让删除也能传播。
+- **删除**：写墓碑（`{ id, updatedAt, deleted: true }`）而不是直接抹掉，否则离线设备下次同步会把删掉的词再推回来。
+- **设置**：整体按 `settingsUpdatedAt` 做 LWW。
+- **首次登录**：本地已有的词库（包括首次启动的示例词库）会整批上传，所以新设备登录后能看到全部内容。
+
+接口契约见 [`docs/sync-protocol.md`](docs/sync-protocol.md)，客户端 `src/lib/sync.ts` 与后端 `server/` 都以它为准。
+
 ## 已知限制
 
 - **平台**：以 Windows 为主进行开发；macOS / Linux 打包未验证。macOS 打包还需要 `icon.icns`（当前仅生成 PNG 与 ICO）。
@@ -242,8 +298,8 @@ serendipity	意外发现美好事物的能力	a serendipitous meeting
 - **自动翻译**：依赖有道词典 / MyMemory 等公开接口，需联网；接口可能限流或变更，届时查词会降级或提示失败，不影响手动录入。缓存 30 天，设置里可清除。
 - **视觉验证**：功能层有 jsdom 冒烟测试覆盖；界面另用 headless Edge + DevTools 协议做了实测——五个页面均渲染、无控制台异常与失败请求、无横向溢出，并核对了设计令牌的实际取值、深色主题配色反转、860px 窄窗口下侧栏折叠、以及词条行「悬停显形操作区」的透明度变化。未做跨平台像素级视觉回归。
 - **TTS**：依赖系统语音合成引擎，可用音色与语言随平台而异；部分语言可能没有可用语音，此时听音功能静默降级。
-- **同步**：无多设备同步与云备份，数据仅存本机。
-- **规模**：采用「全量快照 + 防抖写盘」，词条量很大（约 2 万以上）时每次写入会有可感知延迟。
+- **同步**：自带的后端是单进程、每用户一个 JSON 文件的实现，适合个人或小规模自建；不支持集群、无数据库、无备份策略。传输默认是明文 HTTP（本机或局域网内使用没问题，暴露到公网请自行在前面加 HTTPS 反向代理）。令牌存在 localStorage，有效期 30 天。改名前的旧本地数据不会自动迁移（存储键已随应用改名更换）。
+- **规模**：采用「全量快照 + 防抖写盘」，词条量很大（约 2 万以上）时每次写入会有可感知延迟。同步也是整条记录增量传输，单次最多 5000 条改动。
 - **导入编码**：仅支持 UTF-8，GBK 等编码需先转码；Anki 的 `.apkg` 包不在支持范围内。
 - **搜索**：前端内存过滤，无分词与模糊匹配，也不支持正则。
 

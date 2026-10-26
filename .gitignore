@@ -19,3 +19,5 @@ src-tauri/gen
 
 # local visual-verification harness output
 .shots
+
+server/data/

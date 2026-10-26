@@ -723,3 +723,101 @@
     transform: none;
   }
 }
+
+/* --- Sync / account ------------------------------------------------- */
+
+.set-intro {
+  margin: 0;
+  padding: 0 var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--ink-3);
+}
+
+.set-ctl .input-sm {
+  width: 100%;
+  max-width: 240px;
+  min-height: 34px;
+  font-size: var(--fs-sm);
+  padding-block: 6px;
+}
+
+.set-error,
+.set-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-1) 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.set-error {
+  color: var(--danger);
+}
+
+.set-notice {
+  color: var(--jade-ink);
+}
+
+.sync-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  font-size: var(--fs-sm);
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-4);
+  flex: none;
+}
+
+.sync-dot-ok {
+  background: var(--ok);
+}
+
+.sync-dot-busy {
+  background: var(--amber);
+  animation: sync-pulse 1.2s var(--ease) infinite;
+}
+
+.sync-dot-danger {
+  background: var(--danger);
+}
+
+.sync-status-err {
+  flex-basis: 100%;
+  text-align: right;
+  font-size: var(--fs-xs);
+  color: var(--danger);
+}
+
+@keyframes sync-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (max-width: 720px) {
+  .set-ctl .input-sm {
+    max-width: none;
+  }
+
+  .sync-status {
+    justify-content: flex-start;
+  }
+
+  .sync-status-err {
+    text-align: left;
+  }
+}

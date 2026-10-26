@@ -1,0 +1,11 @@
+{
+  "name": "lexumo-sync-server",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Lexumo 自建同步后端（零第三方依赖，Node 24）",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  }
+}
