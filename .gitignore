@@ -1,0 +1,18 @@
+# dependencies
+node_modules
+.npm-cache
+
+# build output
+dist
+dist-ssr
+.vite
+*.tsbuildinfo
+
+# rust
+src-tauri/target
+src-tauri/gen
+
+# misc
+*.local
+.DS_Store
+*.log

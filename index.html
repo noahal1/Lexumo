@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f4f1e9" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#10120f" media="(prefers-color-scheme: dark)" />
+    <title>Lexilo · 词屿</title>
+    <style>
+      /* Paint the right canvas before the bundle loads (no white flash). */
+      html,
+      body {
+        margin: 0;
+        background: #f4f1e9;
+      }
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #10120f;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

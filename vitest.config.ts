@@ -1,0 +1,17 @@
+import { fileURLToPath, URL } from "node:url";
+import { defineConfig } from "vitest/config";
+
+/**
+ * Test config. Pure helpers run in a plain Node environment; the integration
+ * smoke test opts into jsdom with a `// @vitest-environment jsdom` docblock.
+ */
+export default defineConfig({
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.{ts,tsx}"],
+    setupFiles: [],
+  },
+});

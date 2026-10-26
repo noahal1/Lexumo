@@ -1,0 +1,121 @@
+/* ============================================================
+   Lexilo · 词屿 — design tokens
+   A calm, editorial "paper & jade" system: warm neutrals, one
+   confident jade accent, amber for streaks, generous space.
+   ============================================================ */
+
+:root {
+  /* --- palette: light (paper) --- */
+  --bg: #f4f1e9;
+  --bg-deep: #ebe7dc;
+  --surface: #fffdf8;
+  --surface-2: #f8f5ee;
+  --surface-hover: #f1ede3;
+  --line: #e2dccd;
+  --line-strong: #d3cbb8;
+  --ink: #211f1a;
+  --ink-2: #4a463c;
+  --ink-3: #7a7466;
+  --ink-4: #a29b8b;
+  --jade: #0f6b5b;
+  --jade-hover: #0b5749;
+  --jade-soft: #dfeee9;
+  --jade-ink: #0a4a3f;
+  --amber: #b9761f;
+  --amber-soft: #f6e8d2;
+  --rose: #a8402f;
+  --rose-soft: #f5e1dc;
+  --sky: #2f5f8a;
+  --sky-soft: #e0eaf3;
+  --violet: #5b4b8a;
+  --violet-soft: #e9e4f4;
+
+  /* --- semantic --- */
+  --ok: var(--jade);
+  --warn: var(--amber);
+  --danger: var(--rose);
+  --focus: #0f6b5b;
+
+  /* --- type --- */
+  --font-ui: "Inter", "Segoe UI Variable Text", "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: "Iowan Old Style", "Source Serif 4", "Noto Serif SC",
+    "Songti SC", "SimSun", Georgia, serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+
+  --fs-xs: 11.5px;
+  --fs-sm: 12.5px;
+  --fs-base: 14px;
+  --fs-md: 15.5px;
+  --fs-lg: 19px;
+  --fs-xl: 26px;
+  --fs-2xl: 34px;
+  --fs-3xl: 46px;
+
+  /* --- space --- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* --- shape --- */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-full: 999px;
+
+  /* --- depth --- */
+  --shadow-xs: 0 1px 2px rgba(33, 31, 26, 0.05);
+  --shadow-sm: 0 1px 3px rgba(33, 31, 26, 0.07), 0 4px 12px rgba(33, 31, 26, 0.04);
+  --shadow-md: 0 8px 28px rgba(33, 31, 26, 0.1), 0 2px 6px rgba(33, 31, 26, 0.05);
+  --shadow-lg: 0 24px 64px rgba(33, 31, 26, 0.18), 0 8px 20px rgba(33, 31, 26, 0.08);
+
+  /* --- motion --- */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 260ms;
+  --dur-4: 420ms;
+
+  --sidebar-w: 236px;
+  --content-max: 1180px;
+}
+
+:root[data-theme="dark"] {
+  --bg: #10120f;
+  --bg-deep: #0a0c09;
+  --surface: #171a15;
+  --surface-2: #1d211b;
+  --surface-hover: #232821;
+  --line: #2a2f27;
+  --line-strong: #3a4136;
+  --ink: #ece9df;
+  --ink-2: #c3beb1;
+  --ink-3: #948f80;
+  --ink-4: #6b675b;
+  --jade: #58cfb2;
+  --jade-hover: #74dcc3;
+  --jade-soft: #14332c;
+  --jade-ink: #a9ecdb;
+  --amber: #e0a458;
+  --amber-soft: #35291a;
+  --rose: #e0806e;
+  --rose-soft: #3a211d;
+  --sky: #7fb0d8;
+  --sky-soft: #1b2a37;
+  --violet: #a99bd6;
+  --violet-soft: #272140;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 4px 14px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 10px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.62), 0 10px 24px rgba(0, 0, 0, 0.4);
+}
