@@ -70,14 +70,18 @@ type Step =
 /** How many brand-new cards the daily allowance still has room for. */
 function newCardsLeft(data: AppData, now: number): number {
   const start = startOfDay(now);
+  /* A card counts as "introduced today" when its earliest review log is
+     from today. Deriving this from logs (rather than reviewCount === 1)
+     keeps the count stable even if a fresh card is graded twice in one
+     day, and undoing a first grade restores the allowance naturally. */
+  const firstReviewAt = new Map<string, number>();
+  for (const log of data.logs) {
+    const prev = firstReviewAt.get(log.wordId);
+    if (prev === undefined || log.at < prev) firstReviewAt.set(log.wordId, log.at);
+  }
   const introduced = data.words.filter((word) => {
-    const srs = word.srs;
-    if (!srs) return false;
-    return (
-      srs.reviewCount === 1 &&
-      srs.lastReviewedAt !== null &&
-      srs.lastReviewedAt >= start
-    );
+    const at = firstReviewAt.get(word.id);
+    return at !== undefined && at >= start;
   }).length;
   return Math.max(0, data.settings.newCardsPerDay - introduced);
 }
@@ -426,7 +430,7 @@ export function FlashcardsPage() {
                     {t("flashcards.dueCount", { n: dueReviewCount })}
                   </span>
                   <span className="chip chip-new">
-                    {t("flashcards.newCount", { n: freshLeft })}
+                    {t("flashcards.newCount", { n: counts.new })}
                   </span>
                   <span className="chip chip-tag">
                     {t("flashcards.deckSize", { n: deckSize })}
