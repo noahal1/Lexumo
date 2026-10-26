@@ -12,6 +12,7 @@ import {
   wipeAll,
 } from "@/lib/store";
 import { onVoicesChanged, speak, speechSupported, voicesFor, type VoiceInfo } from "@/lib/tts";
+import { clearLookupCache, lookupCacheSize } from "@/lib/translate";
 import { exportCsv, exportJson, parseImport, type ImportResult } from "@/lib/transfer";
 import type { ThemeMode, UiLang } from "@/lib/types";
 import { clamp, dayKey, downloadText } from "@/lib/utils";
@@ -109,6 +110,7 @@ export function SettingsPage() {
   const [preview, setPreview] = useState<{ result: ImportResult; fileName: string } | null>(null);
   const [wipeOpen, setWipeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cacheSize, setCacheSize] = useState(() => lookupCacheSize());
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => onVoicesChanged(() => setVoices(voicesFor(studyLang))), [studyLang]);
@@ -388,6 +390,41 @@ export function SettingsPage() {
                 label={t("settings.audioFirst")}
                 onChange={(audioFirst) => updateSettings({ audioFirst })}
               />
+            </Row>
+          </Section>
+
+          <hr className="divider" />
+
+          {/* 词典 ------------------------------------------------------ */}
+          <Section
+            icon="book"
+            title={t("settings.dictionary")}
+            note={zh ? "自动查词" : "Auto lookup"}
+          >
+            <Row label={t("settings.autoTranslate")} hint={t("settings.autoTranslateHint")}>
+              <Switch
+                checked={settings.autoTranslate}
+                label={t("settings.autoTranslate")}
+                onChange={(autoTranslate) => updateSettings({ autoTranslate })}
+              />
+            </Row>
+            <Row
+              label={t("settings.translateCache")}
+              hint={t("settings.translateCacheHint", { n: cacheSize })}
+            >
+              <button
+                className="btn btn-sm"
+                type="button"
+                disabled={cacheSize === 0}
+                onClick={() => {
+                  clearLookupCache();
+                  setCacheSize(0);
+                  toast(t("settings.cacheCleared"), "ok");
+                }}
+              >
+                <Icon name="trash" size={13} />
+                {t("settings.clearCache")}
+              </button>
             </Row>
           </Section>
 

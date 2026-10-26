@@ -69,6 +69,8 @@ export interface Settings {
   audioFirst: boolean;
   newCardsPerDay: number;
   reviewOrder: "due" | "random";
+  /** Look the term up online and prefill the meaning when adding a word. */
+  autoTranslate: boolean;
 }
 
 export interface AppData {
@@ -93,6 +95,7 @@ export const DEFAULT_SETTINGS: Settings = {
   audioFirst: false,
   newCardsPerDay: 15,
   reviewOrder: "due",
+  autoTranslate: true,
 };
 
 export const STATUS_ORDER: WordStatus[] = ["new", "reviewing", "learning", "mastered"];

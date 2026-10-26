@@ -11,11 +11,12 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 ## 功能
 
 - **词库管理**：多词库、增删改查、搜索、状态筛选、标签筛选、排序、收藏；每条词条包含主释义、补充释义、例句、笔记、标签。
+- **添加时自动翻译**：新建词条时输入单词并失焦，自动查词典填入释义、补充释义、例句与音标；可一键「重新翻译」强制覆盖。桌面版通过 Rust 代理查有道词典（音标 + 词性 + 双语例句），网页版降级到有道 / MyMemory / Google 机器翻译链；结果缓存 30 天，命中限流时自动冷却换源，查不到不阻塞手动填写，设置里可整体关闭。
 - **间隔重复**：SM-2 变体调度，评分分为 `easy / good / hard`；ease 限制在 `[1.3, 2.5]`，间隔限制在 `[1, 3650]` 天；卡片状态由已获得的间隔推导：`new → reviewing → learning → mastered`。
 - **闪卡复习**：四种组卡方式（到期卡片 / 新卡片 / 全部词语 / 收藏词语，各自显示数量）、到期队列 + 新卡队列（受每日新卡上限约束）、翻面后仍保留词形、评分按钮上直接预览「下次间隔」、可随时「撤销上一次」评分或跳过、中途可「结束本轮」、键盘快捷键、自动/手动 TTS 发音。
 - **测验**：看词选义 / 看义选词双向模式，4 选 1，即时对错反馈，结束页给出错题列表；测验不写入 SRS。
 - **统计**：总词数、已掌握、今日复习、连续天数、每日目标环、状态分布、学习活动柱状图（7 / 30 / 90 天可切换）、评分分布、记忆留存率、逾期词数。
-- **设置**：主题（浅色 / 深色 / 跟随系统）、界面语言（简体中文 / English）、每日目标、每日新卡上限、复习顺序、TTS 语速与音色、听力模式。
+- **设置**：主题（浅色 / 深色 / 跟随系统）、界面语言（简体中文 / English）、每日目标、每日新卡上限、复习顺序、TTS 语速与音色、听力模式、自动翻译开关与翻译缓存管理。
 - **导入 / 导出**：JSON 快照、CSV 表格、Anki TXT 三种格式。
 - **本地优先**：IndexedDB 单快照持久化，localStorage 兜底；无账号体系，无遥测。
 - **界面与可用性**：暖纸色 / 深色双主题（跟随系统），侧栏可折叠为图标栏，启动骨架屏，词条行悬停才显示操作区，搜索命中高亮；全局快捷键与「?」快捷键帮助；弹窗带焦点陷阱，正文对比度满足 WCAG AA。
@@ -51,6 +52,7 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 | 测试 | Vitest 3（纯函数用 Node 环境，整应用冒烟测试用 jsdom） |
 | 持久化 | IndexedDB（`lexilo` 库，单键快照）+ localStorage 回退 |
 | 发音 | Web Speech API（`speechSynthesis`） |
+| 查词 / 翻译 | Rust 侧 `reqwest` 代理有道词典 JSON API（桌面）；浏览器降级到有道 `trans` → MyMemory → Google |
 | 样式 | 原生 CSS（设计令牌 + 全局样式），无 UI 框架 |
 | 图标 | Pillow 脚本生成，衬线体「L」字形 |
 
@@ -87,6 +89,7 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 │   │   ├── types.ts            # 领域类型与默认设置
 │   │   ├── seed.ts             # 首次启动的演示词库与复习历史
 │   │   ├── languages.ts        # 语言元数据
+│   │   ├── translate.ts        # 查词/翻译：有道解析、多源降级、缓存
 │   │   └── tts.ts              # 语音合成封装
 │   ├── __tests__/
 │   │   └── app.smoke.test.tsx  # jsdom 整应用挂载冒烟测试
@@ -97,7 +100,7 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 │   │   └── settings/           # SettingsPage.tsx
 │   └── styles/                 # tokens.css（设计令牌）+ global.css + 页面级 study.css / insights.css
 └── src-tauri/
-    ├── Cargo.toml              # tauri 2 / tauri-build 2
+    ├── Cargo.toml              # tauri 2 / tauri-build 2 / reqwest（查词代理）
     ├── build.rs
     ├── tauri.conf.json         # 窗口、构建命令、bundle 图标
     ├── capabilities/default.json  # Tauri 2 权限能力
@@ -110,7 +113,7 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
     │   └── generate-icons.py   # 用 Pillow 重新生成上述图标
     └── src/
         ├── main.rs             # 桌面可执行入口
-        └── lib.rs              # Tauri Builder，窗口宿主
+        └── lib.rs              # Tauri Builder、窗口宿主、lookup_word / translate_text 命令
 ```
 
 ## 开发命令
@@ -168,7 +171,10 @@ npm test
 | --- | --- | --- |
 | `src/lib/srs.test.ts` | 50 | 三档评分调度、ease 上下限、间隔上限、状态边界、间隔文案、不可变性 |
 | `src/lib/utils.test.ts` | 20 | 文本归一化、clamp、shuffle、日期差值、dayKey、cx、uid、相对时间 |
+| `src/lib/translate.test.ts` | 24 | 有道词典 / 机器翻译 / MyMemory / Google 各源解析、释义格式化、缓存命中、429 降级与冷却 |
 | `src/__tests__/app.smoke.test.tsx` | 5 | 在 jsdom 中真实挂载整个应用：五个页面渲染、主题切换、弹窗开关、搜索过滤 |
+
+共 **99** 个用例。
 
 冒烟测试通过 `// @vitest-environment jsdom` 单独指定环境，其余用例仍跑在 Node 环境。
 
@@ -232,7 +238,8 @@ serendipity	意外发现美好事物的能力	a serendipitous meeting
 ## 已知限制
 
 - **平台**：以 Windows 为主进行开发；macOS / Linux 打包未验证。macOS 打包还需要 `icon.icns`（当前仅生成 PNG 与 ICO）。
-- **安装包**：`cargo check` 与 `cargo build --release` 均已在 Windows 上通过，产物 `src-tauri/target/release/lexilo.exe`（8.6 MB）可正常启动并显示窗口。但 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
+- **安装包**：`cargo check` 与 `cargo build --release` 均已在 Windows 上通过，产物 `src-tauri/target/release/lexilo.exe`（约 12.7 MB）可正常启动并显示窗口。但 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
+- **自动翻译**：依赖有道词典 / MyMemory 等公开接口，需联网；接口可能限流或变更，届时查词会降级或提示失败，不影响手动录入。缓存 30 天，设置里可清除。
 - **视觉验证**：功能层有 jsdom 冒烟测试覆盖；界面另用 headless Edge + DevTools 协议做了实测——五个页面均渲染、无控制台异常与失败请求、无横向溢出，并核对了设计令牌的实际取值、深色主题配色反转、860px 窄窗口下侧栏折叠、以及词条行「悬停显形操作区」的透明度变化。未做跨平台像素级视觉回归。
 - **TTS**：依赖系统语音合成引擎，可用音色与语言随平台而异；部分语言可能没有可用语音，此时听音功能静默降级。
 - **同步**：无多设备同步与云备份，数据仅存本机。

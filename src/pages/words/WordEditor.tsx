@@ -1,9 +1,16 @@
 /** Add / edit a single word. Owns its draft state; commits through the store. */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Modal, TagInput, useToast } from "@/components/ui";
 import { useT } from "@/i18n";
 import { addWord, findDuplicate, getData, updateWord } from "@/lib/store";
+import {
+  LookupError,
+  alternativeMeaning,
+  lookupTerm,
+  primaryMeaning,
+  type LookupFailure,
+} from "@/lib/translate";
 import { STATUS_LABEL_KEY, STATUS_ORDER, type Word, type WordStatus } from "@/lib/types";
 
 export interface WordEditorProps {
@@ -15,6 +22,8 @@ export interface WordEditorProps {
   /** Ask the parent to confirm deletion (editor closes itself first). */
   onDelete: (word: Word) => void;
 }
+
+type LookupState = "idle" | "loading" | "error";
 
 export function WordEditor({ open, word, defaultListId, onClose, onDelete }: WordEditorProps) {
   const t = useT();
@@ -31,9 +40,20 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   const [status, setStatus] = useState<WordStatus>("new");
   const [error, setError] = useState("");
 
+  const [lookupState, setLookupState] = useState<LookupState>("idle");
+  const [lookupError, setLookupError] = useState<LookupFailure | null>(null);
+  const [phonetic, setPhonetic] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      abortRef.current?.abort();
+      return;
+    }
     setError("");
+    setLookupState("idle");
+    setLookupError(null);
+    setPhonetic("");
     if (word) {
       setTerm(word.term);
       setDefinition(word.definition);
@@ -55,11 +75,85 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
     }
   }, [open, word, defaultListId]);
 
+  // Drop any in-flight request when the dialog unmounts.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const list = data.lists.find((l) => l.id === listId) ?? data.lists[0];
+  const fromLang = list?.sourceLang ?? "en";
+  const toLang = list?.targetLang ?? "zh-CN";
+
   const trimmed = term.trim();
   const duplicate = trimmed ? findDuplicate(data, trimmed, listId) : undefined;
   const showDuplicate = Boolean(duplicate && duplicate.id !== word?.id);
 
+  /**
+   * Look the term up and fill the empty fields.
+   *
+   * `force` is the "翻译" button: it overwrites what is already there and
+   * bypasses the cache. The automatic pass only ever fills blanks, so a user
+   * who typed their own wording never loses it to a background request.
+   */
+  const runLookup = useCallback(
+    async (force: boolean) => {
+      const value = term.trim();
+      if (!value) return;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      setLookupState("loading");
+      setLookupError(null);
+      try {
+        const result = await lookupTerm(value, {
+          from: fromLang,
+          to: toLang,
+          force,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+
+        const primary = primaryMeaning(result);
+        const secondary = alternativeMeaning(result);
+        if (primary) {
+          setDefinition((prev) => (force || !prev.trim() ? primary : prev));
+        }
+        if (secondary) {
+          setDefinition2((prev) => (force || !prev.trim() ? secondary : prev));
+        }
+        const firstExample = result.examples[0]?.en;
+        if (firstExample) {
+          setExample((prev) => (force || !prev.trim() ? firstExample : prev));
+        }
+        setPhonetic(result.phonetic);
+        setLookupState("idle");
+        if (!result.fromCache) toast(t("words.translationApplied"), "ok");
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        setLookupState("error");
+        setLookupError(e instanceof LookupError ? e.reason : "offline");
+      }
+    },
+    [term, fromLang, toLang, t, toast],
+  );
+
+  const translateLabel =
+    lookupState === "loading"
+      ? t("words.translating")
+      : lookupState === "error"
+        ? t("words.retranslate")
+        : t("words.translate");
+
+  const errorText =
+    lookupError === "rate-limited"
+      ? t("words.translationRateLimited")
+      : lookupError === "offline"
+        ? t("words.translationOffline")
+        : lookupError === "not-found"
+          ? t("words.translationNotFound")
+          : t("words.translationFailed");
+
   const save = () => {
+    abortRef.current?.abort();
     if (!trimmed) {
       setError(t("words.termRequired"));
       return;
@@ -146,6 +240,15 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
             onChange={(e) => {
               setTerm(e.target.value);
               setError("");
+              setLookupState("idle");
+              setLookupError(null);
+              setPhonetic("");
+            }}
+            onBlur={() => {
+              // Automatic pass: only in create mode, only into blank fields.
+              if (!word && data.settings.autoTranslate && trimmed && !definition.trim()) {
+                void runLookup(false);
+              }
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
@@ -158,6 +261,11 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
             spellCheck={false}
             autoFocus
           />
+          {phonetic && (
+            <span className="hint mono">
+              /{phonetic}/ · {t("words.phonetic")}
+            </span>
+          )}
           {error && (
             <span className="hint" style={{ color: "var(--rose)" }}>
               {error}
@@ -167,9 +275,21 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
 
         <div className="field-row">
           <div className="field">
-            <label className="label" htmlFor="word-def">
-              {t("common.definition")}
-            </label>
+            <div className="row-flex" style={{ justifyContent: "space-between", gap: "var(--sp-2)" }}>
+              <label className="label" htmlFor="word-def">
+                {t("common.definition")}
+              </label>
+              <button
+                className="btn btn-quiet btn-sm"
+                type="button"
+                onClick={() => void runLookup(true)}
+                disabled={lookupState === "loading" || !trimmed}
+                title={t("words.translateHint")}
+              >
+                <Icon name={lookupState === "loading" ? "refresh" : "sparkles"} size={13} />
+                {translateLabel}
+              </button>
+            </div>
             <input
               id="word-def"
               className="input"
@@ -177,6 +297,11 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
               onChange={(e) => setDefinition(e.target.value)}
               placeholder={t("words.definitionPlaceholder")}
             />
+            {lookupState === "error" && (
+              <span className="hint" style={{ color: "var(--amber)" }}>
+                {errorText}
+              </span>
+            )}
           </div>
 
           <div className="field">
