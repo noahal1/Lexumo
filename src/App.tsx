@@ -240,6 +240,7 @@ export function App() {
           <ShortcutRow keys={["n"]} label="新建词条" />
           <ShortcutRow keys={["空格"]} label="闪卡翻面" />
           <ShortcutRow keys={["1", "2", "3"]} label="评分（难 / 良 / 易）" />
+          <ShortcutRow keys={["Ctrl", "Z"]} label="撤销上一次评分" />
           <ShortcutRow keys={["←", "→"]} label="跳过当前卡" />
           <ShortcutRow keys={["Esc"]} label="关闭弹窗" />
         </div>

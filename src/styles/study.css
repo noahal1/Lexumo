@@ -99,7 +99,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  min-height: 330px;
+  min-height: clamp(330px, 46vh, 520px);
   padding: var(--sp-6) var(--sp-7) var(--sp-5);
   text-align: left;
   cursor: pointer;
@@ -164,6 +164,22 @@
   letter-spacing: -0.02em;
   text-wrap: balance;
   overflow-wrap: anywhere;
+}
+
+/* Term echoed at the top of the answer face, so the word stays in view. */
+.fc-term-sm {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.fc-divider {
+  height: 1px;
+  margin: calc(var(--sp-1) * -1) 0 var(--sp-1);
+  background: var(--line);
 }
 
 .fc-def {
@@ -299,6 +315,19 @@
   place-items: center;
   background: var(--jade-soft);
   color: var(--jade-ink);
+}
+
+/* Deck-source picker on the intro card. */
+.fc-deck {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  max-width: 100%;
+}
+
+.fc-deck .segmented {
+  flex-wrap: wrap;
 }
 
 .fc-intro-title {

@@ -260,6 +260,8 @@ function dedupeTags(tags: string[]): string[] {
 export interface GradeResult {
   srs: SrsState;
   status: WordStatus;
+  /** Id of the review log entry this grade appended, so it can be undone. */
+  logId: string;
 }
 
 /** Grade a card and persist the new schedule + review log. */
@@ -286,7 +288,30 @@ export function gradeWord(id: string, grade: Grade, now = Date.now()): GradeResu
     w.updatedAt = now;
     d.logs.push(log);
   });
-  return { srs: next, status };
+  return { srs: next, status, logId: log.id };
+}
+
+/**
+ * Roll back a single grade: restore the schedule the word had before, put the
+ * status back exactly as it was (including the "never demote" behaviour, which
+ * a plain recompute would get wrong) and drop the review log entry.
+ */
+export function undoReview(
+  id: string,
+  prevSrs: SrsState | null,
+  prevStatus: WordStatus,
+  logId: string,
+  now = Date.now(),
+) {
+  commit((d) => {
+    const w = d.words.find((x) => x.id === id);
+    if (!w) return;
+    w.srs = prevSrs;
+    w.status = prevStatus;
+    w.updatedAt = now;
+    const at = d.logs.findIndex((log) => log.id === logId);
+    if (at >= 0) d.logs.splice(at, 1);
+  });
 }
 
 function rank(status: WordStatus): number {
