@@ -1,72 +1,72 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type ReactNode,
-} from "react";
-import { useT } from "@/i18n";
-import {
-  PageShell,
-  Segmented,
-  Modal,
-  ConfirmDialog,
-  useToast,
-} from "@/components/ui";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Icon, type IconName } from "@/components/Icon";
+import { ConfirmDialog, Modal, PageShell, Segmented, ShortcutRow, useToast } from "@/components/ui";
+import { useLang, useT } from "@/i18n";
 import {
-  useAppData,
-  updateSettings,
-  addWord,
-  getData,
-  findDuplicate,
-  wipeAll,
   DEFAULT_LIST_ID,
+  addWord,
+  findDuplicate,
+  getData,
+  updateSettings,
+  useAppData,
+  wipeAll,
 } from "@/lib/store";
-import {
-  exportJson,
-  exportCsv,
-  parseImport,
-  type ImportResult,
-} from "@/lib/transfer";
-import { downloadText, clamp, dayKey } from "@/lib/utils";
-import {
-  speak,
-  voicesFor,
-  onVoicesChanged,
-  speechSupported,
-  type VoiceInfo,
-} from "@/lib/tts";
+import { onVoicesChanged, speak, speechSupported, voicesFor, type VoiceInfo } from "@/lib/tts";
+import { exportCsv, exportJson, parseImport, type ImportResult } from "@/lib/transfer";
 import type { ThemeMode, UiLang } from "@/lib/types";
+import { clamp, dayKey, downloadText } from "@/lib/utils";
+import "@/styles/insights.css";
 
-function SectionCard({
+/* ------------------------------------------------------------------ */
+/* Local building blocks                                               */
+/* ------------------------------------------------------------------ */
+
+function Section({
   icon,
   title,
+  note,
   children,
 }: {
   icon: IconName;
   title: string;
+  note?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="card">
-      <div className="card-head">
-        <span style={{ display: "grid", placeItems: "center", color: "var(--ink-3)" }}>
-          <Icon name={icon} size={17} />
+    <section className="set-section">
+      <header className="set-section-head">
+        <span className="set-section-ico">
+          <Icon name={icon} size={14} />
         </span>
-        <div className="card-title">{title}</div>
-      </div>
-      <div
-        className="card-pad"
-        style={{ display: "flex", flexDirection: "column", gap: "var(--sp-4)" }}
-      >
-        {children}
-      </div>
+        <h2 className="set-section-title">{title}</h2>
+        {note && <span className="set-section-note">{note}</span>}
+      </header>
+      <div className="set-rows">{children}</div>
     </section>
   );
 }
 
-function Toggle({
+function Row({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="set-row">
+      <div className="set-text">
+        <span className="set-label">{label}</span>
+        {hint && <span className="set-hint">{hint}</span>}
+      </div>
+      <div className="set-ctl">{children}</div>
+    </div>
+  );
+}
+
+function Switch({
   checked,
   onChange,
   label,
@@ -81,127 +81,41 @@ function Toggle({
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      className="switch"
       onClick={() => onChange(!checked)}
-      style={{
-        width: 40,
-        height: 23,
-        flex: "0 0 auto",
-        borderRadius: 999,
-        border: `1px solid ${checked ? "transparent" : "var(--line-strong)"}`,
-        background: checked ? "var(--jade)" : "var(--surface-2)",
-        padding: 2,
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: checked ? "flex-end" : "flex-start",
-        transition: "background 160ms var(--ease)",
-      }}
     >
-      <span
-        style={{
-          width: 17,
-          height: 17,
-          borderRadius: "50%",
-          background: checked ? "#fff" : "var(--ink-4)",
-          boxShadow: "var(--shadow-xs)",
-          transition: "background 160ms var(--ease)",
-        }}
-      />
+      <span className="switch-knob" />
     </button>
   );
 }
 
-function SettingToggle({
-  label,
-  hint,
-  checked,
-  onChange,
-}: {
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-4)" }}>
-      <div style={{ minWidth: 0 }}>
-        <div className="label" style={{ marginBottom: 2 }}>
-          {label}
-        </div>
-        {hint !== undefined && <div className="hint">{hint}</div>}
-      </div>
-      <div style={{ marginLeft: "auto" }}>
-        <Toggle checked={checked} onChange={onChange} label={label} />
-      </div>
-    </div>
-  );
-}
-
-function Kbd({ children }: { children: ReactNode }) {
-  return <span className="kbd">{children}</span>;
-}
-
-function Shortcut({ label, keys }: { label: string; keys: ReactNode }) {
-  return (
-    <>
-      <span className="tiny" style={{ color: "var(--ink-2)" }}>
-        {label}
-      </span>
-      <span className="row-flex" style={{ gap: 4, justifyContent: "flex-end" }}>
-        {keys}
-      </span>
-    </>
-  );
-}
-
-function formatLabel(format: ImportResult["format"]): string {
-  switch (format) {
-    case "json":
-      return "Lexilo JSON 备份";
-    case "csv":
-      return "CSV 表格";
-    case "anki":
-      return "Anki TXT";
-    default:
-      return "未知格式";
-  }
-}
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
 
 export function SettingsPage() {
   const t = useT();
+  const lang = useLang();
+  const zh = lang === "zh-CN";
   const toast = useToast();
   const data = useAppData();
   const settings = data.settings;
-  const listId = data.lists[0]?.id ?? DEFAULT_LIST_ID;
-  const lang = data.lists[0]?.sourceLang ?? "en";
 
-  const [voices, setVoices] = useState<VoiceInfo[]>(() => voicesFor(lang));
+  const listId = data.lists[0]?.id ?? DEFAULT_LIST_ID;
+  const studyLang = data.lists[0]?.sourceLang ?? "en";
+  const supported = speechSupported();
+
+  const [voices, setVoices] = useState<VoiceInfo[]>(() => voicesFor(studyLang));
+  const [preview, setPreview] = useState<{ result: ImportResult; fileName: string } | null>(null);
   const [wipeOpen, setWipeOpen] = useState(false);
-  const [preview, setPreview] = useState<{
-    result: ImportResult;
-    fileName: string;
-  } | null>(null);
+  const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => onVoicesChanged(() => setVoices(voicesFor(lang))), [lang]);
+  useEffect(() => onVoicesChanged(() => setVoices(voicesFor(studyLang))), [studyLang]);
 
-  const sample =
-    data.words[0]?.term ??
-    (lang.toLowerCase().startsWith("zh")
-      ? "你好，欢迎使用词屿。"
-      : "Hello, welcome to Lexilo.");
-
-  const testVoice = () => {
-    if (!speechSupported()) {
-      toast(t("settings.noVoice"), "err");
-      return;
-    }
-    speak(sample, {
-      lang,
-      rate: settings.ttsRate,
-      voiceURI: settings.ttsVoiceURI || undefined,
-    });
-  };
+  /* ---------------------------------------------------------------- */
+  /* Export                                                           */
+  /* ---------------------------------------------------------------- */
 
   const handleExportJson = () => {
     downloadText(
@@ -209,7 +123,7 @@ export function SettingsPage() {
       exportJson(data),
       "application/json;charset=utf-8",
     );
-    toast(t("common.success"), "ok");
+    toast(zh ? "已导出 JSON 备份" : "JSON backup exported", "ok");
   };
 
   const handleExportCsv = () => {
@@ -218,27 +132,40 @@ export function SettingsPage() {
       exportCsv(data.words),
       "text/csv;charset=utf-8",
     );
-    toast(t("common.success"), "ok");
+    toast(zh ? "已导出 CSV" : "CSV exported", "ok");
   };
 
-  const handlePickFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  /* ---------------------------------------------------------------- */
+  /* Import                                                           */
+  /* ---------------------------------------------------------------- */
+
+  const handlePickFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0];
     if (!file) return;
+    setBusy(true);
     try {
       const text = await file.text();
       const result = parseImport(text, listId);
       if (result.format === "unknown" || result.words.length === 0) {
         toast(
-          t("settings.importFailed", { msg: "无法识别文件格式或没有可导入的词语" }),
+          t("settings.importFailed", {
+            msg: zh ? "无法识别文件格式，或文件中没有可导入的词语" : "unrecognised format or no words found",
+          }),
           "err",
         );
-        return;
+      } else {
+        setPreview({ result, fileName: file.name });
       }
-      setPreview({ result, fileName: file.name });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      toast(t("settings.importFailed", { msg }), "err");
+    } catch (err) {
+      toast(
+        t("settings.importFailed", {
+          msg: err instanceof Error ? err.message : String(err),
+        }),
+        "err",
+      );
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
   };
 
@@ -255,400 +182,377 @@ export function SettingsPage() {
       added += 1;
     }
     setPreview(null);
-    toast(t("settings.importSuccess", { n: added }), "ok");
-    if (duplicated > 0) toast(`已跳过 ${duplicated} 个重复词语`, "info");
+    if (added > 0) toast(t("settings.importSuccess", { n: added }), "ok");
+    if (duplicated > 0) {
+      toast(zh ? `已跳过 ${duplicated} 个重复词语` : `Skipped ${duplicated} duplicate words`, "info");
+    }
+    if (added === 0 && duplicated === 0) {
+      toast(t("settings.importFailed", { msg: zh ? "没有可导入的词语" : "nothing to import" }), "err");
+    }
   };
+
+  /* ---------------------------------------------------------------- */
+  /* Danger + voice                                                   */
+  /* ---------------------------------------------------------------- */
+
+  const handleWipe = () => {
+    setWipeOpen(false);
+    void wipeAll().then(() => toast(t("common.success"), "ok"));
+  };
+
+  const testVoice = () => {
+    if (!supported) {
+      toast(t("settings.noVoice"), "err");
+      return;
+    }
+    const sample =
+      data.words[0]?.term ?? (zh ? "你好，欢迎使用词屿。" : "Hello, welcome to Lexilo.");
+    speak(sample, {
+      lang: studyLang,
+      rate: settings.ttsRate,
+      voiceURI: settings.ttsVoiceURI || undefined,
+    });
+  };
+
+  const formatLabel = (format: ImportResult["format"]) =>
+    format === "json"
+      ? zh
+        ? "Lexilo JSON 备份"
+        : "Lexilo JSON backup"
+      : format === "csv"
+        ? "CSV"
+        : format === "anki"
+          ? "Anki TXT"
+          : zh
+            ? "未知格式"
+            : "Unknown";
 
   return (
     <PageShell title={t("settings.title")} subtitle={t("settings.subtitle")}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-          gap: "var(--sp-5)",
-          alignItems: "start",
-        }}
-      >
-        {/* 外观 */}
-        <SectionCard icon="sparkles" title={t("settings.appearance")}>
-          <div className="field">
-            <span className="label">{t("settings.theme")}</span>
-            <Segmented<ThemeMode>
-              value={settings.theme}
-              options={[
-                { value: "light", label: t("common.light") },
-                { value: "dark", label: t("common.dark") },
-                { value: "system", label: t("common.system") },
-              ]}
-              onChange={(theme) => updateSettings({ theme })}
-              ariaLabel={t("settings.theme")}
-            />
-          </div>
-          <div className="field">
-            <span className="label">{t("settings.language")}</span>
-            <Segmented<UiLang>
-              value={settings.uiLang}
-              options={[
-                { value: "zh-CN", label: "中文" },
-                { value: "en", label: "English" },
-              ]}
-              onChange={(uiLang) => updateSettings({ uiLang })}
-              ariaLabel={t("settings.language")}
-            />
-          </div>
-        </SectionCard>
+      <div className="set-page">
+        <div className="card">
+          {/* 外观 ------------------------------------------------------ */}
+          <Section icon="sun" title={t("settings.appearance")}>
+            <Row
+              label={t("settings.theme")}
+              hint={zh ? "浅色、深色，或跟随操作系统的外观。" : "Light, dark, or follow the system."}
+            >
+              <Segmented<ThemeMode>
+                value={settings.theme}
+                ariaLabel={t("settings.theme")}
+                options={[
+                  { value: "light", label: t("common.light") },
+                  { value: "dark", label: t("common.dark") },
+                  { value: "system", label: t("common.system") },
+                ]}
+                onChange={(theme) => updateSettings({ theme })}
+              />
+            </Row>
+            <Row
+              label={t("settings.language")}
+              hint={zh ? "界面文字语言，不影响词库内容。" : "UI language only; word data is unchanged."}
+            >
+              <Segmented<UiLang>
+                value={settings.uiLang}
+                ariaLabel={t("settings.language")}
+                options={[
+                  { value: "zh-CN", label: "中文" },
+                  { value: "en", label: "English" },
+                ]}
+                onChange={(uiLang) => updateSettings({ uiLang })}
+              />
+            </Row>
+          </Section>
 
-        {/* 学习 */}
-        <SectionCard icon="target" title={t("settings.study")}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "var(--sp-4)",
-            }}
-          >
-            <div className="field">
-              <label className="label" htmlFor="daily-goal">
-                {t("settings.dailyGoal")}
-              </label>
+          <hr className="divider" />
+
+          {/* 学习 ------------------------------------------------------ */}
+          <Section icon="target" title={t("settings.study")}>
+            <Row
+              label={t("settings.dailyGoal")}
+              hint={zh ? "统计页的目标环按这个次数计算。" : "Drives the goal ring on the stats page."}
+            >
               <input
-                id="daily-goal"
-                className="input mono"
+                className="input set-num"
                 type="number"
                 min={1}
-                max={200}
+                max={500}
                 value={settings.dailyGoal}
-                onChange={(event) =>
-                  updateSettings({
-                    dailyGoal: clamp(
-                      Math.round(Number(event.target.value) || 0),
-                      1,
-                      200,
-                    ),
-                  })
-                }
+                aria-label={t("settings.dailyGoal")}
+                onChange={(e) => {
+                  const n = Number.parseInt(e.target.value, 10);
+                  if (Number.isFinite(n)) updateSettings({ dailyGoal: clamp(n, 1, 500) });
+                }}
               />
-            </div>
-            <div className="field">
-              <label className="label" htmlFor="new-cards">
-                {t("settings.newCardsPerDay")}
-              </label>
+            </Row>
+            <Row
+              label={t("settings.newCardsPerDay")}
+              hint={zh ? "每次复习会话最多引入的新卡片数量。" : "How many unseen cards a session may introduce."}
+            >
               <input
-                id="new-cards"
-                className="input mono"
+                className="input set-num"
                 type="number"
                 min={0}
-                max={100}
+                max={200}
                 value={settings.newCardsPerDay}
-                onChange={(event) =>
-                  updateSettings({
-                    newCardsPerDay: clamp(
-                      Math.round(Number(event.target.value) || 0),
-                      0,
-                      100,
-                    ),
-                  })
-                }
+                aria-label={t("settings.newCardsPerDay")}
+                onChange={(e) => {
+                  const n = Number.parseInt(e.target.value, 10);
+                  if (Number.isFinite(n)) updateSettings({ newCardsPerDay: clamp(n, 0, 200) });
+                }}
               />
-            </div>
-          </div>
-          <div className="field">
-            <span className="label">{t("settings.reviewOrder")}</span>
-            <Segmented<"due" | "random">
-              value={settings.reviewOrder}
-              options={[
-                { value: "due", label: t("settings.orderDue") },
-                { value: "random", label: t("settings.orderRandom") },
-              ]}
-              onChange={(reviewOrder) => updateSettings({ reviewOrder })}
-              ariaLabel={t("settings.reviewOrder")}
-            />
-          </div>
-          <SettingToggle
-            label={t("settings.autoPlay")}
-            checked={settings.autoPlayAudio}
-            onChange={(autoPlayAudio) => updateSettings({ autoPlayAudio })}
-          />
-          <div className="field">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
+            </Row>
+            <Row
+              label={t("settings.reviewOrder")}
+              hint={zh ? "按到期时间最久优先，或随机打散。" : "Earliest due first, or shuffled."}
             >
-              <label className="label" htmlFor="tts-rate">
-                {t("settings.ttsRate")}
-              </label>
-              <span className="tiny mono muted">{settings.ttsRate.toFixed(2)}×</span>
-            </div>
-            <input
-              id="tts-rate"
-              type="range"
-              min={0.5}
-              max={1.5}
-              step={0.05}
-              value={settings.ttsRate}
-              onChange={(event) =>
-                updateSettings({
-                  ttsRate: clamp(Number(event.target.value), 0.5, 1.5),
-                })
-              }
-              style={{ width: "100%", accentColor: "var(--jade)" }}
-            />
-          </div>
-        </SectionCard>
+              <Segmented<"due" | "random">
+                value={settings.reviewOrder}
+                ariaLabel={t("settings.reviewOrder")}
+                options={[
+                  { value: "due", label: t("settings.orderDue") },
+                  { value: "random", label: t("settings.orderRandom") },
+                ]}
+                onChange={(reviewOrder) => updateSettings({ reviewOrder })}
+              />
+            </Row>
+          </Section>
 
-        {/* 发音 */}
-        <SectionCard icon="volume" title={t("settings.audio")}>
-          <div className="field">
-            <label className="label" htmlFor="tts-voice">
-              {t("settings.ttsVoice")}
-            </label>
-            <select
-              id="tts-voice"
-              className="select"
-              value={settings.ttsVoiceURI}
-              onChange={(event) =>
-                updateSettings({ ttsVoiceURI: event.target.value })
-              }
-            >
-              <option value="">{t("settings.ttsVoiceAuto")}</option>
-              {voices.map((voice) => (
-                <option key={voice.uri} value={voice.uri}>
-                  {voice.name} · {voice.lang}
-                </option>
-              ))}
-            </select>
-            {voices.length === 0 && (
-              <span className="hint">{t("settings.noVoice")}</span>
-            )}
-          </div>
-          <button
-            className="btn"
-            type="button"
-            onClick={testVoice}
-            disabled={!speechSupported()}
-            style={{ alignSelf: "flex-start" }}
+          <hr className="divider" />
+
+          {/* 发音 ------------------------------------------------------ */}
+          <Section
+            icon="volume"
+            title={t("settings.audio")}
+            note={supported ? undefined : t("settings.noVoice")}
           >
-            <Icon name="volume" size={16} />
-            {t("settings.testVoice")}
-          </button>
-          <SettingToggle
-            label={t("settings.audioFirst")}
-            checked={settings.audioFirst}
-            onChange={(audioFirst) => updateSettings({ audioFirst })}
-          />
-        </SectionCard>
+            <Row
+              label={t("settings.ttsVoice")}
+              hint={zh ? "朗读词语时使用的系统音色。" : "System voice used for pronunciation."}
+            >
+              <select
+                className="select"
+                value={settings.ttsVoiceURI}
+                aria-label={t("settings.ttsVoice")}
+                disabled={!supported}
+                onChange={(e) => updateSettings({ ttsVoiceURI: e.target.value })}
+              >
+                <option value="">{t("settings.ttsVoiceAuto")}</option>
+                {voices.map((voice) => (
+                  <option key={voice.uri} value={voice.uri}>
+                    {voice.name} · {voice.lang}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="btn btn-sm btn-quiet"
+                onClick={testVoice}
+                disabled={!supported}
+              >
+                {t("settings.testVoice")}
+              </button>
+            </Row>
+            <Row
+              label={t("settings.ttsRate")}
+              hint={zh ? "0.5× 更慢，1.5× 更快。" : "0.5× slower, 1.5× faster."}
+            >
+              <input
+                className="range set-range"
+                type="range"
+                min={0.5}
+                max={1.5}
+                step={0.05}
+                value={settings.ttsRate}
+                aria-label={t("settings.ttsRate")}
+                onChange={(e) => updateSettings({ ttsRate: Number(e.target.value) })}
+              />
+              <span className="set-rate">{settings.ttsRate.toFixed(2)}×</span>
+            </Row>
+            <Row
+              label={t("settings.autoPlay")}
+              hint={zh ? "翻开卡片背面后自动朗读词语。" : "Speak the word when a card is revealed."}
+            >
+              <Switch
+                checked={settings.autoPlayAudio}
+                label={t("settings.autoPlay")}
+                onChange={(autoPlayAudio) => updateSettings({ autoPlayAudio })}
+              />
+            </Row>
+            <Row
+              label={t("settings.audioFirst")}
+              hint={zh ? "先听发音，再决定是否看释义。" : "Hear the word first, then reveal the meaning."}
+            >
+              <Switch
+                checked={settings.audioFirst}
+                label={t("settings.audioFirst")}
+                onChange={(audioFirst) => updateSettings({ audioFirst })}
+              />
+            </Row>
+          </Section>
 
-        {/* 数据 */}
-        <SectionCard icon="download" title={t("settings.data")}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
-            <button
-              className="btn"
-              type="button"
-              onClick={handleExportJson}
-              style={{ justifyContent: "flex-start" }}
-            >
-              <Icon name="download" size={16} />
-              {t("settings.exportJson")}
-            </button>
-            <button
-              className="btn"
-              type="button"
-              onClick={handleExportCsv}
-              style={{ justifyContent: "flex-start" }}
-            >
-              <Icon name="download" size={16} />
-              {t("settings.exportCsv")}
-            </button>
-          </div>
-          <div className="divider" />
-          <div className="field">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".json,.csv,.txt,application/json,text/csv,text/plain"
-              onChange={handlePickFile}
-              style={{ display: "none" }}
-            />
-            <button
-              className="btn"
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              style={{ justifyContent: "flex-start" }}
-            >
-              <Icon name="upload" size={16} />
-              {t("settings.importData")}
-            </button>
-            <span className="hint">{t("settings.importHint")}</span>
-          </div>
-          <div className="divider" />
-          <button
-            className="btn btn-danger"
-            type="button"
-            onClick={() => setWipeOpen(true)}
-            style={{ justifyContent: "flex-start" }}
+          <hr className="divider" />
+
+          {/* 数据 ------------------------------------------------------ */}
+          <Section
+            icon="layers"
+            title={t("settings.data")}
+            note={zh ? `${data.words.length} 词 · ${data.logs.length} 条记录` : `${data.words.length} words`}
           >
-            <Icon name="trash" size={16} />
-            {t("settings.wipeData")}
-          </button>
-        </SectionCard>
+            <Row
+              label={t("settings.exportJson")}
+              hint={zh ? "包含词库、复习记录与设置的完整快照。" : "Full snapshot: lists, words, logs, settings."}
+            >
+              <button type="button" className="btn btn-sm" onClick={handleExportJson}>
+                {t("common.export")}
+              </button>
+            </Row>
+            <Row
+              label={t("settings.exportCsv")}
+              hint={zh ? "只导出词语表格，便于在 Excel 中编辑。" : "Words only, handy for spreadsheets."}
+            >
+              <button type="button" className="btn btn-sm" onClick={handleExportCsv}>
+                {t("common.export")}
+              </button>
+            </Row>
+            <Row label={t("settings.importData")} hint={t("settings.importHint")}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => fileRef.current?.click()}
+                disabled={busy}
+              >
+                {busy ? t("common.loading") : zh ? "选择文件…" : "Choose file…"}
+              </button>
+            </Row>
 
-        {/* 关于 */}
-        <div style={{ gridColumn: "1 / -1" }}>
-          <SectionCard icon="info" title={t("settings.about")}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
-              <div className="row-flex" style={{ gap: "var(--sp-2)" }}>
-                <span className="label">{t("settings.version")}</span>
-                <span className="mono">0.1.0</span>
-                <span
-                  className="chip chip-mastered"
-                  style={{ marginLeft: "auto" }}
-                >
-                  Lexilo · 词屿
-                </span>
-              </div>
-              <p className="muted" style={{ fontSize: "var(--fs-sm)", margin: 0 }}>
-                {t("settings.madeWith")}
-              </p>
-              {/* AGPL-3.0 §7(b) additional term: this attribution must stay visible. */}
-              <div
-                style={{
-                  borderLeft: "2px solid var(--line)",
-                  paddingLeft: "var(--sp-3)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                }}
-              >
-                <span style={{ fontSize: "var(--fs-sm)" }}>
-                  Lingueez — created by Yurii Lysak
-                </span>
-                <span className="tiny muted">{t("settings.licenseNote")}</span>
-              </div>
-              <div className="divider" />
-              <div className="row-flex" style={{ gap: 8 }}>
-                <Icon name="keyboard" size={16} />
-                <span className="label">{t("settings.shortcuts")}</span>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  rowGap: 8,
-                  columnGap: "var(--sp-6)",
-                  alignItems: "center",
-                }}
-              >
-                <Shortcut
-                  label={t("settings.shortcutAdd")}
-                  keys={
-                    <>
-                      <Kbd>Ctrl</Kbd> + <Kbd>N</Kbd>
-                    </>
-                  }
-                />
-                <Shortcut
-                  label={t("settings.shortcutSearch")}
-                  keys={
-                    <>
-                      <Kbd>Ctrl</Kbd> + <Kbd>F</Kbd>
-                    </>
-                  }
-                />
-                <Shortcut label={t("settings.shortcutFlip")} keys={<Kbd>Space</Kbd>} />
-                <Shortcut
-                  label={`${t("flashcards.gradeHard")} / ${t("flashcards.gradeGood")} / ${t("flashcards.gradeEasy")}`}
-                  keys={
-                    <>
-                      <Kbd>1</Kbd> <Kbd>2</Kbd> <Kbd>3</Kbd>
-                    </>
-                  }
-                />
+            <div className="notice notice-danger">
+              <span className="notice-ico">
+                <Icon name="alert" size={16} />
+              </span>
+              <div>
+                <div className="notice-title">{t("settings.wipeData")}</div>
+                <p className="notice-body">{t("settings.wipeConfirmBody")}</p>
+                <div className="danger-actions">
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm"
+                    onClick={() => setWipeOpen(true)}
+                  >
+                    {t("settings.wipeData")}
+                  </button>
+                </div>
               </div>
             </div>
-          </SectionCard>
+          </Section>
         </div>
+
+        {/* 关于 -------------------------------------------------------- */}
+        <section className="card">
+          <div className="card-head">
+            <div>
+              <div className="card-title">{t("settings.about")}</div>
+              <div className="card-sub">Lexilo · 词屿</div>
+            </div>
+          </div>
+          <div className="card-pad about-body">
+            <div className="about-meta">
+              <span className="chip chip-tag">{t("settings.version")} 0.1.0</span>
+              <span className="tiny muted">Tauri 2 · React 19 · TypeScript</span>
+            </div>
+            <p className="about-desc">{t("settings.madeWith")}</p>
+            {/* AGPL-3.0 §7(b) additional term: this attribution must stay visible. */}
+            <div className="about-credit">
+              <span className="about-credit-name">Lingueez — created by Yurii Lysak</span>
+              <span className="tiny muted">{t("settings.licenseNote")}</span>
+            </div>
+            <hr className="divider" />
+            <div>
+              <div className="label" style={{ marginBottom: "var(--sp-2)" }}>
+                {t("settings.shortcuts")}
+              </div>
+              <div className="shortcuts">
+                <ShortcutRow keys={["Ctrl", "N"]} label={t("settings.shortcutAdd")} />
+                <ShortcutRow keys={["Ctrl", "F"]} label={t("settings.shortcutSearch")} />
+                <ShortcutRow keys={["Space"]} label={t("settings.shortcutFlip")} />
+                <ShortcutRow
+                  keys={["1", "2", "3"]}
+                  label={zh ? "评分：困难 / 记得 / 简单" : "Grade: hard / good / easy"}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
-      {/* 导入预览 */}
+      {/* Hidden file input + import preview ------------------------- */}
+      <input
+        ref={fileRef}
+        type="file"
+        className="sr-only"
+        accept=".json,.csv,.txt,application/json,text/csv,text/plain"
+        onChange={handlePickFile}
+      />
+
       <Modal
         open={preview !== null}
         onClose={() => setPreview(null)}
-        title={t("settings.importData")}
-        subtitle={preview?.fileName}
+        title={zh ? "导入预览" : "Import preview"}
+        subtitle={
+          preview ? `${preview.fileName} · ${formatLabel(preview.result.format)}` : undefined
+        }
         width={520}
         footer={
           <>
-            <button className="btn" type="button" onClick={() => setPreview(null)}>
+            <button type="button" className="btn btn-ghost" onClick={() => setPreview(null)}>
               {t("common.cancel")}
             </button>
-            <button className="btn btn-primary" type="button" onClick={confirmImport}>
-              {t("common.import")}
+            <button type="button" className="btn btn-primary" onClick={confirmImport}>
+              {t("common.import")} · {preview?.result.words.length ?? 0}
             </button>
           </>
         }
       >
         {preview && (
-          <div className="stack" style={{ gap: "var(--sp-3)" }}>
-            <div className="row-flex wrap" style={{ gap: 8 }}>
-              <span className="chip chip-mastered">
-                {formatLabel(preview.result.format)}
-              </span>
+          <div className="stack">
+            <div className="tag-row">
+              <span className="chip chip-tag">{formatLabel(preview.result.format)}</span>
               <span className="chip chip-tag">
-                {preview.result.words.length} 个词语
+                {preview.result.words.length} {zh ? "个词语" : "words"}
               </span>
               {preview.result.skipped > 0 && (
-                <span className="chip chip-learning">
-                  跳过 {preview.result.skipped} 行
+                <span className="chip chip-tag">
+                  {zh ? `跳过 ${preview.result.skipped} 行` : `${preview.result.skipped} rows skipped`}
                 </span>
               )}
             </div>
-            <div
-              className="card"
-              style={{ maxHeight: 200, overflow: "auto", boxShadow: "none" }}
-            >
-              <div className="list">
-                {preview.result.words.slice(0, 8).map((word, index) => (
-                  <div
-                    key={`${word.term}-${index}`}
-                    className="row"
-                    style={{
-                      gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)",
-                      cursor: "default",
-                      padding: "8px 14px",
-                    }}
-                  >
-                    <div className="row-term" style={{ fontSize: "var(--fs-base)" }}>
-                      {word.term}
-                    </div>
-                    <div className="row-def">{word.definition || "—"}</div>
-                  </div>
-                ))}
-              </div>
+            <div className="import-preview">
+              {preview.result.words.slice(0, 8).map((word, index) => (
+                <div className="row" key={`${word.term}-${index}`}>
+                  <div className="row-term">{word.term}</div>
+                  <div className="row-def">{word.definition || "—"}</div>
+                </div>
+              ))}
             </div>
             {preview.result.words.length > 8 && (
-              <div className="hint">
-                还有 {preview.result.words.length - 8} 个词语未展示…
+              <div className="import-more">
+                {zh
+                  ? `还有 ${preview.result.words.length - 8} 个词语未展示…`
+                  : `…and ${preview.result.words.length - 8} more`}
               </div>
             )}
           </div>
         )}
       </Modal>
 
-      {/* 清空确认 */}
       <ConfirmDialog
         open={wipeOpen}
         title={t("settings.wipeConfirm")}
         body={t("settings.wipeConfirmBody")}
         confirmLabel={t("settings.wipeData")}
         cancelLabel={t("common.cancel")}
+        onConfirm={handleWipe}
         onCancel={() => setWipeOpen(false)}
-        onConfirm={() => {
-          setWipeOpen(false);
-          void wipeAll().then(() => toast(t("common.success"), "ok"));
-        }}
       />
     </PageShell>
   );

@@ -16,3 +16,6 @@ src-tauri/gen
 *.local
 .DS_Store
 *.log
+
+# local visual-verification harness output
+.shots

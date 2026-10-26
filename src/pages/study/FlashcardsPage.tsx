@@ -1,129 +1,127 @@
-/**
- * 闪卡复习页：到期 + 新词会话队列、翻面、三档评分（显示下次间隔）、
- * 键盘 1/2/3 + 空格、自动 / 手动发音，以及结束小结。
- */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { EmptyState, PageShell, ProgressBar, Ring, StatusChip, TagChip } from "@/components/ui";
+
 import { Icon } from "@/components/Icon";
-import { useT } from "@/i18n";
-import { useRouter } from "@/app/router";
 import {
-  bumpListen,
-  dueWords,
-  getData,
-  gradeWord,
-  reviewsToday,
-  useAppData,
-} from "@/lib/store";
+  EmptyState,
+  PageShell,
+  ProgressBar,
+  Ring,
+  ShortcutRow,
+  StatTile,
+  StatusChip,
+  TagChip,
+} from "@/components/ui";
+import { useRouter } from "@/app/router";
+import { useT } from "@/i18n";
 import { formatInterval, isNew, previewIntervals } from "@/lib/srs";
+import { bumpListen, dueWords, getData, gradeWord, reviewsToday, useAppData } from "@/lib/store";
 import { speak, speechSupported, stopSpeaking } from "@/lib/tts";
-import { shuffle, startOfDay } from "@/lib/utils";
 import { STATUS_LABEL_KEY, type AppData, type Grade, type Word } from "@/lib/types";
+import { cx, shuffle, startOfDay } from "@/lib/utils";
+import "@/styles/study.css";
+
+const GRADES: Grade[] = ["hard", "good", "easy"];
+
+const GRADE_LABEL_KEY: Record<Grade, string> = {
+  hard: "flashcards.gradeHard",
+  good: "flashcards.gradeGood",
+  easy: "flashcards.gradeEasy",
+};
 
 interface SessionState {
   ids: string[];
   index: number;
   reviewed: number;
   correct: number;
+  skipped: number;
 }
 
-const GRADES: Grade[] = ["hard", "good", "easy"];
-
-const GRADE_ACCENT: Record<Grade, string> = {
-  hard: "var(--amber)",
-  good: "var(--jade)",
-  easy: "var(--sky)",
-};
-
-/**
- * 今日还能引入多少张新卡：newCardsPerDay 是每日额度，
- * 需要扣掉今天已经完成首次复习（reviewCount === 1 且 lastReviewedAt 在今天）的词。
- */
+/** How many brand-new cards the daily allowance still has room for. */
 function newCardsLeft(data: AppData, now: number): number {
-  const today = startOfDay(now);
-  const usedToday = data.words.filter(
-    (w) =>
-      w.srs !== null &&
-      w.srs.reviewCount === 1 &&
-      w.srs.lastReviewedAt !== null &&
-      w.srs.lastReviewedAt >= today,
-  ).length;
-  return Math.max(0, data.settings.newCardsPerDay - usedToday);
+  const start = startOfDay(now);
+  const introduced = data.words.filter((word) => {
+    const srs = word.srs;
+    if (!srs) return false;
+    return (
+      srs.reviewCount === 1 &&
+      srs.lastReviewedAt !== null &&
+      srs.lastReviewedAt >= start
+    );
+  }).length;
+  return Math.max(0, data.settings.newCardsPerDay - introduced);
 }
 
-/**
- * 会话队列：到期词 + 受每日新卡额度限制的新词；
- * 到期顺序按 dueAt 升序（新词排在到期词之后），随机模式整体打乱。
- */
+/** Due reviews first, then up to `newCardsPerDay` fresh cards. */
 function buildSession(data: AppData, now: number): string[] {
   const due = dueWords(data, now);
-  const freshLimit = newCardsLeft(data, now);
-  const fresh = due.filter((w) => isNew(w.srs)).slice(0, freshLimit);
-  const review = due.filter((w) => !isNew(w.srs));
-  const queue = [...review, ...fresh];
-  const ordered =
-    data.settings.reviewOrder === "random"
-      ? shuffle(queue)
-      : queue
-          .slice()
-          .sort(
-            (a, b) =>
-              (a.srs?.dueAt ?? Number.MAX_SAFE_INTEGER) -
-              (b.srs?.dueAt ?? Number.MAX_SAFE_INTEGER),
-          );
-  return ordered.map((w) => w.id);
+  const review = due.filter((word) => !isNew(word.srs));
+  const fresh = due.filter((word) => isNew(word.srs)).slice(0, newCardsLeft(data, now));
+
+  if (data.settings.reviewOrder === "random") {
+    return shuffle([...review, ...fresh]).map((word) => word.id);
+  }
+
+  const ordered = [...review].sort(
+    (a, b) => (a.srs?.dueAt ?? Number.MAX_SAFE_INTEGER) - (b.srs?.dueAt ?? Number.MAX_SAFE_INTEGER),
+  );
+  return [...ordered, ...fresh].map((word) => word.id);
 }
 
 export function FlashcardsPage() {
-  const t = useT();
-  const { navigate } = useRouter();
   const data = useAppData();
   const settings = data.settings;
+  const t = useT();
+  const router = useRouter();
 
   const [session, setSession] = useState<SessionState | null>(null);
   const [flipped, setFlipped] = useState(false);
-  // 记录已自动朗读过的卡片，避免 StrictMode 下 effect 双跑导致重复发音。
   const spokenRef = useRef<string | null>(null);
 
-  const now = Date.now();
-  const due = dueWords(data, now);
-  const freshBudget = newCardsLeft(data, now);
-  const fresh = due.filter((w) => isNew(w.srs)).slice(0, freshBudget);
-  const review = due.filter((w) => !isNew(w.srs));
-  const queueSize = review.length + fresh.length;
+  const canSpeak = speechSupported();
+  const due = dueWords(data);
+  const dueReviewCount = due.filter((word) => !isNew(word.srs)).length;
+  const freshLeft = newCardsLeft(data, Date.now());
+  const queueSize = buildSession(data, Date.now()).length;
+  const nextRoundSize = buildSession(data, Date.now()).length;
 
-  const mode: "idle" | "active" | "done" = !session
-    ? "idle"
-    : session.index >= session.ids.length
-      ? "done"
-      : "active";
-  const step = session?.index ?? 0;
-  const total = session?.ids.length ?? 0;
-  const currentId = mode === "active" && session ? session.ids[step] : null;
-  const word = currentId ? data.words.find((w) => w.id === currentId) : undefined;
+  const inProgress = session !== null && session.index < session.ids.length;
+  const currentId = inProgress ? session.ids[session.index] : null;
+  const word: Word | null = currentId
+    ? data.words.find((candidate) => candidate.id === currentId) ?? null
+    : null;
   const newCard = word ? isNew(word.srs) : false;
   const preview = word ? previewIntervals(word.srs) : null;
-  const canSpeak = speechSupported();
-  const accuracy = session && session.reviewed > 0 ? session.correct / session.reviewed : 0;
-  // 结束后是否还有下一组可复习（避免点「再来一组」落进空状态）。
-  const nextRoundSize = mode === "done" ? buildSession(data, now).length : 0;
+  const accuracy =
+    session && session.reviewed > 0 ? session.correct / session.reviewed : 0;
+
+  const play = useCallback(
+    (target: Word) => {
+      speak(target.term, {
+        lang: target.sourceLang,
+        rate: settings.ttsRate,
+        voiceURI: settings.ttsVoiceURI,
+      });
+      bumpListen(target.id);
+    },
+    [settings.ttsRate, settings.ttsVoiceURI],
+  );
 
   const startSession = useCallback(() => {
     const ids = buildSession(getData(), Date.now());
     setFlipped(false);
     spokenRef.current = null;
-    if (ids.length === 0) {
-      setSession(null);
-      return;
-    }
-    setSession({ ids, index: 0, reviewed: 0, correct: 0 });
+    setSession(
+      ids.length > 0
+        ? { ids, index: 0, reviewed: 0, correct: 0, skipped: 0 }
+        : null,
+    );
   }, []);
 
   const grade = useCallback(
     (value: Grade) => {
-      if (!session || !word) return;
-      const result = gradeWord(word.id, value);
-      if (!result) return;
+      if (!word) return;
+      gradeWord(word.id, value);
+      setFlipped(false);
       setSession((prev) =>
         prev
           ? {
@@ -134,25 +132,22 @@ export function FlashcardsPage() {
             }
           : prev,
       );
-      setFlipped(false);
     },
-    [session, word],
+    [word],
   );
 
-  const play = (target: Word) => {
-    speak(target.term, {
-      lang: target.sourceLang,
-      rate: settings.ttsRate,
-      voiceURI: settings.ttsVoiceURI,
-    });
-    bumpListen(target.id);
-  };
+  const skip = useCallback(() => {
+    setFlipped(false);
+    setSession((prev) =>
+      prev ? { ...prev, index: prev.index + 1, skipped: prev.skipped + 1 } : prev,
+    );
+  }, []);
 
-  // 每张新卡出现时按设置自动朗读。
+  /* Auto-pronounce the term once per card (token guards StrictMode double-run). */
   useEffect(() => {
-    if (!word || !settings.autoPlayAudio) return;
-    if (!speechSupported()) return;
-    const token = `${word.id}:${step}`;
+    if (!word || !inProgress) return;
+    if (!settings.autoPlayAudio || !speechSupported()) return;
+    const token = `${word.id}:${session?.index ?? 0}`;
     if (spokenRef.current === token) return;
     spokenRef.current = token;
     speak(word.term, {
@@ -160,14 +155,21 @@ export function FlashcardsPage() {
       rate: settings.ttsRate,
       voiceURI: settings.ttsVoiceURI,
     });
-  }, [word, step, settings.autoPlayAudio, settings.ttsRate, settings.ttsVoiceURI]);
+  }, [
+    word,
+    inProgress,
+    session?.index,
+    settings.autoPlayAudio,
+    settings.ttsRate,
+    settings.ttsVoiceURI,
+  ]);
 
   useEffect(() => () => stopSpeaking(), []);
 
-  // 键盘：空格翻面，1 / 2 / 3 评分。
+  /* Space flips · 1/2/3 grade · ←/→ skip */
   useEffect(() => {
-    if (mode !== "active") return;
-    const onKey = (event: KeyboardEvent) => {
+    if (!inProgress) return;
+    const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (
         target &&
@@ -177,11 +179,19 @@ export function FlashcardsPage() {
       ) {
         return;
       }
+
       if (event.code === "Space" || event.key === " ") {
         event.preventDefault();
         if (!flipped) setFlipped(true);
         return;
       }
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        skip();
+        return;
+      }
+
       if (!flipped) return;
       if (event.key === "1") {
         event.preventDefault();
@@ -194,447 +204,324 @@ export function FlashcardsPage() {
         grade("easy");
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [mode, flipped, grade]);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [inProgress, flipped, grade, skip]);
+
+  const sidePanel = (
+    <aside className="study-side">
+      <StatTile
+        label={t("stats.reviewsToday")}
+        value={reviewsToday(data)}
+        sub={`${t("stats.dailyGoal")} ${settings.dailyGoal}`}
+        icon="flame"
+      />
+      <div className="card card-pad stack">
+        <div className="card-title">{t("settings.shortcuts")}</div>
+        <div className="shortcuts">
+          <ShortcutRow keys={["空格"]} label={t("settings.shortcutFlip")} />
+          <ShortcutRow keys={["1"]} label={t("flashcards.gradeHard")} />
+          <ShortcutRow keys={["2"]} label={t("flashcards.gradeGood")} />
+          <ShortcutRow keys={["3"]} label={t("flashcards.gradeEasy")} />
+          <ShortcutRow keys={["←", "→"]} label="跳过当前卡" />
+        </div>
+      </div>
+    </aside>
+  );
 
   return (
     <PageShell title={t("flashcards.title")} subtitle={t("flashcards.subtitle")}>
-      {mode === "idle" && queueSize === 0 && (
-        <EmptyState
-          icon="cards"
-          title={t("flashcards.noCards")}
-          text={t("flashcards.noCardsHint")}
-          action={
-            <button className="btn btn-primary" type="button" onClick={() => navigate("words")}>
-              <Icon name="plus" size={16} />
-              去词库添加词语
-            </button>
-          }
-        />
-      )}
-
-      {mode === "idle" && queueSize > 0 && (
-        <div
-          className="card rise"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 18,
-            padding: "clamp(32px, 6vw, 56px) 24px",
-            textAlign: "center",
-          }}
-        >
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: "50%",
-              background: "var(--jade-soft)",
-              color: "var(--jade-ink)",
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
-            <Icon name="cards" size={28} />
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-display)",
-              fontSize: 28,
-              fontWeight: 600,
-              letterSpacing: "-0.01em",
-            }}
-          >
-            {t("flashcards.start")}
-          </div>
-          <p className="muted" style={{ maxWidth: 420 }}>
-            {t("flashcards.deckSize", { n: queueSize })}
-          </p>
-          <div className="row-flex" style={{ gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-            <span className="chip chip-reviewing">
-              {t("flashcards.dueCount", { n: review.length })}
-            </span>
-            <span className="chip chip-learning">
-              {t("flashcards.newCount", { n: fresh.length })}
-            </span>
-          </div>
-          <button
-            className="btn btn-primary btn-lg"
-            type="button"
-            onClick={startSession}
-            style={{ minWidth: 200 }}
-          >
-            {t("flashcards.start")}
-          </button>
-          <div className="row-flex" style={{ gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-            <span className="tiny muted">
-              <span className="kbd">空格</span> {t("flashcards.showAnswer")}
-            </span>
-            <span className="tiny muted">
-              <span className="kbd">1</span> {t("flashcards.gradeHard")}
-            </span>
-            <span className="tiny muted">
-              <span className="kbd">2</span> {t("flashcards.gradeGood")}
-            </span>
-            <span className="tiny muted">
-              <span className="kbd">3</span> {t("flashcards.gradeEasy")}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {mode === "active" && !word && (
-        <EmptyState
-          icon="cards"
-          title={t("flashcards.emptyDeck")}
-          text={t("flashcards.emptyDeckHint")}
-        />
-      )}
-
-      {mode === "active" && word && (
-        <div className="stack" style={{ gap: 14 }}>
-          <div className="row-flex" style={{ gap: 10 }}>
-            <span className="tiny muted mono">
-              {t("flashcards.cardOf", { i: step + 1, n: total })}
-            </span>
-            <div className="spacer" />
-            <StatusChip status={word.status} label={t(STATUS_LABEL_KEY[word.status])} />
-          </div>
-          <ProgressBar value={step} max={total || 1} />
-
-          <div
-            key={word.id}
-            className="card rise"
-            role="button"
-            tabIndex={0}
-            aria-label={flipped ? word.term : t("flashcards.showAnswer")}
-            onClick={() => {
-              if (!flipped) setFlipped(true);
-            }}
-            onKeyDown={(event) => {
-              if ((event.key === "Enter" || event.key === " ") && !flipped) {
-                event.preventDefault();
-                setFlipped(true);
+      {!session ? (
+        queueSize === 0 ? (
+          <div className="card">
+            <EmptyState
+              icon="cards"
+              title={data.words.length === 0 ? t("words.noWords") : t("flashcards.noCards")}
+              text={
+                data.words.length === 0
+                  ? t("words.noWordsHint")
+                  : t("flashcards.noCardsHint")
               }
-            }}
-            style={{
-              position: "relative",
-              minHeight: 360,
-              maxHeight: "56vh",
-              overflowY: "auto",
-              padding: "clamp(28px, 5vw, 48px)",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: flipped ? "flex-start" : "center",
-              gap: 20,
-              cursor: flipped ? "default" : "pointer",
-            }}
-          >
-            <div
-              className="tiny"
-              style={{
-                position: "absolute",
-                top: 14,
-                left: 16,
-                color: "var(--ink-4)",
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                pointerEvents: "none",
-              }}
-            >
-              {flipped ? t("flashcards.back") : t("flashcards.front")}
+              action={
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => router.navigate("words")}
+                >
+                  <Icon name="plus" size={16} />
+                  {data.words.length === 0 ? t("words.addFirst") : t("words.addWord")}
+                </button>
+              }
+            />
+          </div>
+        ) : (
+          <div className="study-split">
+            <div className="study-main">
+              <div className="card fc-intro rise">
+                <div className="fc-intro-ico">
+                  <Icon name="cards" size={26} />
+                </div>
+                <div className="stack">
+                  <h2 className="fc-intro-title">{t("flashcards.start")}</h2>
+                  <p className="fc-intro-text">{t("flashcards.subtitle")}</p>
+                </div>
+                <div className="row-flex wrap">
+                  <span className="chip chip-learning">
+                    {t("flashcards.dueCount", { n: dueReviewCount })}
+                  </span>
+                  <span className="chip chip-new">
+                    {t("flashcards.newCount", { n: freshLeft })}
+                  </span>
+                  <span className="chip chip-tag">
+                    {t("flashcards.deckSize", { n: queueSize })}
+                  </span>
+                </div>
+                <div className="study-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-lg"
+                    onClick={startSession}
+                  >
+                    {t("flashcards.start")}
+                    <Icon name="arrow-right" size={17} />
+                  </button>
+                </div>
+                <p className="tiny muted">{t("flashcards.keyboardHint")}</p>
+              </div>
+            </div>
+            {sidePanel}
+          </div>
+        )
+      ) : inProgress ? (
+        <div className="study-split">
+          <div className="study-main">
+            <div className="study-bar">
+              <div className="study-bar-row">
+                <span className="study-bar-label mono">
+                  {t("flashcards.cardOf", {
+                    i: session.index + 1,
+                    n: session.ids.length,
+                  })}
+                </span>
+                {word && (
+                  <StatusChip
+                    status={word.status}
+                    label={t(STATUS_LABEL_KEY[word.status])}
+                  />
+                )}
+                <span className="spacer" />
+                <span className="study-bar-meta">
+                  <span>
+                    {t("flashcards.reviewedCount")} {session.reviewed}
+                  </span>
+                  {session.reviewed > 0 && (
+                    <span>· {Math.round(accuracy * 100)}%</span>
+                  )}
+                  {session.skipped > 0 && (
+                    <span>· 已跳过 {session.skipped}</span>
+                  )}
+                </span>
+              </div>
+              <ProgressBar value={session.index} max={session.ids.length} thick />
             </div>
 
-            {canSpeak && (
-              <button
-                type="button"
-                className="btn btn-icon btn-ghost"
-                style={{ position: "absolute", top: 10, right: 10, zIndex: 1 }}
-                aria-label={`播放 ${word.term}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  play(word);
-                }}
-              >
-                <Icon name="volume" size={17} />
-              </button>
-            )}
-
-            {!flipped ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 16,
-                  textAlign: "center",
-                }}
-              >
+            {word && preview ? (
+              <>
                 <div
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontSize: "clamp(38px, 6vw, 60px)",
-                    lineHeight: 1.08,
-                    letterSpacing: "-0.02em",
-                    wordBreak: "break-word",
+                  className={cx("card", "fc-card", flipped && "is-flipped")}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={
+                    flipped ? t("flashcards.back") : t("flashcards.showAnswer")
+                  }
+                  onClick={() => {
+                    if (!flipped) setFlipped(true);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !flipped) {
+                      event.preventDefault();
+                      setFlipped(true);
+                    }
                   }}
                 >
-                  {word.term}
-                </div>
-                <div className="tiny muted">
-                  {t("flashcards.revealHint")} · <span className="kbd">空格</span>
-                </div>
-              </div>
-            ) : (
-              <div
-                style={{
-                  width: "100%",
-                  maxWidth: 560,
-                  margin: "0 auto",
-                  paddingTop: 6,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 16,
-                  textAlign: "left",
-                }}
-              >
-                <div>
-                  <div
-                    className="tiny muted"
-                    style={{
-                      letterSpacing: "0.1em",
-                      textTransform: "uppercase",
-                      marginBottom: 6,
-                    }}
-                  >
-                    {t("common.definition")}
-                  </div>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: 22, lineHeight: 1.55 }}>
-                    {word.definition || t("words.noDefinition")}
-                  </div>
-                </div>
-
-                {word.definition2 && (
-                  <div style={{ fontSize: 14.5, lineHeight: 1.65, color: "var(--ink-2)" }}>
-                    {word.definition2}
-                  </div>
-                )}
-
-                {word.example && (
-                  <div
-                    style={{
-                      borderLeft: "2px solid var(--line-strong)",
-                      paddingLeft: 12,
-                      fontSize: 14.5,
-                      lineHeight: 1.65,
-                      color: "var(--ink-2)",
-                      fontStyle: "italic",
-                    }}
-                  >
-                    {word.example}
-                  </div>
-                )}
-
-                {word.note && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 8,
-                      padding: "10px 12px",
-                      borderRadius: "var(--r-sm)",
-                      background: "var(--surface-2)",
-                      color: "var(--ink-2)",
-                      fontSize: 13,
-                    }}
-                  >
-                    <span
-                      style={{
-                        display: "grid",
-                        placeItems: "center",
-                        marginTop: 1,
-                        color: "var(--ink-3)",
-                      }}
-                    >
-                      <Icon name="info" size={14} />
+                  <div className="fc-head">
+                    <span className="fc-face-label">
+                      {flipped ? t("flashcards.back") : t("flashcards.front")}
                     </span>
-                    <span>{word.note}</span>
-                  </div>
-                )}
-
-                {word.tags.length > 0 && (
-                  <div className="row-flex wrap" style={{ gap: 6 }}>
-                    {word.tags.map((tag) => (
-                      <TagChip key={tag} tag={tag} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div style={{ minHeight: 112, display: "flex", flexDirection: "column", gap: 10 }}>
-            {!flipped ? (
-              <button
-                className="btn btn-lg"
-                type="button"
-                style={{ alignSelf: "center", minWidth: 220 }}
-                onClick={() => setFlipped(true)}
-              >
-                {t("flashcards.showAnswer")}
-                <span className="kbd">空格</span>
-              </button>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                  gap: 10,
-                }}
-              >
-                {GRADES.map((value, i) => {
-                  const label =
-                    value === "hard"
-                      ? t("flashcards.gradeHard")
-                      : value === "good"
-                        ? t("flashcards.gradeGood")
-                        : t("flashcards.gradeEasy");
-                  return (
-                    <button
-                      key={value}
-                      className="btn"
-                      type="button"
-                      onClick={() => grade(value)}
-                      style={{
-                        height: "auto",
-                        padding: "9px 10px",
-                        flexDirection: "column",
-                        gap: 1,
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          fontSize: 13.5,
-                          fontWeight: 560,
-                          color: GRADE_ACCENT[value],
+                    <span className="spacer" />
+                    {canSpeak && (
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-icon btn-sm"
+                        title={t("flashcards.autoPlay")}
+                        aria-label={t("flashcards.autoPlay")}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          play(word);
                         }}
                       >
-                        <span className="kbd" style={{ fontSize: 10 }}>
-                          {i + 1}
+                        <Icon name="volume" size={16} />
+                      </button>
+                    )}
+                  </div>
+
+                  {flipped ? (
+                    <div className="fc-face rise">
+                      <div className="fc-def">
+                        {word.definition || t("words.noDefinition")}
+                      </div>
+                      {word.definition2 && (
+                        <div className="fc-def2">{word.definition2}</div>
+                      )}
+                      {word.example && (
+                        <div className="fc-example">{word.example}</div>
+                      )}
+                      {word.note && (
+                        <div className="fc-note">
+                          <span className="fc-note-ico">
+                            <Icon name="info" size={14} />
+                          </span>
+                          <span>{word.note}</span>
+                        </div>
+                      )}
+                      {word.tags.length > 0 && (
+                        <div className="tag-row">
+                          {word.tags.map((tag) => (
+                            <TagChip key={tag} tag={tag} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="fc-face fc-front">
+                      <div className="fc-term">{word.term}</div>
+                      <div className="fc-hint">
+                        <span className="kbd">空格</span>
+                        <span>{t("flashcards.revealHint")}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {flipped ? (
+                  <div className="fc-grades">
+                    {GRADES.map((value, index) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={cx("btn", "fc-grade", value)}
+                        onClick={() => grade(value)}
+                      >
+                        <span className="fc-grade-top">
+                          <span className="kbd">{index + 1}</span>
+                          <span className="fc-grade-dot" />
+                          {t(GRADE_LABEL_KEY[value])}
                         </span>
-                        {label}
-                      </span>
-                      <span className="tiny muted mono">
-                        {preview
-                          ? `${newCard ? "首次 · " : ""}${formatInterval(preview[value])}`
-                          : "—"}
-                      </span>
+                        <span className="fc-grade-int">
+                          {newCard ? "首次 · " : ""}
+                          {formatInterval(preview[value])}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="study-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-lg"
+                      onClick={() => setFlipped(true)}
+                    >
+                      {t("flashcards.showAnswer")}
+                      <span className="kbd">空格</span>
                     </button>
-                  );
-                })}
+                    <button type="button" className="btn btn-quiet" onClick={skip}>
+                      {t("quiz.skip")}
+                      <span className="kbd">→</span>
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="card">
+                <EmptyState
+                  icon="cards"
+                  title={t("flashcards.emptyDeck")}
+                  text={t("flashcards.emptyDeckHint")}
+                  action={
+                    <button type="button" className="btn" onClick={startSession}>
+                      {t("flashcards.restart")}
+                    </button>
+                  }
+                />
               </div>
             )}
-            <div className="row-flex" style={{ justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
-              <span className="tiny muted">
-                <span className="kbd">空格</span> {t("flashcards.showAnswer")}
-              </span>
-              <span className="tiny muted">
-                <span className="kbd">1</span> {t("flashcards.gradeHard")}
-              </span>
-              <span className="tiny muted">
-                <span className="kbd">2</span> {t("flashcards.gradeGood")}
-              </span>
-              <span className="tiny muted">
-                <span className="kbd">3</span> {t("flashcards.gradeEasy")}
-              </span>
-            </div>
           </div>
+          {sidePanel}
         </div>
-      )}
-
-      {mode === "done" && session && (
-        <div
-          className="card rise"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 20,
-            padding: "clamp(28px, 5vw, 44px)",
-            textAlign: "center",
-          }}
-        >
-          <div
-            style={{
-              width: 60,
-              height: 60,
-              borderRadius: "50%",
-              background: "var(--jade-soft)",
-              color: "var(--jade-ink)",
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
-            <Icon name="sparkles" size={26} />
-          </div>
-          <div>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 26, fontWeight: 600 }}>
-              {t("flashcards.sessionDone")}
-            </div>
-            <p className="muted" style={{ marginTop: 6 }}>
-              {t("flashcards.sessionDoneText", { n: session.reviewed })}
-            </p>
-          </div>
-
-          <Ring value={session.correct} max={Math.max(1, session.reviewed)} size={124} stroke={9}>
-            <div>
-              <div
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: 30,
-                  fontWeight: 600,
-                  lineHeight: 1,
-                }}
+      ) : (
+        <div className="study-split">
+          <div className="study-main">
+            <div className="card fc-done rise">
+              <Ring
+                value={session.correct}
+                max={Math.max(session.reviewed, 1)}
+                size={136}
+                stroke={9}
               >
-                {Math.round(accuracy * 100)}%
+                <div className="fc-done-num">{Math.round(accuracy * 100)}%</div>
+                <div className="tiny muted">{t("flashcards.accuracy")}</div>
+              </Ring>
+              <div className="stack">
+                <h2 className="fc-intro-title">{t("flashcards.sessionDone")}</h2>
+                <p className="fc-intro-text">
+                  {t("flashcards.sessionDoneText", { n: session.reviewed })}
+                </p>
               </div>
-              <div className="tiny muted">{t("flashcards.accuracy")}</div>
-            </div>
-          </Ring>
-
-          <div className="row-flex" style={{ gap: 36, justifyContent: "center", flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600 }}>
-                {session.reviewed}
+              <div className="fc-stats">
+                <StatTile
+                  label={t("flashcards.reviewedCount")}
+                  value={session.reviewed}
+                  sub={session.skipped > 0 ? `跳过 ${session.skipped} 张` : undefined}
+                />
+                <StatTile
+                  label={t("flashcards.accuracy")}
+                  value={`${Math.round(accuracy * 100)}%`}
+                  sub={`${session.correct} / ${Math.max(session.reviewed, 1)}`}
+                />
+                <StatTile
+                  label={t("stats.reviewsToday")}
+                  value={reviewsToday(data)}
+                />
               </div>
-              <div className="tiny muted">{t("flashcards.reviewedCount")}</div>
-            </div>
-            <div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 24, fontWeight: 600 }}>
-                {reviewsToday(data)}
+              <div className="study-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary btn-lg"
+                  onClick={startSession}
+                  disabled={nextRoundSize === 0}
+                >
+                  {t("flashcards.nextSession")}
+                  <Icon name="refresh" size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-quiet"
+                  onClick={() => {
+                    setFlipped(false);
+                    setSession(null);
+                  }}
+                >
+                  {t("flashcards.restart")}
+                </button>
               </div>
-              <div className="tiny muted">{t("stats.reviewsToday")}</div>
+              {nextRoundSize === 0 && (
+                <p className="tiny muted">
+                  暂时没有可复习的卡片了，明天再来吧。
+                </p>
+              )}
             </div>
           </div>
-
-          <button
-            className="btn btn-primary btn-lg"
-            type="button"
-            onClick={startSession}
-            disabled={nextRoundSize === 0}
-          >
-            <Icon name="refresh" size={16} />
-            {t("flashcards.nextSession")}
-          </button>
-          {nextRoundSize === 0 && (
-            <div className="tiny muted">暂时没有可复习的卡片了，明天再来吧</div>
-          )}
+          {sidePanel}
         </div>
       )}
     </PageShell>

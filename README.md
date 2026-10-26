@@ -4,9 +4,9 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 
 项目参考开源桌面词汇应用 **[Lingueez](https://lingueez.app)**（Python + PySide6，作者 Yurii Lysak）的功能理念，用 **Tauri 2 + React 19 + TypeScript + Vite 7** 重新实现。界面以中文为主，视觉基调是暖纸色背景与玉绿色点缀；数据全部保存在本机，不注册、不联网即可使用。
 
-![Lexilo 桌面窗口](docs/app-window.png)
+![Lexilo 界面](docs/app-ui.png)
 
-> 上图由程序直接截取正在运行的桌面窗口，因此保留了系统标题栏。截图环境屏幕较小，窗口被系统压缩到约 810×558 逻辑像素，实际使用中默认尺寸为 1200×800。
+> 界面截图。桌面窗口在 150% 缩放的测试机上会被系统二次缩放，为避免排版失真，此图直接取应用前端在 Chromium / WebView2 中渲染后的结果。
 
 ## 功能
 
@@ -14,10 +14,30 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 - **间隔重复**：SM-2 变体调度，评分分为 `easy / good / hard`；ease 限制在 `[1.3, 2.5]`，间隔限制在 `[1, 3650]` 天；卡片状态由已获得的间隔推导：`new → reviewing → learning → mastered`。
 - **闪卡复习**：到期队列 + 新卡队列（受每日新卡上限约束）、翻面、评分按钮上直接预览「下次间隔」、键盘快捷键、自动/手动 TTS 发音。
 - **测验**：看词选义 / 看义选词双向模式，4 选 1，即时对错反馈，结束页给出错题列表；测验不写入 SRS。
-- **统计**：总词数、已掌握、今日复习、连续天数、每日目标环、状态分布、近 14 天复习量、近 30 天评分分布、记忆留存率、逾期词数。
+- **统计**：总词数、已掌握、今日复习、连续天数、每日目标环、状态分布、学习活动柱状图（7 / 30 / 90 天可切换）、评分分布、记忆留存率、逾期词数。
 - **设置**：主题（浅色 / 深色 / 跟随系统）、界面语言（简体中文 / English）、每日目标、每日新卡上限、复习顺序、TTS 语速与音色、听力模式。
 - **导入 / 导出**：JSON 快照、CSV 表格、Anki TXT 三种格式。
 - **本地优先**：IndexedDB 单快照持久化，localStorage 兜底；无账号体系，无遥测。
+- **界面与可用性**：暖纸色 / 深色双主题（跟随系统），侧栏可折叠为图标栏，启动骨架屏，词条行悬停才显示操作区，搜索命中高亮；全局快捷键与「?」快捷键帮助；弹窗带焦点陷阱，正文对比度满足 WCAG AA。
+
+## 键盘操作
+
+界面内所有操作都可以用键盘完成，按 <kbd>?</kbd> 随时打开快捷键帮助。
+
+| 按键 | 作用 |
+| --- | --- |
+| <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>5</kbd> | 切换词库 / 闪卡 / 测验 / 统计 / 设置 |
+| <kbd>?</kbd> | 打开或关闭快捷键帮助 |
+| <kbd>/</kbd> | 聚焦搜索框（词库页） |
+| <kbd>n</kbd> | 新建词条（词库页） |
+| <kbd>Space</kbd> | 翻开 / 盖上闪卡 |
+| <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | 闪卡评分（困难 / 良好 / 简单） |
+| <kbd>←</kbd> <kbd>→</kbd> | 跳过当前卡片 |
+| <kbd>A</kbd>–<kbd>D</kbd> 或 <kbd>1</kbd>–<kbd>4</kbd> | 选择测验选项 |
+| <kbd>Enter</kbd> | 测验下一题 |
+| <kbd>Esc</kbd> | 关闭弹窗 / 清空搜索 |
+
+> 在输入框内输入时，单键快捷键会自动让位，不会误触发。
 
 ## 技术栈
 
@@ -74,7 +94,7 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 │   │   ├── study/              # FlashcardsPage.tsx / QuizPage.tsx
 │   │   ├── stats/              # StatsPage.tsx
 │   │   └── settings/           # SettingsPage.tsx
-│   └── styles/                 # tokens.css（设计令牌）+ global.css
+│   └── styles/                 # tokens.css（设计令牌）+ global.css + 页面级 study.css / insights.css
 └── src-tauri/
     ├── Cargo.toml              # tauri 2 / tauri-build 2
     ├── build.rs
@@ -212,7 +232,7 @@ serendipity	意外发现美好事物的能力	a serendipitous meeting
 
 - **平台**：以 Windows 为主进行开发；macOS / Linux 打包未验证。macOS 打包还需要 `icon.icns`（当前仅生成 PNG 与 ICO）。
 - **安装包**：`cargo check` 与 `cargo build --release` 均已在 Windows 上通过，产物 `src-tauri/target/release/lexilo.exe`（8.6 MB）可正常启动并显示窗口。但 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
-- **视觉验证**：界面通过设计令牌与 CSS 实现，功能层有 jsdom 冒烟测试覆盖，但未在真实浏览器中做过像素级视觉回归。
+- **视觉验证**：功能层有 jsdom 冒烟测试覆盖；界面另用 headless Edge + DevTools 协议做了实测——五个页面均渲染、无控制台异常与失败请求、无横向溢出，并核对了设计令牌的实际取值、深色主题配色反转、860px 窄窗口下侧栏折叠、以及词条行「悬停显形操作区」的透明度变化。未做跨平台像素级视觉回归。
 - **TTS**：依赖系统语音合成引擎，可用音色与语言随平台而异；部分语言可能没有可用语音，此时听音功能静默降级。
 - **同步**：无多设备同步与云备份，数据仅存本机。
 - **规模**：采用「全量快照 + 防抖写盘」，词条量很大（约 2 万以上）时每次写入会有可感知延迟。

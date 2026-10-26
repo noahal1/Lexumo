@@ -1,0 +1,561 @@
+/* ==========================================================================
+   Study pages — flashcards & quiz
+   Page-specific layout built on the global primitives (card / btn / chip /
+   progress / ring / stat-tile / notice / shortcuts). Nothing here redefines a
+   global component; these are only the shapes these two screens need.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Shared study layout
+   -------------------------------------------------------------------------- */
+
+.study-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 296px;
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.study-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.study-side {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+@media (max-width: 1080px) {
+  .study-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .study-side {
+    position: static;
+    order: 2;
+  }
+}
+
+/* Progress strip above the card / question */
+.study-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.study-bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  min-height: 24px;
+}
+
+.study-bar-label {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.study-bar-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Row of primary/secondary actions */
+.study-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.study-actions .spacer {
+  flex: 1 1 auto;
+}
+
+/* The shortcut grid is two-up on wide pages; the sidebar is too narrow for it. */
+.study-side .shortcuts {
+  grid-template-columns: 1fr;
+  gap: var(--sp-2);
+}
+
+/* --------------------------------------------------------------------------
+   Flashcards
+   -------------------------------------------------------------------------- */
+
+.fc-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-height: 330px;
+  padding: var(--sp-6) var(--sp-7) var(--sp-5);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease);
+}
+
+.fc-card:hover {
+  border-color: var(--line-strong);
+}
+
+.fc-card:active {
+  transform: translateY(0.5px);
+}
+
+.fc-card:focus-visible {
+  outline: none;
+  border-color: var(--jade);
+  box-shadow: var(--ring);
+}
+
+.fc-card.is-flipped {
+  cursor: default;
+}
+
+.fc-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 28px;
+}
+
+.fc-face-label {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+/* The face is the scroll container: long definitions scroll, not the page. */
+.fc-face {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  justify-content: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 48vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.fc-front {
+  align-items: center;
+  text-align: center;
+}
+
+.fc-term {
+  font-family: var(--font-display);
+  font-size: clamp(32px, 4.6vw, 52px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.fc-def {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+
+.fc-def2 {
+  font-size: var(--fs-base);
+  line-height: 1.65;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.fc-example {
+  border-left: 2px solid var(--line-strong);
+  padding-left: var(--sp-3);
+  font-size: var(--fs-base);
+  line-height: 1.7;
+  font-style: italic;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.fc-note {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.fc-note-ico {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--ink-3);
+  display: grid;
+  place-items: center;
+}
+
+.fc-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: var(--fs-xs);
+  color: var(--ink-4);
+}
+
+/* Grade buttons: equal thirds, keyboard hint + resulting interval. */
+.fc-grades {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.fc-grade {
+  height: auto;
+  min-height: 60px;
+  padding: 8px 12px;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fc-grade-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-md);
+  font-weight: 560;
+}
+
+.fc-grade-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--grade-accent, var(--jade));
+  flex: 0 0 auto;
+}
+
+.fc-grade-int {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.fc-grade.hard {
+  --grade-accent: var(--amber);
+}
+.fc-grade.good {
+  --grade-accent: var(--jade);
+}
+.fc-grade.easy {
+  --grade-accent: var(--sky);
+}
+
+.fc-grade:focus-visible {
+  outline: none;
+  border-color: var(--jade);
+  box-shadow: var(--ring);
+}
+
+@media (max-width: 620px) {
+  .fc-grades {
+    grid-template-columns: 1fr;
+  }
+  .fc-card {
+    padding: var(--sp-5);
+  }
+}
+
+/* Intro / empty / summary panels */
+.fc-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  padding: var(--sp-7);
+}
+
+.fc-intro-ico {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--jade-soft);
+  color: var(--jade-ink);
+}
+
+.fc-intro-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.fc-intro-text {
+  max-width: 46ch;
+  font-size: var(--fs-base);
+  line-height: 1.65;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.fc-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-8) var(--sp-6);
+  text-align: center;
+}
+
+.fc-done-num {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.fc-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+}
+
+@media (max-width: 620px) {
+  .fc-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Quiz
+   -------------------------------------------------------------------------- */
+
+.quiz-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-6);
+}
+
+.quiz-prompt-text {
+  font-family: var(--font-display);
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.quiz-prompt-text.is-term {
+  font-size: clamp(28px, 4vw, 42px);
+}
+
+.quiz-prompt-text.is-def {
+  font-size: clamp(19px, 2.6vw, 25px);
+}
+
+.quiz-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-3);
+}
+
+.quiz-option {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  height: auto;
+  min-height: 56px;
+  padding: 10px var(--sp-4);
+  text-align: left;
+  white-space: normal;
+  font-weight: 480;
+}
+
+.quiz-option:hover:not(:disabled) {
+  border-color: var(--jade);
+}
+
+.quiz-option:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.quiz-option:focus-visible {
+  outline: none;
+  border-color: var(--jade);
+  box-shadow: var(--ring);
+}
+
+.quiz-option:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.quiz-key {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.quiz-opt-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.quiz-opt-ico {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+
+.quiz-option.is-correct {
+  background: var(--jade-soft);
+  border-color: var(--jade);
+  color: var(--jade-ink);
+}
+
+.quiz-option.is-correct .quiz-key {
+  background: var(--jade);
+  border-color: var(--jade);
+  color: #f7fffc;
+}
+
+.quiz-option.is-wrong {
+  background: var(--rose-soft);
+  border-color: var(--rose);
+  color: var(--rose);
+}
+
+.quiz-option.is-wrong .quiz-key {
+  background: var(--rose);
+  border-color: var(--rose);
+  color: #fff;
+}
+
+.quiz-option.is-dim {
+  opacity: 0.55;
+}
+
+.quiz-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  min-height: var(--control-h);
+}
+
+.quiz-foot .notice {
+  flex: 1 1 260px;
+}
+
+/* Feedback tone variants on top of .notice */
+.notice.is-ok {
+  border-left-color: var(--jade);
+}
+
+.notice.is-bad {
+  border-left-color: var(--rose);
+}
+
+.notice.is-bad .notice-ico {
+  color: var(--rose);
+}
+
+.notice.is-warn {
+  border-left-color: var(--amber);
+}
+
+.notice.is-warn .notice-ico {
+  color: var(--amber);
+}
+
+/* Mistake review rows */
+.quiz-mistakes {
+  display: flex;
+  flex-direction: column;
+}
+
+.quiz-mistake {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-top: 1px solid var(--line);
+}
+
+.quiz-mistake:first-child {
+  border-top: 0;
+}
+
+.quiz-mistake-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.quiz-mistake-term {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.quiz-mistake-ans {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+.quiz-mistake-ans b {
+  font-weight: 560;
+}
+
+/* Small tone helpers */
+.t-rose {
+  color: var(--rose);
+}
+
+.t-jade {
+  color: var(--jade-ink);
+}
+
+.t-amber {
+  color: var(--amber);
+}

@@ -55,6 +55,11 @@ const zhCNraw = {
     total: "共",
     list: "词库",
     more: "更多",
+    play: "播放",
+    pause: "暂停",
+    skip: "跳过",
+    retry: "重试",
+    preview: "预览",
   },
   status: {
     new: "新词",

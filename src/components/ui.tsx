@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useRef,
   useState,
   type ReactNode,
@@ -27,16 +28,19 @@ export function PageShell({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const id = useId();
   return (
     <>
       <header className="topbar">
         <div style={{ minWidth: 0 }}>
-          <h1 className="topbar-title">{title}</h1>
+          <h1 className="topbar-title" id={id}>
+            {title}
+          </h1>
           {subtitle && <div className="topbar-sub">{subtitle}</div>}
         </div>
         {actions && <div className="topbar-actions">{actions}</div>}
       </header>
-      <div className="page">
+      <div className="page" role="region" aria-labelledby={id}>
         <div className="page-inner" style={wide ? { maxWidth: 1360 } : undefined}>
           {children}
         </div>
@@ -55,7 +59,7 @@ export function Segmented<T extends string>({
   ariaLabel,
 }: {
   value: T;
-  options: Array<{ value: T; label: string }>;
+  options: Array<{ value: T; label: string; count?: number }>;
   onChange: (v: T) => void;
   ariaLabel?: string;
 }) {
@@ -65,12 +69,13 @@ export function Segmented<T extends string>({
         <button
           key={o.value}
           role="tab"
+          type="button"
           aria-selected={o.value === value}
           className={cx(o.value === value && "active")}
           onClick={() => onChange(o.value)}
-          type="button"
         >
           {o.label}
+          {o.count !== undefined && <span className="seg-count">{o.count}</span>}
         </button>
       ))}
     </div>
@@ -78,8 +83,11 @@ export function Segmented<T extends string>({
 }
 
 /* ------------------------------------------------------------------ */
-/* Modal                                                               */
+/* Modal — with focus trap and focus restoration                       */
 /* ------------------------------------------------------------------ */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Modal({
   open,
   onClose,
@@ -98,41 +106,70 @@ export function Modal({
   width?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
+    const previous = document.activeElement as HTMLElement | null;
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      // Keep Tab inside the dialog — otherwise focus escapes to the page behind.
+      if (e.key !== "Tab" || !ref.current) return;
+      const nodes = Array.from(ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.offsetParent !== null || el === document.activeElement,
+      );
+      if (nodes.length === 0) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
-    document.addEventListener("keydown", onKey);
-    const prev = document.activeElement as HTMLElement | null;
+
+    document.addEventListener("keydown", onKey, true);
     const first = ref.current?.querySelector<HTMLElement>(
       "input, textarea, select, button:not(.modal-close)",
     );
     first?.focus();
+
     return () => {
-      document.removeEventListener("keydown", onKey);
-      prev?.focus?.();
+      document.removeEventListener("keydown", onKey, true);
+      previous?.focus?.();
     };
   }, [open, onClose]);
 
   if (!open) return null;
   return (
-    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="overlay"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
       <div
         className="modal"
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
         ref={ref}
+        tabIndex={-1}
         style={width ? { width: `min(${width}px, 100%)` } : undefined}
       >
         <div className="modal-head">
-          <div>
-            <div className="modal-title">{title}</div>
+          <div style={{ minWidth: 0 }}>
+            <div className="modal-title" id={titleId}>
+              {title}
+            </div>
             {subtitle && <div className="modal-sub">{subtitle}</div>}
           </div>
-          <button className="modal-close" onClick={onClose} aria-label="Close" type="button">
+          <button className="modal-close" onClick={onClose} aria-label="关闭" type="button">
             <Icon name="x" size={17} />
           </button>
         </div>
@@ -183,7 +220,11 @@ export function ConfirmDialog({
         </>
       }
     >
-      {body && <p className="muted" style={{ margin: 0 }}>{body}</p>}
+      {body && (
+        <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>
+          {body}
+        </p>
+      )}
     </Modal>
   );
 }
@@ -200,23 +241,44 @@ type ToastFn = (text: string, kind?: ToastItem["kind"]) => void;
 
 const ToastContext = createContext<ToastFn>(() => {});
 
+const TOAST_ICON: Record<ToastItem["kind"], IconName> = {
+  ok: "check",
+  err: "alert",
+  info: "info",
+};
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
   const seq = useRef(0);
 
-  const push = useCallback<ToastFn>((text, kind = "info") => {
-    const id = ++seq.current;
-    setItems((prev) => [...prev.slice(-2), { id, text, kind }]);
-    setTimeout(() => setItems((prev) => prev.filter((t) => t.id !== id)), 2600);
+  const dismiss = useCallback((id: number) => {
+    setItems((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  const push = useCallback<ToastFn>(
+    (text, kind = "info") => {
+      const id = ++seq.current;
+      setItems((prev) => [...prev.slice(-2), { id, text, kind }]);
+      setTimeout(() => dismiss(id), 2600);
+    },
+    [dismiss],
+  );
 
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div className="toast-stack" aria-live="polite">
+      <div className="toast-stack" aria-live="polite" aria-atomic="false">
         {items.map((t) => (
-          <div key={t.id} className={cx("toast", `toast-${t.kind}`)}>
-            <span className="toast-dot" />
+          <div
+            key={t.id}
+            className={cx("toast", `toast-${t.kind}`)}
+            role="status"
+            onClick={() => dismiss(t.id)}
+            style={{ pointerEvents: "auto", cursor: "default" }}
+          >
+            <span className="toast-ico" aria-hidden="true">
+              <Icon name={TOAST_ICON[t.kind]} size={14} />
+            </span>
             {t.text}
           </div>
         ))}
@@ -258,30 +320,28 @@ export function EmptyState({
 /* ------------------------------------------------------------------ */
 /* Progress                                                            */
 /* ------------------------------------------------------------------ */
-export function ProgressBar({ value, max = 1 }: { value: number; max?: number }) {
+export function ProgressBar({
+  value,
+  max = 1,
+  thick,
+  label,
+}: {
+  value: number;
+  max?: number;
+  thick?: boolean;
+  label?: string;
+}) {
   const pct = max <= 0 ? 0 : Math.max(0, Math.min(100, (value / max) * 100));
   return (
     <div
-      style={{
-        height: 6,
-        borderRadius: 999,
-        background: "var(--surface-2)",
-        overflow: "hidden",
-      }}
+      className={cx("progress", thick && "thick")}
       role="progressbar"
       aria-valuenow={Math.round(pct)}
       aria-valuemin={0}
       aria-valuemax={100}
+      aria-label={label}
     >
-      <div
-        style={{
-          height: "100%",
-          width: `${pct}%`,
-          background: "var(--jade)",
-          borderRadius: 999,
-          transition: "width 400ms var(--ease-out)",
-        }}
-      />
+      <div className="progress-fill" style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -303,33 +363,29 @@ export function Ring({
   const c = 2 * Math.PI * r;
   const pct = max <= 0 ? 0 : Math.max(0, Math.min(1, value / max));
   return (
-    <div style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--line)" strokeWidth={stroke} />
+    <div className="ring" style={{ width: size, height: size }}>
+      <svg width={size} height={size}>
         <circle
+          className="ring-track"
           cx={size / 2}
           cy={size / 2}
           r={r}
           fill="none"
-          stroke="var(--jade)"
+          strokeWidth={stroke}
+        />
+        <circle
+          className="ring-fill"
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={c * (1 - pct)}
-          style={{ transition: "stroke-dashoffset 600ms var(--ease-out)" }}
         />
       </svg>
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "grid",
-          placeItems: "center",
-          textAlign: "center",
-        }}
-      >
-        {children}
-      </div>
+      <div className="ring-center">{children}</div>
     </div>
   );
 }
@@ -379,7 +435,7 @@ export function TagInput({
     <div className="field">
       <div
         className="input"
-        style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", minHeight: 40 }}
+        style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", height: "auto", minHeight: 40, padding: "5px 8px" }}
       >
         {value.map((tag) => (
           <span key={tag} className="chip chip-tag" style={{ gap: 4 }}>
@@ -387,6 +443,7 @@ export function TagInput({
             <button
               type="button"
               onClick={() => onChange(value.filter((t) => t !== tag))}
+              className="btn-quiet"
               style={{
                 border: 0,
                 background: "transparent",
@@ -396,7 +453,7 @@ export function TagInput({
                 display: "grid",
                 placeItems: "center",
               }}
-              aria-label={`remove ${tag}`}
+              aria-label={`移除标签 ${tag}`}
             >
               <Icon name="x" size={11} />
             </button>
@@ -422,7 +479,8 @@ export function TagInput({
             outline: "none",
             background: "transparent",
             color: "var(--ink)",
-            padding: "4px 0",
+            padding: "3px 0",
+            height: 24,
           }}
         />
       </div>
@@ -439,30 +497,46 @@ export function StatTile({
   value,
   sub,
   accent,
+  icon,
 }: {
   label: string;
   value: ReactNode;
   sub?: string;
   accent?: string;
+  icon?: IconName;
 }) {
   return (
-    <div className="card card-pad" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div className="tiny muted" style={{ letterSpacing: "0.06em", textTransform: "uppercase" }}>
-        {label}
+    <div className="stat-tile">
+      <div className="row-flex" style={{ gap: 6 }}>
+        {icon && (
+          <span style={{ color: accent ?? "var(--ink-3)", display: "grid", placeItems: "center" }}>
+            <Icon name={icon} size={14} />
+          </span>
+        )}
+        <div className="stat-label">{label}</div>
       </div>
-      <div
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 30,
-          lineHeight: 1.1,
-          fontWeight: 600,
-          color: accent,
-          fontVariantNumeric: "tabular-nums",
-        }}
-      >
+      <div className="stat-value" style={accent ? { color: accent } : undefined}>
         {value}
       </div>
-      {sub && <div className="tiny muted">{sub}</div>}
+      {sub && <div className="stat-sub">{sub}</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Keyboard shortcut rows                                              */
+/* ------------------------------------------------------------------ */
+export function ShortcutRow({ keys, label }: { keys: string[]; label: string }) {
+  return (
+    <div className="shortcut-row">
+      <span>{label}</span>
+      <span className="row-flex" style={{ gap: 4, flex: "0 0 auto" }}>
+        {keys.map((k) => (
+          <span key={k} className="kbd">
+            {k}
+          </span>
+        ))}
+      </span>
     </div>
   );
 }

@@ -37,6 +37,9 @@ export type IconName =
   | "keyboard"
   | "info"
   | "alert"
+  | "sun"
+  | "moon"
+  | "undo"
   | "list";
 
 const PATHS: Record<IconName, string> = {
@@ -75,6 +78,9 @@ const PATHS: Record<IconName, string> = {
   keyboard: "M4 7h16a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z M7 11h.01 M10.5 11h.01 M14 11h.01 M17.5 11h.01 M8 14.5h8",
   info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M12 11v5 M12 7.5h.01",
   alert: "M12 4 2.8 20h18.4L12 4Z M12 10v4.5 M12 17.5h.01",
+  sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z M12 2v2.2 M12 19.8V22 M2 12h2.2 M19.8 12H22 M4.9 4.9l1.6 1.6 M17.5 17.5l1.6 1.6 M19.1 4.9l-1.6 1.6 M6.5 17.5l-1.6 1.6",
+  moon: "M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z",
+  undo: "M4 9h9.5a5.5 5.5 0 0 1 0 11H8 M4 9l4-4 M4 9l4 4",
   list: "M8 6h13 M8 12h13 M8 18h13 M3.5 6h.01 M3.5 12h.01 M3.5 18h.01",
 };
 

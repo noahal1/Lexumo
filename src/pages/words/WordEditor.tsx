@@ -1,10 +1,10 @@
 /** Add / edit a single word. Owns its draft state; commits through the store. */
 import { useEffect, useState } from "react";
+import { Icon } from "@/components/Icon";
 import { Modal, TagInput, useToast } from "@/components/ui";
 import { useT } from "@/i18n";
 import { addWord, findDuplicate, getData, updateWord } from "@/lib/store";
 import { STATUS_LABEL_KEY, STATUS_ORDER, type Word, type WordStatus } from "@/lib/types";
-import { cx } from "@/lib/utils";
 
 export interface WordEditorProps {
   open: boolean;
@@ -92,6 +92,14 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
     onClose();
   };
 
+  // Cmd/Ctrl+Enter saves from anywhere in the dialog.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      save();
+    }
+  };
+
   return (
     <Modal
       open={open}
@@ -111,6 +119,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
               }}
               style={{ marginRight: "auto" }}
             >
+              <Icon name="trash" size={14} />
               {t("common.delete")}
             </button>
           )}
@@ -118,12 +127,13 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
             {t("common.cancel")}
           </button>
           <button className="btn btn-primary" type="button" onClick={save}>
+            <Icon name="check" size={15} />
             {t("common.save")}
           </button>
         </>
       }
     >
-      <div className="stack" style={{ gap: "var(--sp-4)" }}>
+      <div className="stack" style={{ gap: "var(--sp-4)" }} onKeyDown={onKeyDown}>
         <div className="field">
           <label className="label" htmlFor="word-term">
             {t("words.term")}
@@ -131,13 +141,14 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
           <input
             id="word-term"
             className="input"
+            style={{ fontSize: "var(--fs-md)" }}
             value={term}
             onChange={(e) => {
               setTerm(e.target.value);
               setError("");
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
                 e.preventDefault();
                 save();
               }
@@ -145,47 +156,61 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
             placeholder={t("words.termPlaceholder")}
             autoComplete="off"
             spellCheck={false}
+            autoFocus
           />
-          {error && <span className="hint" style={{ color: "var(--rose)" }}>{error}</span>}
-          {!error && showDuplicate && (
-            <span className="hint" style={{ color: "var(--amber)" }}>
-              {t("words.duplicate")}
+          {error && (
+            <span className="hint" style={{ color: "var(--rose)" }}>
+              {error}
             </span>
           )}
         </div>
 
-        <div className="field">
-          <label className="label" htmlFor="word-def">
-            {t("common.definition")}
-          </label>
-          <input
-            id="word-def"
-            className="input"
-            value={definition}
-            onChange={(e) => setDefinition(e.target.value)}
-            placeholder={t("words.definitionPlaceholder")}
-          />
+        <div className="field-row">
+          <div className="field">
+            <label className="label" htmlFor="word-def">
+              {t("common.definition")}
+            </label>
+            <input
+              id="word-def"
+              className="input"
+              value={definition}
+              onChange={(e) => setDefinition(e.target.value)}
+              placeholder={t("words.definitionPlaceholder")}
+            />
+          </div>
+
+          <div className="field">
+            <label className="label" htmlFor="word-def2">
+              {t("common.definition2")}
+              <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>
+                {t("common.optional")}
+              </span>
+            </label>
+            <input
+              id="word-def2"
+              className="input"
+              value={definition2}
+              onChange={(e) => setDefinition2(e.target.value)}
+              placeholder={t("words.definition2Placeholder")}
+            />
+          </div>
         </div>
 
-        <div className="field">
-          <label className="label" htmlFor="word-def2">
-            {t("common.definition2")}
-            <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>
-              {t("common.optional")}
+        {showDuplicate && (
+          <div className="notice">
+            <span className="notice-ico">
+              <Icon name="alert" size={15} />
             </span>
-          </label>
-          <input
-            id="word-def2"
-            className="input"
-            value={definition2}
-            onChange={(e) => setDefinition2(e.target.value)}
-            placeholder={t("words.definition2Placeholder")}
-          />
-        </div>
+            <span>{t("words.duplicate")}</span>
+          </div>
+        )}
 
         <div className="field">
           <label className="label" htmlFor="word-example">
             {t("common.example")}
+            <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>
+              {t("common.optional")}
+            </span>
           </label>
           <textarea
             id="word-example"
@@ -200,6 +225,9 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         <div className="field">
           <label className="label" htmlFor="word-note">
             {t("common.notes")}
+            <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>
+              {t("common.optional")}
+            </span>
           </label>
           <textarea
             id="word-note"
@@ -221,13 +249,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
           />
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "var(--sp-4)",
-          }}
-        >
+        <div className="field-row">
           <div className="field">
             <label className="label" htmlFor="word-list">
               {t("common.list")}
@@ -251,7 +273,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
             </label>
             <select
               id="word-status"
-              className={cx("select")}
+              className="select"
               value={status}
               onChange={(e) => setStatus(e.target.value as WordStatus)}
             >
@@ -262,6 +284,12 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
               ))}
             </select>
           </div>
+        </div>
+
+        <div className="tiny muted">
+          <span className="kbd">Enter</span> {t("common.save")} ·{" "}
+          <span className="kbd">Ctrl</span>+<span className="kbd">Enter</span> 任意位置保存 ·{" "}
+          <span className="kbd">Esc</span> {t("common.cancel")}
         </div>
       </div>
     </Modal>

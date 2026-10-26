@@ -1,7 +1,7 @@
 /**
  * 词库页：词库切换、搜索、状态/标签筛选、排序、增删改、发音与收藏。
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import {
   ConfirmDialog,
@@ -41,14 +41,31 @@ import { WordEditor } from "./WordEditor";
 type StatusFilter = "all" | WordStatus;
 type SortKey = "recent" | "alpha" | "due" | "status";
 
-const ROW_GRID = "minmax(0, 1fr) minmax(0, 1.5fr) 132px 132px";
-
 const STATUS_RANK: Record<WordStatus, number> = {
   new: 0,
   reviewing: 1,
   learning: 2,
   mastered: 3,
 };
+
+/** Wraps every case-insensitive match of `q` in a <mark> so hits are scannable. */
+function highlight(text: string, q: string): ReactNode {
+  if (!q) return text;
+  const lower = text.toLocaleLowerCase();
+  const needle = q.toLocaleLowerCase();
+  const out: ReactNode[] = [];
+  let from = 0;
+  let at = lower.indexOf(needle);
+  let key = 0;
+  while (at !== -1) {
+    if (at > from) out.push(text.slice(from, at));
+    out.push(<mark key={key++}>{text.slice(at, at + needle.length)}</mark>);
+    from = at + needle.length;
+    at = lower.indexOf(needle, from);
+  }
+  if (from < text.length) out.push(text.slice(from));
+  return out;
+}
 
 export function WordsPage() {
   const t = useT();
@@ -99,8 +116,10 @@ export function WordsPage() {
     return [...set.entries()].sort((a, b) => b[1] - a[1]).map(([tag]) => tag);
   }, [data.words]);
 
+  const trimmedQuery = query.trim();
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase();
+    const q = trimmedQuery.toLocaleLowerCase();
     let out = listWords;
     if (q) {
       out = out.filter(
@@ -140,9 +159,18 @@ export function WordsPage() {
         break;
     }
     return sorted;
-  }, [listWords, query, statusFilter, tagFilter, favOnly, sort, lang]);
+  }, [listWords, trimmedQuery, statusFilter, tagFilter, favOnly, sort, lang]);
 
   const dueCount = useMemo(() => dueWords(data).length, [data]);
+  const filtersActive =
+    Boolean(trimmedQuery) || statusFilter !== "all" || tagFilter !== "all" || favOnly;
+
+  const resetFilters = () => {
+    setQuery("");
+    setStatusFilter("all");
+    setTagFilter("all");
+    setFavOnly(false);
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -187,11 +215,12 @@ export function WordsPage() {
     return () => document.removeEventListener("keydown", onKey);
   }, [editorOpen, listMgrOpen, pendingDelete]);
 
-  const statusOptions: Array<{ value: StatusFilter; label: string }> = [
-    { value: "all", label: `${t("common.all")} ${counts.all}` },
+  const statusOptions: Array<{ value: StatusFilter; label: string; count: number }> = [
+    { value: "all", label: t("common.all"), count: counts.all },
     ...STATUS_ORDER.map((s) => ({
       value: s as StatusFilter,
-      label: `${t(STATUS_LABEL_KEY[s])} ${counts[s]}`,
+      label: t(STATUS_LABEL_KEY[s]),
+      count: counts[s],
     })),
   ];
 
@@ -201,7 +230,11 @@ export function WordsPage() {
       subtitle={`${listWords.length} ${t("common.words")} · ${t("words.dueToday")} ${dueCount}`}
       actions={
         <>
-          <button className="btn btn-ghost btn-sm" type="button" onClick={() => setListMgrOpen(true)}>
+          <button
+            className="btn btn-ghost btn-sm"
+            type="button"
+            onClick={() => setListMgrOpen(true)}
+          >
             <Icon name="layers" size={15} />
             {t("common.list")}
           </button>
@@ -213,7 +246,7 @@ export function WordsPage() {
       }
     >
       {/* List tabs */}
-      <div className="row-flex wrap" style={{ gap: 6, marginBottom: "var(--sp-4)" }}>
+      <div className="list-tabs" style={{ marginBottom: "var(--sp-4)" }}>
         {data.lists.map((l) => {
           const active = l.id === listId;
           return (
@@ -221,35 +254,28 @@ export function WordsPage() {
               key={l.id}
               type="button"
               onClick={() => setListId(l.id)}
-              className={cx("chip", active && "chip-mastered")}
-              style={{
-                cursor: "pointer",
-                height: 30,
-                borderColor: active ? "transparent" : "var(--line)",
-                background: active ? "var(--jade-soft)" : "var(--surface)",
-                color: active ? "var(--jade-ink)" : "var(--ink-2)",
-              }}
+              className={cx("list-tab", active && "active")}
+              aria-pressed={active}
             >
               {l.name}
-              <span className="tiny" style={{ opacity: 0.6 }}>
-                {wordsOfList(data, l.id).length}
-              </span>
+              <span className="count">{wordsOfList(data, l.id).length}</span>
             </button>
           );
         })}
         <button
           type="button"
-          className="btn btn-ghost btn-sm"
+          className="list-tab-add"
           onClick={() => setListMgrOpen(true)}
           title={t("words.newList")}
+          aria-label={t("words.newList")}
         >
           <Icon name="plus" size={14} />
         </button>
       </div>
 
       {/* Toolbar */}
-      <div className="row-flex wrap" style={{ gap: 10, marginBottom: "var(--sp-4)" }}>
-        <div className="search" style={{ flex: "1 1 260px", maxWidth: 340 }}>
+      <div className="toolbar" style={{ marginBottom: "var(--sp-4)" }}>
+        <div className="search">
           <span className="search-icon">
             <Icon name="search" size={15} />
           </span>
@@ -260,6 +286,12 @@ export function WordsPage() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("words.searchPlaceholder")}
             aria-label={t("common.search")}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && query) {
+                e.preventDefault();
+                setQuery("");
+              }
+            }}
           />
           {query && (
             <button
@@ -288,7 +320,7 @@ export function WordsPage() {
           value={tagFilter}
           onChange={(e) => setTagFilter(e.target.value)}
           aria-label={t("words.filterTag")}
-          style={{ width: "auto", minWidth: 120 }}
+          style={{ minWidth: 118 }}
         >
           <option value="all">{t("common.all")}</option>
           {tags.map((tag) => (
@@ -303,7 +335,7 @@ export function WordsPage() {
           value={sort}
           onChange={(e) => setSort(e.target.value as SortKey)}
           aria-label={t("common.sort")}
-          style={{ width: "auto", minWidth: 130 }}
+          style={{ minWidth: 128 }}
         >
           <option value="recent">{t("words.sortRecent")}</option>
           <option value="alpha">{t("words.sortAlpha")}</option>
@@ -320,6 +352,13 @@ export function WordsPage() {
         >
           <Icon name={favOnly ? "star-filled" : "star"} size={16} />
         </button>
+
+        {filtersActive && (
+          <button type="button" className="btn btn-quiet btn-sm" onClick={resetFilters}>
+            <Icon name="x" size={14} />
+            {t("common.reset")}
+          </button>
+        )}
       </div>
 
       {/* Word list */}
@@ -341,34 +380,24 @@ export function WordsPage() {
           title={t("words.noResults")}
           text={t("words.noResultsHint")}
           action={
-            <button
-              className="btn"
-              type="button"
-              onClick={() => {
-                setQuery("");
-                setStatusFilter("all");
-                setTagFilter("all");
-                setFavOnly(false);
-              }}
-            >
+            <button className="btn" type="button" onClick={resetFilters}>
               {t("common.reset")}
             </button>
           }
         />
       ) : (
-        <div className="card rise" style={{ overflow: "hidden" }}>
+        <div className="card card-flush rise">
           <div className="list">
-            <div className="row row-head" style={{ gridTemplateColumns: ROW_GRID }}>
+            <div className="row row-words row-head">
               <span>{t("words.term")}</span>
-              <span>{t("common.definition")}</span>
-              <span>{t("common.status")}</span>
+              <span className="row-col-def">{t("common.definition")}</span>
+              <span className="row-col-status">{t("common.status")}</span>
               <span style={{ textAlign: "right" }}>{t("common.actions")}</span>
             </div>
             {filtered.map((w) => (
               <div
                 key={w.id}
-                className="row"
-                style={{ gridTemplateColumns: ROW_GRID }}
+                className="row row-words"
                 onClick={() => openEdit(w)}
                 role="button"
                 tabIndex={0}
@@ -381,38 +410,43 @@ export function WordsPage() {
               >
                 <div className="row-flex" style={{ minWidth: 0, gap: 7 }}>
                   {w.favorite && (
-                    <span style={{ color: "var(--rose)", display: "grid", placeItems: "center" }}>
+                    <span className="row-fav" aria-hidden="true">
                       <Icon name="star-filled" size={13} />
                     </span>
                   )}
-                  <span className="row-term">{w.term}</span>
+                  <span className="row-term">{highlight(w.term, trimmedQuery)}</span>
                 </div>
 
-                <div style={{ minWidth: 0 }}>
-                  <div className="row-def">{w.definition || t("words.noDefinition")}</div>
+                <div className="row-col-def" style={{ minWidth: 0 }}>
+                  <div className="row-def">
+                    {w.definition
+                      ? highlight(w.definition, trimmedQuery)
+                      : t("words.noDefinition")}
+                  </div>
                   {w.tags.length > 0 && (
-                    <div className="tiny muted" style={{ marginTop: 2 }}>
+                    <div className="row-tags">
                       {w.tags.map((tag) => `#${tag}`).join("  ")}
                     </div>
                   )}
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                <div
+                  className="row-col-status"
+                  style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}
+                >
                   <StatusChip status={w.status} label={t(STATUS_LABEL_KEY[w.status])} />
                   <span className="tiny muted">
                     {w.srs ? relativeDay(w.srs.dueAt, lang) : t("words.neverReviewed")}
                   </span>
                 </div>
 
-                <div
-                  className="row-flex"
-                  style={{ justifyContent: "flex-end", gap: 2 }}
-                  onClick={(e) => e.stopPropagation()}
-                >
+                <div className="row-actions" onClick={(e) => e.stopPropagation()}>
                   <button
                     className="btn btn-icon btn-sm"
                     type="button"
                     title={t("common.favorite")}
+                    aria-label={t("common.favorite")}
+                    aria-pressed={w.favorite}
                     onClick={() => toggleFavorite(w.id)}
                   >
                     <Icon name={w.favorite ? "star-filled" : "star"} size={15} />
@@ -421,6 +455,7 @@ export function WordsPage() {
                     className="btn btn-icon btn-sm"
                     type="button"
                     title={t("words.listens", { n: w.listenCount })}
+                    aria-label={t("common.play")}
                     onClick={() => play(w)}
                   >
                     <Icon name="volume" size={15} />
@@ -429,6 +464,7 @@ export function WordsPage() {
                     className="btn btn-icon btn-sm"
                     type="button"
                     title={t("common.edit")}
+                    aria-label={t("common.edit")}
                     onClick={() => openEdit(w)}
                   >
                     <Icon name="edit" size={15} />
@@ -437,6 +473,7 @@ export function WordsPage() {
                     className="btn btn-icon btn-sm"
                     type="button"
                     title={t("common.delete")}
+                    aria-label={t("common.delete")}
                     onClick={() => setPendingDelete(w)}
                   >
                     <Icon name="trash" size={15} />
@@ -449,10 +486,18 @@ export function WordsPage() {
       )}
 
       {filtered.length > 0 && (
-        <div className="tiny muted" style={{ marginTop: "var(--sp-4)" }}>
-          {t("common.total")} {filtered.length} / {listWords.length} ·{" "}
-          <span className="kbd">/</span> {t("common.search")} · <span className="kbd">n</span>{" "}
-          {t("words.addWord")}
+        <div className="row-flex tiny muted" style={{ marginTop: "var(--sp-4)", gap: 6 }}>
+          <span>
+            {t("common.total")} {filtered.length}
+            {filtered.length !== listWords.length ? ` / ${listWords.length}` : ""}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            <span className="kbd">/</span> {t("common.search")}
+          </span>
+          <span>
+            <span className="kbd">n</span> {t("words.addWord")}
+          </span>
         </div>
       )}
 
@@ -578,7 +623,7 @@ function ListManagerModal({
                   autoFocus
                 />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--sp-3)" }}>
+              <div className="field-row">
                 <div className="field">
                   <span className="label">{t("words.sourceLang")}</span>
                   <select
@@ -633,8 +678,7 @@ function ListManagerModal({
             return (
               <div
                 key={l.id}
-                className="row"
-                style={{ gridTemplateColumns: "minmax(0,1fr) auto" }}
+                className="row row-pair"
                 onClick={() => {
                   onSelect(l.id);
                   onClose();
@@ -666,7 +710,10 @@ function ListManagerModal({
                     <div className="row-flex" style={{ gap: 8, minWidth: 0 }}>
                       <span
                         className="row-term"
-                        style={{ fontSize: "var(--fs-md)", color: active ? "var(--jade-ink)" : undefined }}
+                        style={{
+                          fontSize: "var(--fs-md)",
+                          color: active ? "var(--jade-ink)" : undefined,
+                        }}
                       >
                         {l.name}
                       </span>
@@ -677,15 +724,12 @@ function ListManagerModal({
                     </div>
                   )}
                 </div>
-                <div
-                  className="row-flex"
-                  style={{ gap: 2 }}
-                  onClick={(e) => e.stopPropagation()}
-                >
+                <div className="row-actions" onClick={(e) => e.stopPropagation()}>
                   <button
                     className="btn btn-icon btn-sm"
                     type="button"
                     title={t("common.rename")}
+                    aria-label={t("common.rename")}
                     onClick={() => {
                       setRenamingId(l.id);
                       setRenameDraft(l.name);
@@ -697,6 +741,7 @@ function ListManagerModal({
                     className="btn btn-icon btn-sm"
                     type="button"
                     title={t("common.delete")}
+                    aria-label={t("common.delete")}
                     disabled={data.lists.length <= 1}
                     onClick={() => setPendingDelete(l)}
                   >

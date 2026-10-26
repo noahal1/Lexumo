@@ -57,6 +57,11 @@ export const en: Dictionary = {
     total: "Total",
     list: "List",
     more: "More",
+    play: "Play",
+    pause: "Pause",
+    skip: "Skip",
+    retry: "Retry",
+    preview: "Preview",
   },
   status: {
     new: "New",

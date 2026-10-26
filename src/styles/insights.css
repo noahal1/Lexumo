@@ -1,0 +1,725 @@
+/* ==========================================================================
+   Insights pages — stats dashboard & settings sheet
+   Page-specific layout built on the global primitives (card / stat-tile /
+   progress / ring / notice / shortcuts / segmented / field). Nothing here
+   redefines a global component; these are only the shapes these two screens
+   need.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Stats: dashboard rhythm
+   -------------------------------------------------------------------------- */
+
+.dash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.dash-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+  gap: var(--sp-4);
+}
+
+.dash-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: stretch;
+}
+
+.dash-split.wide-left {
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+}
+
+@media (max-width: 980px) {
+  .dash-split,
+  .dash-split.wide-left {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Control slot inside a card head (interval switcher). */
+.dash-head-ctl {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+}
+
+/* --------------------------------------------------------------------------
+   Stats: daily goal
+   -------------------------------------------------------------------------- */
+
+.goal-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  flex-wrap: wrap;
+}
+
+.goal-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.goal-num {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-of {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Numbers inside the goal ring. */
+.goal-ring-num {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-ring-of {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--jade);
+  font-size: var(--fs-sm);
+  font-weight: 540;
+}
+
+.goal-remain {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.goal-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.goal-foot.is-warn {
+  color: var(--danger);
+}
+
+/* --------------------------------------------------------------------------
+   Stats: distribution bars (status + grades)
+   -------------------------------------------------------------------------- */
+
+.dist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.dist-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dist-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.dist-name {
+  font-size: var(--fs-sm);
+  font-weight: 540;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.dist-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.dist-num {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   Stats: activity chart (pure divs — no chart library)
+   -------------------------------------------------------------------------- */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.chart-plot {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 132px;
+  padding-bottom: 1px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chart-plot.dense {
+  gap: 2px;
+}
+
+.chart-col {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.chart-bar {
+  width: 100%;
+  border-radius: 4px 4px 2px 2px;
+  background: var(--jade);
+  opacity: 0.8;
+  transition: height var(--dur-4) var(--ease-out), opacity var(--dur-1) var(--ease);
+}
+
+.chart-col:hover .chart-bar {
+  opacity: 1;
+}
+
+.chart-bar.is-zero {
+  background: var(--line-strong);
+  opacity: 0.6;
+}
+
+.chart-bar.is-today {
+  opacity: 1;
+  box-shadow: 0 0 0 1px var(--jade-soft);
+}
+
+.chart-x {
+  display: flex;
+  gap: 4px;
+}
+
+.chart-plot.dense + .chart-x {
+  gap: 2px;
+}
+
+.chart-x span {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-x span.is-today {
+  color: var(--jade);
+  font-weight: 600;
+}
+
+.chart-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-5);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.chart-foot b {
+  color: var(--ink-2);
+  font-weight: 560;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .chart-plot {
+    height: 104px;
+  }
+  .chart-x span {
+    font-size: 9.5px;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Stats: key/value rows (retention card)
+   -------------------------------------------------------------------------- */
+
+.kv {
+  display: flex;
+  flex-direction: column;
+}
+
+.kv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: 8px 0;
+  font-size: var(--fs-sm);
+}
+
+.kv-row + .kv-row {
+  border-top: 1px dashed var(--line);
+}
+
+.kv-key {
+  color: var(--ink-3);
+}
+
+.kv-val {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.kv-val.is-warn {
+  color: var(--amber);
+}
+
+.metric-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.metric-big {
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--jade);
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-big.is-empty {
+  color: var(--ink-4);
+}
+
+/* Empty state sitting inside a dashboard card. */
+.dash-empty {
+  padding: var(--sp-4) 0 var(--sp-2);
+}
+
+/* --------------------------------------------------------------------------
+   Settings: sheet & semantic groups
+   -------------------------------------------------------------------------- */
+
+.set-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  max-width: 880px;
+}
+
+.set-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+}
+
+.set-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--ink-3);
+  padding-bottom: 2px;
+}
+
+.set-section-ico {
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+}
+
+.set-section-title {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.set-section-note {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One preference: text on the left, control on the right. */
+.set-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A danger notice or extra block sits inside the rows column: give it air. */
+.set-rows > .notice {
+  margin-top: var(--sp-4);
+}
+
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: 9px 12px;
+  margin: 0 -12px;
+  border-radius: var(--r-sm);
+  transition: background var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+
+.set-row:hover {
+  background: var(--surface-2);
+}
+
+.set-row:focus-within {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.set-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.set-label {
+  font-size: var(--fs-base);
+  font-weight: 520;
+  color: var(--ink);
+}
+
+.set-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+
+.set-ctl {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  justify-self: end;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.set-ctl .select {
+  width: auto;
+  min-width: 196px;
+  max-width: 260px;
+}
+
+.set-num {
+  width: 92px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.set-range {
+  width: 200px;
+}
+
+.set-rate {
+  min-width: 52px;
+  text-align: right;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .set-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-2);
+  }
+  .set-ctl {
+    justify-self: start;
+    justify-content: flex-start;
+  }
+  .set-ctl .select {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+  }
+  .set-range {
+    width: 100%;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Settings: switch
+   -------------------------------------------------------------------------- */
+
+.switch {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  width: 42px;
+  height: 24px;
+  padding: 2px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: background var(--dur-2) var(--ease), border-color var(--dur-2) var(--ease),
+    box-shadow var(--dur-1) var(--ease);
+}
+
+.switch:hover {
+  border-color: var(--jade);
+}
+
+.switch:active {
+  transform: translateY(0.5px);
+}
+
+.switch[aria-checked="true"] {
+  background: var(--jade);
+  border-color: var(--jade);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.switch-knob {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  transition: transform var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease);
+}
+
+.switch[aria-checked="true"] .switch-knob {
+  transform: translateX(18px);
+  background: #f7fffc;
+}
+
+/* --------------------------------------------------------------------------
+   Settings: range slider
+   -------------------------------------------------------------------------- */
+
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--line);
+  outline: none;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--jade);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-xs);
+  cursor: grab;
+  transition: transform var(--dur-1) var(--ease);
+}
+
+.range:active::-webkit-slider-thumb {
+  cursor: grabbing;
+  transform: scale(1.08);
+}
+
+.range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--jade);
+  border: 2px solid var(--surface);
+  cursor: grab;
+}
+
+.range:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   Settings: data actions & danger zone
+   -------------------------------------------------------------------------- */
+
+.set-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.notice-danger {
+  border-left-color: var(--danger);
+  background: var(--rose-soft);
+}
+
+.notice-danger .notice-ico {
+  color: var(--danger);
+}
+
+.notice-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.notice-body {
+  margin: 2px 0 0;
+  color: var(--ink-2);
+}
+
+.danger-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-3);
+}
+
+/* --------------------------------------------------------------------------
+   Settings: import preview
+   -------------------------------------------------------------------------- */
+
+.import-preview {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.import-preview .row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  cursor: default;
+  padding: 8px 14px;
+}
+
+.import-preview .row-term {
+  font-size: var(--fs-base);
+}
+
+.import-more {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+/* --------------------------------------------------------------------------
+   Settings: about
+   -------------------------------------------------------------------------- */
+
+.about-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.about-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.about-desc {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+.about-credit {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: var(--sp-3);
+  border-left: 2px solid var(--line);
+}
+
+.about-credit-name {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.about-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* --------------------------------------------------------------------------
+   Interaction states
+   The global primitives already cover hover/focus for buttons and segments;
+   these fill the remaining press/disabled gaps on the two pages.
+   -------------------------------------------------------------------------- */
+
+.btn:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+.segmented button:active {
+  transform: translateY(0.5px);
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.set-ctl .select:disabled,
+.set-ctl .input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--surface-2);
+}
+
+.set-ctl .select:disabled:hover {
+  border-color: var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:active:not(:disabled),
+  .segmented button:active {
+    transform: none;
+  }
+}

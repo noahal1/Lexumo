@@ -7,23 +7,209 @@
     <meta name="theme-color" content="#f4f1e9" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#10120f" media="(prefers-color-scheme: dark)" />
     <title>Lexilo · 词屿</title>
+    <meta
+      name="description"
+      content="Lexilo 词屿 — 本地优先的间隔重复词汇学习桌面应用"
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f6b5b'/%3E%3Ctext x='32' y='46' font-family='Georgia,serif' font-size='38' font-weight='600' fill='%23f7fffc' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E"
+    />
     <style>
-      /* Paint the right canvas before the bundle loads (no white flash). */
+      /* Paint the right canvas and a matching skeleton before the bundle
+         loads, so the first frame is never a blank white rectangle. */
+      :root {
+        --b-bg: #f4f1e9;
+        --b-deep: #ebe7dc;
+        --b-surface: #fffdf8;
+        --b-line: #e2dccd;
+        --b-skel: #eee8db;
+        --b-jade: #0f6b5b;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --b-bg: #10120f;
+          --b-deep: #0b0d0a;
+          --b-surface: #171a15;
+          --b-line: #2a2f27;
+          --b-skel: #22261f;
+          --b-jade: #58cfb2;
+        }
+      }
       html,
       body {
         margin: 0;
-        background: #f4f1e9;
+        height: 100%;
+        background: var(--b-bg);
+        overflow: hidden;
       }
-      @media (prefers-color-scheme: dark) {
-        html,
-        body {
-          background: #10120f;
+      #root {
+        height: 100%;
+      }
+      .boot {
+        display: flex;
+        height: 100%;
+        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      }
+      .boot-side {
+        width: 236px;
+        flex: 0 0 236px;
+        border-right: 1px solid var(--b-line);
+        background: var(--b-deep);
+        padding: 20px 12px;
+        box-sizing: border-box;
+      }
+      .boot-brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 2px 6px 20px;
+      }
+      .boot-mark {
+        width: 34px;
+        height: 34px;
+        flex: 0 0 34px;
+        border-radius: 10px;
+        background: var(--b-jade);
+        color: #f7fffc;
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        font-weight: 600;
+      }
+      .boot-brandtext {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .boot-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .boot-main {
+        flex: 1;
+        padding: 20px 32px;
+        box-sizing: border-box;
+      }
+      .boot-head {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        margin-bottom: 26px;
+        padding-top: 6px;
+      }
+      .boot-card {
+        border: 1px solid var(--b-line);
+        border-radius: 16px;
+        background: var(--b-surface);
+        padding: 8px 0;
+        overflow: hidden;
+      }
+      .boot-row {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        padding: 13px 20px;
+        border-bottom: 1px solid var(--b-line);
+      }
+      .boot-row:last-child {
+        border-bottom: 0;
+      }
+      .sk {
+        display: block;
+        height: 11px;
+        border-radius: 6px;
+        background: var(--b-skel);
+        animation: boot-pulse 1.5s ease-in-out infinite;
+      }
+      .sk.h1 {
+        height: 17px;
+        width: 150px;
+      }
+      .sk.h2 {
+        height: 10px;
+        width: 220px;
+      }
+      .sk.nav {
+        height: 32px;
+        width: 100%;
+      }
+      .sk.term {
+        height: 14px;
+        width: 34%;
+      }
+      .sk.def {
+        height: 11px;
+        width: 46%;
+      }
+      .sk.pill {
+        height: 20px;
+        width: 62px;
+        border-radius: 999px;
+        margin-left: auto;
+      }
+      @keyframes boot-pulse {
+        0%,
+        100% {
+          opacity: 0.55;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .sk {
+          animation: none;
         }
       }
     </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" aria-hidden="true">
+        <div class="boot-side">
+          <div class="boot-brand">
+            <div class="boot-mark">L</div>
+            <div class="boot-brandtext">
+              <span class="sk" style="width: 74px"></span>
+              <span class="sk" style="width: 40px"></span>
+            </div>
+          </div>
+          <div class="boot-nav">
+            <span class="sk nav"></span>
+            <span class="sk nav"></span>
+            <span class="sk nav"></span>
+            <span class="sk nav"></span>
+            <span class="sk nav"></span>
+          </div>
+        </div>
+        <div class="boot-main">
+          <div class="boot-head">
+            <span class="sk h1"></span>
+            <span class="sk h2"></span>
+          </div>
+          <div class="boot-card">
+            <div class="boot-row">
+              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+            </div>
+            <div class="boot-row">
+              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+            </div>
+            <div class="boot-row">
+              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+            </div>
+            <div class="boot-row">
+              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+            </div>
+            <div class="boot-row">
+              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
