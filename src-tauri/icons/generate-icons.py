@@ -1,4 +1,4 @@
-"""Generate the Lexilo app icon set.
+"""Generate the Lexumo app icon set.
 
 Design: warm paper background + jade-green (#0f6b5b) rounded square with a
 paper-white serif "L". Everything is drawn at 1024px and downsampled with

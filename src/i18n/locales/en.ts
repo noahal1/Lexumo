@@ -3,7 +3,7 @@ import type { Dictionary } from "./zh-CN";
 
 export const en: Dictionary = {
   common: {
-    appName: "Lexilo",
+    appName: "Lexumo",
     appTagline: "A quiet place to remember words",
     save: "Save",
     cancel: "Cancel",
@@ -136,7 +136,7 @@ export const en: Dictionary = {
     resetConfirm: "Reset this word's review schedule?",
     termRequired: "Please enter a word",
     emptyStateTitle: "Start with one word",
-    emptyStateText: "Once you add words, Lexilo schedules reviews with spaced repetition.",
+    emptyStateText: "Once you add words, Lexumo schedules reviews with spaced repetition.",
     tagsHint: "Enter to add, up to 12",
     noDefinition: "No definition yet",
   },
@@ -247,7 +247,7 @@ export const en: Dictionary = {
   },
   settings: {
     title: "Settings",
-    subtitle: "Tune Lexilo to your taste",
+    subtitle: "Tune Lexumo to your taste",
     appearance: "Appearance",
     theme: "Theme",
     language: "Interface language",
@@ -277,7 +277,7 @@ export const en: Dictionary = {
     exportCsv: "Export as CSV",
     exportAnki: "Export as Anki TXT",
     importData: "Import",
-    importHint: "Accepts Lexilo JSON backups, CSV and Anki TXT.",
+    importHint: "Accepts Lexumo JSON backups, CSV and Anki TXT.",
     importSuccess: "Imported {n} words",
     importFailed: "Import failed: {msg}",
     wipeData: "Erase all data",

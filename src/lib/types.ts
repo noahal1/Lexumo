@@ -1,4 +1,4 @@
-/** Core domain types for Lexilo. Persisted as a single versioned snapshot. */
+/** Core domain types for Lexumo. Persisted as a single versioned snapshot. */
 
 export type WordStatus = "new" | "reviewing" | "learning" | "mastered";
 export type Grade = "hard" | "good" | "easy";

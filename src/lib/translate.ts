@@ -55,7 +55,7 @@ export class LookupError extends Error {
 
 /* ------------------------------------------------------------------ cache */
 
-const CACHE_KEY = "lexilo.dict.v1";
+const CACHE_KEY = "lexumo.dict.v1";
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 const CACHE_MAX = 400;
 

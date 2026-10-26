@@ -1,10 +1,10 @@
-# Lexilo · 词屿
+# Lexumo · 词砚
 
-Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进词屿，用间隔重复一点点记住它们。
+Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进词砚，用间隔重复一点点记住它们。
 
 项目参考开源桌面词汇应用 **[Lingueez](https://lingueez.app)**（Python + PySide6，作者 Yurii Lysak）的功能理念，用 **Tauri 2 + React 19 + TypeScript + Vite 7** 重新实现。界面以中文为主，视觉基调是暖纸色背景与玉绿色点缀；数据全部保存在本机，不注册、不联网即可使用。
 
-![Lexilo 界面](docs/app-ui.png)
+![Lexumo 界面](docs/app-ui.png)
 
 > 界面截图。桌面窗口在 150% 缩放的测试机上会被系统二次缩放，为避免排版失真，此图直接取应用前端在 Chromium / WebView2 中渲染后的结果。
 
@@ -50,7 +50,7 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 | 语言 | TypeScript 5.8（`strict` + `noUnusedLocals` + `noUnusedParameters`） |
 | 构建 | Vite 7（固定端口 1420，`strictPort`） |
 | 测试 | Vitest 3（纯函数用 Node 环境，整应用冒烟测试用 jsdom） |
-| 持久化 | IndexedDB（`lexilo` 库，单键快照）+ localStorage 回退 |
+| 持久化 | IndexedDB（`lexumo` 库，单键快照）+ localStorage 回退 |
 | 发音 | Web Speech API（`speechSynthesis`） |
 | 查词 / 翻译 | Rust 侧 `reqwest` 代理有道词典 JSON API（桌面）；浏览器降级到有道 `trans` → MyMemory → Google |
 | 样式 | 原生 CSS（设计令牌 + 全局样式），无 UI 框架 |
@@ -60,7 +60,7 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 
 ```text
 .
-├── index.html                  # 单页入口，标题「Lexilo · 词屿」
+├── index.html                  # 单页入口，标题「Lexumo · 词砚」
 ├── package.json                # 脚本：dev / build / preview / test / tauri:*
 ├── vite.config.ts              # @ → ./src，端口 1420，outDir dist
 ├── vitest.config.ts            # 测试配置：environment node，@ 别名，包含 .ts/.tsx
@@ -157,7 +157,7 @@ python src-tauri/icons/generate-icons.py
 
 ```bash
 npx tauri build --no-bundle
-# 产物：src-tauri/target/release/lexilo.exe
+# 产物：src-tauri/target/release/lexumo.exe
 ```
 
 
@@ -180,7 +180,7 @@ npm test
 
 ## 数据存储
 
-- **主存储**：IndexedDB 数据库 `lexilo`，对象仓库 `kv`，键 `app`，保存**单个版本化快照** `AppData`：
+- **主存储**：IndexedDB 数据库 `lexumo`，对象仓库 `kv`，键 `app`，保存**单个版本化快照** `AppData`：
 
   ```ts
   interface AppData {
@@ -193,7 +193,7 @@ npm test
   ```
 
 - **写入策略**：所有变更走 `store.ts` 的 `commit()`，先通知订阅者，再以 220ms 防抖写入快照。
-- **回退链**：IndexedDB 不可用或读写失败 → localStorage 键 `lexilo:data`（JSON 字符串）→ 再失败则仅保存在内存（刷新即丢失）。
+- **回退链**：IndexedDB 不可用或读写失败 → localStorage 键 `lexumo:data`（JSON 字符串）→ 再失败则仅保存在内存（刷新即丢失）。
 - **版本迁移**：启动时若快照 `version` 与 `DATA_VERSION` 不一致，会丢弃旧快照并重新播种演示数据；`settings` 字段缺失时用默认值补齐。
 - **隐私**：数据只在本机，不上传任何服务器；清除 WebView 数据或卸载应用会删除词库，建议定期导出 JSON 备份。
 
@@ -238,7 +238,7 @@ serendipity	意外发现美好事物的能力	a serendipitous meeting
 ## 已知限制
 
 - **平台**：以 Windows 为主进行开发；macOS / Linux 打包未验证。macOS 打包还需要 `icon.icns`（当前仅生成 PNG 与 ICO）。
-- **安装包**：`cargo check` 与 `cargo build --release` 均已在 Windows 上通过，产物 `src-tauri/target/release/lexilo.exe`（约 12.7 MB）可正常启动并显示窗口。但 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
+- **安装包**：`cargo check` 与 `cargo build --release` 均已在 Windows 上通过，产物 `src-tauri/target/release/lexumo.exe`（约 12.7 MB）可正常启动并显示窗口。但 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
 - **自动翻译**：依赖有道词典 / MyMemory 等公开接口，需联网；接口可能限流或变更，届时查词会降级或提示失败，不影响手动录入。缓存 30 天，设置里可清除。
 - **视觉验证**：功能层有 jsdom 冒烟测试覆盖；界面另用 headless Edge + DevTools 协议做了实测——五个页面均渲染、无控制台异常与失败请求、无横向溢出，并核对了设计令牌的实际取值、深色主题配色反转、860px 窄窗口下侧栏折叠、以及词条行「悬停显形操作区」的透明度变化。未做跨平台像素级视觉回归。
 - **TTS**：依赖系统语音合成引擎，可用音色与语言随平台而异；部分语言可能没有可用语音，此时听音功能静默降级。
@@ -249,7 +249,7 @@ serendipity	意外发现美好事物的能力	a serendipitous meeting
 
 ## 致谢与许可
 
-- **功能与交互理念**参考 **[Lingueez](https://lingueez.app)**（作者 Yurii Lysak，AGPL-3.0）。Lexilo 是独立重写，但保留了「词条状态阶梯 + 间隔重复 + 听音记忆」这一核心思路。
+- **功能与交互理念**参考 **[Lingueez](https://lingueez.app)**（作者 Yurii Lysak，AGPL-3.0）。Lexumo 是独立重写，但保留了「词条状态阶梯 + 间隔重复 + 听音记忆」这一核心思路。
 - **许可**：本项目以 **GNU AGPL-3.0** 授权，是 Lingueez 的衍生重写，许可证全文见 [`LICENSE.txt`](LICENSE.txt)。
 - **署名（AGPL-3.0 §7(b) 附加条款）**：按上游 [`NOTICE`](NOTICE) 的要求，必须在用户可见的法律声明中保留 **“Lingueez — created by Yurii Lysak”** 这一署名。该署名已展示在应用「设置 → 关于」中，请勿移除。
 - **第三方组件**：React、Vite、Tauri 等依赖的许可见 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)。

@@ -26,7 +26,7 @@ const NAV: Array<{ id: PageId; icon: IconName; labelKey: string }> = [
   { id: "settings", icon: "settings", labelKey: "nav.settings" },
 ];
 
-const RAIL_KEY = "lexilo.rail";
+const RAIL_KEY = "lexumo.rail";
 
 function useTheme() {
   const { settings } = useAppData();
@@ -176,7 +176,7 @@ export function App() {
           <div className="brand-mark">L</div>
           <div className="brand-text">
             <div className="brand-name">{t("common.appName")}</div>
-            <div className="brand-sub">词屿</div>
+            <div className="brand-sub">词砚</div>
           </div>
           {mobile && (
             <button

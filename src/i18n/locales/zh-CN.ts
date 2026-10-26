@@ -1,8 +1,8 @@
 /** 中文（简体）文案。所有 key 使用点号路径，见 i18n/index.tsx。 */
 const zhCNraw = {
   common: {
-    appName: "Lexilo",
-    appTagline: "词屿 · 安静地记住每一个词",
+    appName: "Lexumo",
+    appTagline: "词砚 · 安静地记住每一个词",
     save: "保存",
     cancel: "取消",
     delete: "删除",
@@ -134,7 +134,7 @@ const zhCNraw = {
     resetConfirm: "确定把这个词的复习进度清零吗？",
     termRequired: "请输入词语",
     emptyStateTitle: "从第一个词开始",
-    emptyStateText: "添加词语后，Lexilo 会用间隔重复帮你安排复习。",
+    emptyStateText: "添加词语后，Lexumo 会用间隔重复帮你安排复习。",
     tagsHint: "回车添加，最多 12 个",
     noDefinition: "还没有释义",
   },
@@ -245,7 +245,7 @@ const zhCNraw = {
   },
   settings: {
     title: "设置",
-    subtitle: "把 Lexilo 调成你喜欢的样子",
+    subtitle: "把 Lexumo 调成你喜欢的样子",
     appearance: "外观",
     theme: "主题",
     language: "界面语言",
@@ -274,7 +274,7 @@ const zhCNraw = {
     exportCsv: "导出为 CSV",
     exportAnki: "导出为 Anki TXT",
     importData: "导入数据",
-    importHint: "支持 Lexilo JSON 备份、CSV 与 Anki TXT。",
+    importHint: "支持 Lexumo JSON 备份、CSV 与 Anki TXT。",
     importSuccess: "成功导入 {n} 个词语",
     importFailed: "导入失败：{msg}",
     wipeData: "清空所有数据",

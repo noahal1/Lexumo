@@ -121,7 +121,7 @@ export function SettingsPage() {
 
   const handleExportJson = () => {
     downloadText(
-      `lexilo-backup-${dayKey(Date.now())}.json`,
+      `lexumo-backup-${dayKey(Date.now())}.json`,
       exportJson(data),
       "application/json;charset=utf-8",
     );
@@ -130,7 +130,7 @@ export function SettingsPage() {
 
   const handleExportCsv = () => {
     downloadText(
-      `lexilo-words-${dayKey(Date.now())}.csv`,
+      `lexumo-words-${dayKey(Date.now())}.csv`,
       exportCsv(data.words),
       "text/csv;charset=utf-8",
     );
@@ -208,7 +208,7 @@ export function SettingsPage() {
       return;
     }
     const sample =
-      data.words[0]?.term ?? (zh ? "你好，欢迎使用词屿。" : "Hello, welcome to Lexilo.");
+      data.words[0]?.term ?? (zh ? "你好，欢迎使用词砚。" : "Hello, welcome to Lexumo.");
     speak(sample, {
       lang: studyLang,
       rate: settings.ttsRate,
@@ -219,8 +219,8 @@ export function SettingsPage() {
   const formatLabel = (format: ImportResult["format"]) =>
     format === "json"
       ? zh
-        ? "Lexilo JSON 备份"
-        : "Lexilo JSON backup"
+        ? "Lexumo JSON 备份"
+        : "Lexumo JSON backup"
       : format === "csv"
         ? "CSV"
         : format === "anki"
@@ -489,7 +489,7 @@ export function SettingsPage() {
           <div className="card-head">
             <div>
               <div className="card-title">{t("settings.about")}</div>
-              <div className="card-sub">Lexilo · 词屿</div>
+              <div className="card-sub">Lexumo · 词砚</div>
             </div>
           </div>
           <div className="card-pad about-body">

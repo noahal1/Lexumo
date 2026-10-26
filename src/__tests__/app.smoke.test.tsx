@@ -143,8 +143,8 @@ describe("App smoke test", () => {
     const el = await mount();
 
     // Sidebar chrome is present.
-    expect(el.textContent).toContain("Lexilo");
-    expect(el.textContent).toContain("词屿");
+    expect(el.textContent).toContain("Lexumo");
+    expect(el.textContent).toContain("词砚");
     for (const label of ["词库", "闪卡", "测验", "统计", "设置"]) {
       expect(el.textContent).toContain(label);
     }

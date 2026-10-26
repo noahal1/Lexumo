@@ -1,15 +1,15 @@
 [package]
-name = "lexilo"
+name = "lexumo"
 version = "0.1.0"
-description = "Lexilo · 词屿 — a calm desktop vocabulary studio"
-authors = ["Lexilo contributors"]
+description = "Lexumo · 词砚 — a calm desktop vocabulary studio"
+authors = ["Lexumo contributors"]
 edition = "2021"
 rust-version = "1.77.2"
 
 # The library is what the desktop binary links against. Keeping the app logic
 # in a lib crate is the Tauri 2 convention and leaves room for a mobile target.
 [lib]
-name = "lexilo_lib"
+name = "lexumo_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

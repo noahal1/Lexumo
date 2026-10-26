@@ -1798,7 +1798,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lexilo"
+name = "lexumo"
 version = "0.1.0"
 dependencies = [
  "reqwest",

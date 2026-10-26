@@ -1,4 +1,4 @@
-//! Lexilo desktop shell.
+//! Lexumo desktop shell.
 //!
 //! The UI is a plain Vite/React frontend and all persistence happens in
 //! IndexedDB, so this crate is mostly a webview host. The one thing the
@@ -13,7 +13,7 @@ use serde::Serialize;
 
 /// A desktop client should identify itself honestly rather than pretend to be
 /// a browser, but some public endpoints reject obviously non-browser agents.
-const USER_AGENT: &str = "Lexilo/0.1 (+https://github.com/noahal1/lingueez-web)";
+const USER_AGENT: &str = "Lexumo/0.1 (+https://github.com/noahal1/lingueez-web)";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -117,5 +117,5 @@ pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![lookup_word, translate_text])
         .run(tauri::generate_context!())
-        .expect("error while running the Lexilo window");
+        .expect("error while running the Lexumo window");
 }

@@ -7,10 +7,10 @@
  */
 import type { AppData } from "./types";
 
-const DB_NAME = "lexilo";
+const DB_NAME = "lexumo";
 const STORE = "kv";
 const KEY = "app";
-const LS_KEY = "lexilo:data";
+const LS_KEY = "lexumo:data";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 

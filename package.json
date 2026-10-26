@@ -1,9 +1,9 @@
 {
-  "name": "lexilo",
+  "name": "lexumo",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Lexilo · 词屿 — a calm desktop vocabulary studio (Tauri + React)",
+  "description": "Lexumo · 词砚 — a calm desktop vocabulary studio (Tauri + React)",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
