@@ -1437,6 +1437,118 @@ mark {
   }
 }
 
+/* ---------- Phone layout: off-canvas sidebar drawer ---------- */
+
+.menu-btn {
+  display: none;
+  position: fixed;
+  z-index: calc(var(--z-sticky) + 2);
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  box-shadow: var(--shadow-xs);
+}
+
+.scrim {
+  display: none;
+}
+
+.app.mobile .menu-btn {
+  display: inline-flex;
+}
+
+/* Drawer: sidebar leaves the flow and slides in from the left. */
+.app.mobile .sidebar {
+  position: fixed;
+  z-index: calc(var(--z-overlay) + 1);
+  inset: 0 auto 0 0;
+  width: min(84vw, 300px);
+  transform: translateX(-102%);
+  transition: transform var(--dur-3) var(--ease-out);
+  box-shadow: none;
+  overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.app.mobile.menu-open .sidebar {
+  transform: translateX(0);
+  box-shadow: var(--shadow-lg);
+}
+
+.app.mobile.menu-open .scrim {
+  display: block;
+  position: fixed;
+  z-index: var(--z-overlay);
+  inset: 0;
+  background: rgba(20, 18, 12, 0.42);
+  backdrop-filter: blur(1.5px);
+  animation: fade-in var(--dur-2) var(--ease);
+}
+
+.app.mobile .rail-toggle {
+  display: none;
+}
+
+.app.mobile .drawer-close {
+  margin-left: auto;
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    padding-top: calc(var(--sp-5) + env(safe-area-inset-top, 0px));
+    padding-left: 60px; /* clear the fixed hamburger */
+    padding-right: var(--sp-4);
+  }
+  .page {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
+    padding-bottom: calc(var(--sp-8) + env(safe-area-inset-bottom, 0px));
+  }
+  .btn {
+    min-height: 40px;
+  }
+  .btn-icon {
+    width: 40px;
+  }
+  .nav-item {
+    padding: 12px var(--sp-4);
+  }
+  .search-clear,
+  .row-actions .btn-icon {
+    width: 40px;
+    height: 40px;
+  }
+  .overlay {
+    padding: var(--sp-2);
+  }
+  .modal {
+    max-height: calc(100dvh - var(--sp-4));
+  }
+  .list-tabs {
+    flex-wrap: wrap;
+  }
+  .toolbar {
+    flex-wrap: wrap;
+  }
+  .row-words {
+    grid-template-columns: minmax(0, 1fr) 44px;
+  }
+  .row-words .row-col-status {
+    display: none;
+  }
+  .row-actions {
+    opacity: 1; /* no hover on touch */
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

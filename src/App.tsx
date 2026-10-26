@@ -83,13 +83,43 @@ function useRail() {
   return { rail, toggle };
 }
 
+/** Phone layout: the sidebar becomes an off-canvas drawer behind a hamburger. */
+function useMobile() {
+  const [mobile, setMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 720,
+  );
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 720px)");
+    const sync = () => {
+      setMobile(mq.matches);
+      if (!mq.matches) setMenuOpen(false);
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  return { mobile, menuOpen, setMenuOpen };
+}
+
 export function App() {
   const t = useT();
   const { page, navigate } = useRouter();
   const data = useAppData();
   const { rail, toggle } = useRail();
+  const { mobile, menuOpen, setMenuOpen } = useMobile();
   const [helpOpen, setHelpOpen] = useState(false);
   useTheme();
+
+  const goTo = useCallback(
+    (id: PageId) => {
+      navigate(id);
+      setMenuOpen(false);
+    },
+    [navigate],
+  );
 
   const due = dueWords(data).length;
   const streak = streakDays(data);
@@ -124,18 +154,40 @@ export function App() {
   }, [navigate]);
 
   return (
-    <div className={cx("app", rail && "rail")}>
+    <div className={cx("app", rail && "rail", mobile && "mobile", menuOpen && "menu-open")}>
       <a className="skip-link" href="#main-content">
         跳到主要内容
       </a>
 
-      <aside className="sidebar">
+      {mobile && (
+        <button
+          className="menu-btn"
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          aria-label="打开菜单"
+          aria-expanded={menuOpen}
+        >
+          <Icon name="list" size={20} />
+        </button>
+      )}
+
+      <aside className="sidebar" aria-hidden={mobile && !menuOpen ? true : undefined}>
         <div className="brand">
           <div className="brand-mark">L</div>
           <div className="brand-text">
             <div className="brand-name">{t("common.appName")}</div>
             <div className="brand-sub">词屿</div>
           </div>
+          {mobile && (
+            <button
+              className="btn btn-quiet btn-sm drawer-close"
+              type="button"
+              onClick={() => setMenuOpen(false)}
+              aria-label="关闭菜单"
+            >
+              <Icon name="x" size={16} />
+            </button>
+          )}
         </div>
 
         <nav className="nav" aria-label="主导航">
@@ -144,7 +196,7 @@ export function App() {
               key={item.id}
               type="button"
               className={cx("nav-item", page === item.id && "active")}
-              onClick={() => navigate(item.id)}
+              onClick={() => goTo(item.id)}
               aria-current={page === item.id ? "page" : undefined}
               title={`${t(item.labelKey)}  (Ctrl+${i + 1})`}
             >
@@ -212,6 +264,14 @@ export function App() {
           <div className="sidebar-tagline">{t("common.appTagline")}</div>
         </div>
       </aside>
+
+      {mobile && (
+        <div
+          className="scrim"
+          onClick={() => setMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
       <main className="main" id="main-content" tabIndex={-1}>
         {page === "words" && <WordsPage />}
