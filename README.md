@@ -4,6 +4,10 @@ Lexilo（词屿）是一个安静的桌面背单词工作室：把生词收进�
 
 项目参考开源桌面词汇应用 **[Lingueez](https://lingueez.app)**（Python + PySide6，作者 Yurii Lysak）的功能理念，用 **Tauri 2 + React 19 + TypeScript + Vite 7** 重新实现。界面以中文为主，视觉基调是暖纸色背景与玉绿色点缀；数据全部保存在本机，不注册、不联网即可使用。
 
+![Lexilo 桌面窗口](docs/app-window.png)
+
+> 上图由程序直接截取正在运行的桌面窗口，因此保留了系统标题栏。截图环境屏幕较小，窗口被系统压缩到约 810×558 逻辑像素，实际使用中默认尺寸为 1200×800。
+
 ## 功能
 
 - **词库管理**：多词库、增删改查、搜索、状态筛选、标签筛选、排序、收藏；每条词条包含主释义、补充释义、例句、笔记、标签。
@@ -125,6 +129,14 @@ python src-tauri/icons/generate-icons.py
 
 > `npm run build` 内部已经包含 `tsc --noEmit`，因此类型错误会阻断构建。Vite 端口固定为 `1420` 且 `strictPort: true`，与 `tauri.conf.json` 的 `devUrl` 保持一致；`src-tauri/**` 已从 Vite 的监听范围中排除。
 
+如果只想得到可执行文件、跳过安装包打包（打包需要联网下载 WiX/NSIS）：
+
+```bash
+npx tauri build --no-bundle
+# 产物：src-tauri/target/release/lexilo.exe
+```
+
+
 ## 测试
 
 ```bash
@@ -199,7 +211,7 @@ serendipity	意外发现美好事物的能力	a serendipitous meeting
 ## 已知限制
 
 - **平台**：以 Windows 为主进行开发；macOS / Linux 打包未验证。macOS 打包还需要 `icon.icns`（当前仅生成 PNG 与 ICO）。
-- **构建验证**：Rust 侧只做了静态检查（`tauri.conf.json` 按 v2 schema 校验、`Cargo.toml` 解析、入口代码审阅），未实际执行 `cargo build` / `tauri build`（需要联网拉取 crate）。
+- **安装包**：`cargo check` 与 `cargo build --release` 均已在 Windows 上通过，产物 `src-tauri/target/release/lexilo.exe`（8.6 MB）可正常启动并显示窗口。但 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
 - **视觉验证**：界面通过设计令牌与 CSS 实现，功能层有 jsdom 冒烟测试覆盖，但未在真实浏览器中做过像素级视觉回归。
 - **TTS**：依赖系统语音合成引擎，可用音色与语言随平台而异；部分语言可能没有可用语音，此时听音功能静默降级。
 - **同步**：无多设备同步与云备份，数据仅存本机。
