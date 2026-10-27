@@ -1,14 +1,18 @@
 /**
- * Application store: a tiny observable snapshot store with
- * useSyncExternalStore, plus all mutations (words, lists, reviews, settings).
+ * Application store: an observable snapshot (via useSyncExternalStore) plus the
+ * domain operations — words, lists, reviews, settings.
  *
- * All writes go through `commit`, which bumps `updatedAt`, notifies
- * subscribers, and schedules a debounced persistence write.
+ * Shape of the module:
  *
- * Every mutation also records what changed in `data.pending` so the sync
- * engine knows what still has to be pushed, and deletions leave a tombstone in
- * `data.tombstones` (a delete must be an explicit record — otherwise another
- * device would simply upload the record again).
+ * - `createStore` builds an isolated instance from a persistence adapter and a
+ *   clock. The app uses one instance; tests build their own, so a unit test can
+ *   drive real mutations instead of hand-assembling snapshots.
+ * - every write goes through `commit`: clone the snapshot, let the operation
+ *   edit the clone, then notify and schedule persistence. Cloning the arrays
+ *   only works because operations *replace* records rather than mutating them
+ *   in place — `patchWord`/`patchList` are the only ways a record changes.
+ * - sync bookkeeping (`pending` + `tombstones`) is written only by
+ *   `./journal`, so a new operation cannot forget to mark its change.
  */
 import { useSyncExternalStore } from "react";
 import { loadSnapshot, saveSnapshot, clearSnapshot } from "./db";
@@ -16,6 +20,7 @@ import { emitLocalChange } from "./localChanges";
 import { applyGrade, statusForInterval, freshSrs } from "./srs";
 import { seedData } from "./seed";
 import { collectChanges, pendingCount, applyRemote } from "./syncMerge";
+import * as journal from "./journal";
 import type {
   AppData,
   ChangeSet,
@@ -82,163 +87,23 @@ export function migrateSnapshot(raw: unknown): AppData | null {
   };
 }
 
-let data: AppData = emptyData();
-let ready = false;
-const listeners = new Set<() => void>();
-let saveTimer: ReturnType<typeof setTimeout> | null = null;
-
-function notify() {
-  for (const fn of listeners) fn();
+/** Where the snapshot lives. Narrow on purpose: swapping IndexedDB for SQLite
+ * means writing one more object of these three functions. */
+export interface Persistence {
+  load(): Promise<AppData | null>;
+  save(data: AppData): Promise<void>;
+  clear(): Promise<void>;
 }
 
-function scheduleSave() {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    void saveSnapshot(data);
-  }, 220);
+export interface StoreOptions {
+  persistence: Persistence;
+  /** Injectable so tests can freeze time. */
+  clock?: () => number;
+  /** First-run content; defaults to the demo deck. */
+  seed?: (now: number) => AppData;
+  /** Persistence debounce in ms. `0` saves immediately (tests). */
+  saveDelayMs?: number;
 }
-
-function commit(mutator: (draft: AppData) => void) {
-  const draft: AppData = {
-    ...data,
-    lists: data.lists.slice(),
-    words: data.words.slice(),
-    logs: data.logs.slice(),
-    settings: { ...data.settings },
-    tombstones: cloneTombstones(data.tombstones),
-    pending: {
-      words: data.pending.words.slice(),
-      lists: data.pending.lists.slice(),
-      logs: data.pending.logs.slice(),
-      settings: data.pending.settings,
-    },
-  };
-  mutator(draft);
-  data = draft;
-  notify();
-  emitLocalChange();
-  scheduleSave();
-}
-
-function markWordDirty(d: AppData, id: string) {
-  if (!d.pending.words.includes(id)) d.pending.words.push(id);
-}
-
-function markListDirty(d: AppData, id: string) {
-  if (!d.pending.lists.includes(id)) d.pending.lists.push(id);
-}
-
-function markLogDirty(d: AppData, id: string) {
-  if (!d.pending.logs.includes(id)) d.pending.logs.push(id);
-}
-
-/** Load the snapshot once at boot; first run seeds a demo deck. */
-export async function initStore(): Promise<void> {
-  const snapshot = await loadSnapshot();
-  const migrated = snapshot ? migrateSnapshot(snapshot) : null;
-  if (migrated) {
-    data = migrated;
-  } else {
-    data = seedData();
-  }
-  if (data.lists.length === 0) {
-    const now = Date.now();
-    data.lists = [
-      {
-        id: DEFAULT_LIST_ID,
-        name: "我的词库",
-        sourceLang: "en",
-        targetLang: "zh-CN",
-        createdAt: now,
-        updatedAt: now,
-      },
-    ];
-  }
-  ready = true;
-  notify();
-  scheduleSave();
-}
-
-export function isReady() {
-  return ready;
-}
-
-export function getData(): AppData {
-  return data;
-}
-
-function subscribe(fn: () => void) {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
-function getSnapshot(): AppData {
-  return data;
-}
-
-/** Subscribe a component to the whole snapshot (cheap: shallow object identity). */
-export function useAppData(): AppData {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-export function useSettings(): Settings {
-  return useAppData().settings;
-}
-
-/* ------------------------------------------------------------------ */
-/* Lists                                                               */
-/* ------------------------------------------------------------------ */
-
-export function createList(input: {
-  name: string;
-  sourceLang: string;
-  targetLang: string;
-}): WordList {
-  const now = Date.now();
-  const list: WordList = {
-    id: uid("list"),
-    name: input.name.trim() || "未命名词库",
-    sourceLang: input.sourceLang,
-    targetLang: input.targetLang,
-    createdAt: now,
-    updatedAt: now,
-  };
-  commit((d) => {
-    d.lists.push(list);
-    markListDirty(d, list.id);
-  });
-  return list;
-}
-
-export function renameList(id: string, name: string) {
-  commit((d) => {
-    const list = d.lists.find((l) => l.id === id);
-    if (!list) return;
-    list.name = name.trim() || list.name;
-    list.updatedAt = Date.now();
-    markListDirty(d, id);
-  });
-}
-
-export function deleteList(id: string) {
-  const now = Date.now();
-  commit((d) => {
-    const doomed = d.words.filter((w) => w.listId === id);
-    d.lists = d.lists.filter((l) => l.id !== id);
-    d.words = d.words.filter((w) => w.listId !== id);
-    for (const w of doomed) {
-      d.tombstones.words[w.id] = now;
-      markWordDirty(d, w.id);
-    }
-    d.tombstones.lists[id] = now;
-    markListDirty(d, id);
-  });
-}
-
-/* ------------------------------------------------------------------ */
-/* Words                                                               */
-/* ------------------------------------------------------------------ */
 
 export interface NewWordInput {
   term: string;
@@ -252,97 +117,48 @@ export interface NewWordInput {
   favorite?: boolean;
 }
 
-export function addWord(input: NewWordInput): Word {
-  const list = data.lists.find((l) => l.id === input.listId) ?? data.lists[0];
-  const now = Date.now();
-  const word: Word = {
-    id: uid("w"),
-    term: input.term.trim(),
-    definition: (input.definition ?? "").trim(),
-    definition2: (input.definition2 ?? "").trim(),
-    example: (input.example ?? "").trim(),
-    note: (input.note ?? "").trim(),
-    status: input.status ?? "new",
-    favorite: input.favorite ?? false,
-    tags: dedupeTags(input.tags ?? []),
-    listId: list?.id ?? DEFAULT_LIST_ID,
-    sourceLang: list?.sourceLang ?? "en",
-    targetLang: list?.targetLang ?? "zh-CN",
-    listenCount: 0,
-    srs: null,
-    createdAt: now,
-    updatedAt: now,
-  };
-  commit((d) => {
-    d.words.unshift(word);
-    markWordDirty(d, word.id);
-  });
-  return word;
+export interface GradeResult {
+  srs: SrsState;
+  status: WordStatus;
+  /** Id of the review log entry this grade appended, so it can be undone. */
+  logId: string;
 }
 
-export function updateWord(id: string, patch: Partial<Word>) {
-  commit((d) => {
-    const w = d.words.find((x) => x.id === id);
-    if (!w) return;
-    Object.assign(w, patch, { updatedAt: Date.now() });
-    if (patch.tags) w.tags = dedupeTags(patch.tags);
-    markWordDirty(d, id);
-  });
-}
+export interface Store {
+  init(): Promise<void>;
+  isReady(): boolean;
+  get(): AppData;
+  subscribe(fn: () => void): () => void;
 
-export function deleteWord(id: string) {
-  const now = Date.now();
-  commit((d) => {
-    const gone = d.logs.filter((l) => l.wordId === id);
-    d.words = d.words.filter((w) => w.id !== id);
-    d.logs = d.logs.filter((l) => l.wordId !== id);
-    d.tombstones.words[id] = now;
-    markWordDirty(d, id);
-    for (const log of gone) {
-      d.tombstones.logs[log.id] = now;
-      markLogDirty(d, log.id);
-    }
-  });
-}
+  createList(input: { name: string; sourceLang: string; targetLang: string }): WordList;
+  renameList(id: string, name: string): void;
+  deleteList(id: string): void;
 
-export function deleteWords(ids: string[]) {
-  const set = new Set(ids);
-  const now = Date.now();
-  commit((d) => {
-    const goneLogs = d.logs.filter((l) => set.has(l.wordId));
-    d.words = d.words.filter((w) => !set.has(w.id));
-    d.logs = d.logs.filter((l) => !set.has(l.wordId));
-    for (const id of ids) {
-      d.tombstones.words[id] = now;
-      markWordDirty(d, id);
-    }
-    for (const log of goneLogs) {
-      d.tombstones.logs[log.id] = now;
-      markLogDirty(d, log.id);
-    }
-  });
-}
+  addWord(input: NewWordInput): Word;
+  updateWord(id: string, patch: Partial<Word>): void;
+  deleteWord(id: string): void;
+  deleteWords(ids: string[]): void;
+  toggleFavorite(id: string): void;
+  bumpListen(id: string): void;
 
-export function toggleFavorite(id: string) {
-  commit((d) => {
-    const w = d.words.find((x) => x.id === id);
-    if (w) {
-      w.favorite = !w.favorite;
-      w.updatedAt = Date.now();
-      markWordDirty(d, id);
-    }
-  });
-}
+  gradeWord(id: string, grade: Grade, now?: number): GradeResult | null;
+  undoReview(
+    id: string,
+    prevSrs: SrsState | null,
+    prevStatus: WordStatus,
+    logId: string,
+    now?: number,
+  ): void;
+  setWordStatus(id: string, status: WordStatus): void;
+  resetSrs(id: string): void;
 
-export function bumpListen(id: string) {
-  commit((d) => {
-    const w = d.words.find((x) => x.id === id);
-    if (w) {
-      w.listenCount += 1;
-      w.updatedAt = Date.now();
-      markWordDirty(d, id);
-    }
-  });
+  updateSettings(patch: Partial<Settings>): void;
+  wipeAll(): Promise<void>;
+
+  getChangesToPush(): ChangeSet;
+  pendingChangeCount(): number;
+  markPushed(pushed: ChangeSet): void;
+  applyRemoteChanges(changes: ChangeSet): void;
 }
 
 function dedupeTags(tags: string[]): string[] {
@@ -359,192 +175,373 @@ function dedupeTags(tags: string[]): string[] {
   return out.slice(0, 12);
 }
 
-/* ------------------------------------------------------------------ */
-/* Reviewing                                                           */
-/* ------------------------------------------------------------------ */
+const STATUS_RANK: Record<WordStatus, number> = {
+  new: 0,
+  reviewing: 1,
+  learning: 2,
+  mastered: 3,
+};
 
-export interface GradeResult {
-  srs: SrsState;
-  status: WordStatus;
-  /** Id of the review log entry this grade appended, so it can be undone. */
-  logId: string;
-}
-
-/** Grade a card and persist the new schedule + review log. */
-export function gradeWord(id: string, grade: Grade, now = Date.now()): GradeResult | null {
-  const word = data.words.find((w) => w.id === id);
-  if (!word) return null;
-  const before = word.srs?.intervalDays ?? 0;
-  const next = applyGrade(word.srs, grade, now);
-  const status = statusForInterval(next.intervalDays);
-  const log: ReviewLog = {
-    id: uid("r"),
-    wordId: id,
-    grade,
-    at: now,
-    intervalBefore: before,
-    intervalAfter: next.intervalDays,
+function withDefaultList(d: AppData, now: number): AppData {
+  return {
+    ...d,
+    lists: [
+      {
+        id: DEFAULT_LIST_ID,
+        name: "我的词库",
+        sourceLang: "en",
+        targetLang: "zh-CN",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
   };
-  commit((d) => {
-    const w = d.words.find((x) => x.id === id);
-    if (!w) return;
-    w.srs = next;
-    // Never demote: keep the highest status the word has earned.
-    if (rank(status) > rank(w.status)) w.status = status;
-    w.updatedAt = now;
-    d.logs.push(log);
-    markWordDirty(d, id);
-    markLogDirty(d, log.id);
-  });
-  return { srs: next, status, logId: log.id };
 }
 
-/**
- * Roll back a single grade: restore the schedule the word had before, put the
- * status back exactly as it was (including the "never demote" behaviour, which
- * a plain recompute would get wrong) and drop the review log entry.
- */
-export function undoReview(
-  id: string,
-  prevSrs: SrsState | null,
-  prevStatus: WordStatus,
-  logId: string,
-  now = Date.now(),
-) {
-  commit((d) => {
-    const w = d.words.find((x) => x.id === id);
-    if (!w) return;
-    w.srs = prevSrs;
-    w.status = prevStatus;
-    w.updatedAt = now;
-    markWordDirty(d, id);
-    const at = d.logs.findIndex((log) => log.id === logId);
-    if (at >= 0) d.logs.splice(at, 1);
-    d.tombstones.logs[logId] = now;
-    markLogDirty(d, logId);
-  });
-}
+export function createStore(options: StoreOptions): Store {
+  const { persistence, clock = () => Date.now(), seed = seedData } = options;
+  const saveDelayMs = options.saveDelayMs ?? 220;
 
-function rank(status: WordStatus): number {
-  return { new: 0, reviewing: 1, learning: 2, mastered: 3 }[status];
-}
+  let data: AppData = emptyData();
+  let ready = false;
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  const listeners = new Set<() => void>();
 
-export function setWordStatus(id: string, status: WordStatus) {
-  commit((d) => {
-    const w = d.words.find((x) => x.id === id);
-    if (w) {
-      w.status = status;
-      w.updatedAt = Date.now();
-      markWordDirty(d, id);
+  function notify() {
+    for (const fn of listeners) fn();
+  }
+
+  function scheduleSave() {
+    if (saveDelayMs <= 0) {
+      void persistence.save(data);
+      return;
     }
-  });
-}
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      void persistence.save(data);
+    }, saveDelayMs);
+  }
 
-/** Manually reset a card's schedule back to "new". */
-export function resetSrs(id: string) {
-  commit((d) => {
-    const w = d.words.find((x) => x.id === id);
-    if (w) {
-      w.srs = null;
-      w.status = "new";
-      w.updatedAt = Date.now();
-      markWordDirty(d, id);
-    }
-  });
-}
+  function cloneSnapshot(d: AppData): AppData {
+    return {
+      ...d,
+      lists: d.lists.slice(),
+      words: d.words.slice(),
+      logs: d.logs.slice(),
+      settings: { ...d.settings },
+      tombstones: cloneTombstones(d.tombstones),
+      pending: {
+        words: d.pending.words.slice(),
+        lists: d.pending.lists.slice(),
+        logs: d.pending.logs.slice(),
+        settings: d.pending.settings,
+      },
+    };
+  }
 
-/* ------------------------------------------------------------------ */
-/* Settings & data                                                     */
-/* ------------------------------------------------------------------ */
+  function commit(mutator: (draft: AppData) => void) {
+    const draft = cloneSnapshot(data);
+    mutator(draft);
+    data = draft;
+    notify();
+    emitLocalChange();
+    scheduleSave();
+  }
 
-export function updateSettings(patch: Partial<Settings>) {
-  commit((d) => {
-    d.settings = { ...d.settings, ...patch };
-    d.settingsUpdatedAt = Date.now();
-    d.pending.settings = true;
-  });
-}
+  /** Replace a word rather than mutating it, so older snapshots stay valid. */
+  function patchWord(d: AppData, id: string, patch: Partial<Word>): Word | null {
+    const at = d.words.findIndex((w) => w.id === id);
+    if (at < 0) return null;
+    const next = { ...d.words[at], ...patch };
+    d.words[at] = next;
+    return next;
+  }
 
-export function replaceAll(next: AppData) {
-  const migrated = migrateSnapshot(next) ?? emptyData();
-  data = migrated;
-  notify();
-  scheduleSave();
-}
+  function patchList(d: AppData, id: string, patch: Partial<WordList>): WordList | null {
+    const at = d.lists.findIndex((l) => l.id === id);
+    if (at < 0) return null;
+    const next = { ...d.lists[at], ...patch };
+    d.lists[at] = next;
+    return next;
+  }
 
-export async function wipeAll() {
-  await clearSnapshot();
-  const now = Date.now();
-  data = emptyData();
-  data.lists = [
-    {
-      id: DEFAULT_LIST_ID,
-      name: "我的词库",
-      sourceLang: "en",
-      targetLang: "zh-CN",
-      createdAt: now,
-      updatedAt: now,
+  async function init(): Promise<void> {
+    const snapshot = await persistence.load();
+    const migrated = snapshot ? migrateSnapshot(snapshot) : null;
+    data = migrated ?? seed(clock());
+    if (data.lists.length === 0) data = withDefaultList(data, clock());
+    ready = true;
+    notify();
+    scheduleSave();
+  }
+
+  return {
+    init,
+    isReady: () => ready,
+    get: () => data,
+    subscribe(fn) {
+      listeners.add(fn);
+      return () => {
+        listeners.delete(fn);
+      };
     },
-  ];
-  notify();
-  scheduleSave();
+
+    /* ---------------------------------------------------------------- */
+    /* Lists                                                             */
+    /* ---------------------------------------------------------------- */
+
+    createList(input) {
+      const now = clock();
+      const list: WordList = {
+        id: uid("list"),
+        name: input.name.trim() || "未命名词库",
+        sourceLang: input.sourceLang,
+        targetLang: input.targetLang,
+        createdAt: now,
+        updatedAt: now,
+      };
+      commit((d) => {
+        d.lists.push(list);
+        journal.touch(d, "list", list.id);
+      });
+      return list;
+    },
+
+    renameList(id, name) {
+      commit((d) => {
+        const list = d.lists.find((l) => l.id === id);
+        if (!list) return;
+        patchList(d, id, { name: name.trim() || list.name, updatedAt: clock() });
+        journal.touch(d, "list", id);
+      });
+    },
+
+    deleteList(id) {
+      const now = clock();
+      commit((d) => {
+        const doomed = d.words.filter((w) => w.listId === id).map((w) => w.id);
+        d.lists = d.lists.filter((l) => l.id !== id);
+        // One cascade for words *and* their review logs — the same declaration
+        // every other delete uses.
+        journal.purgeWords(d, doomed, now);
+        journal.bury(d, "list", id, now);
+      });
+    },
+
+    /* ---------------------------------------------------------------- */
+    /* Words                                                             */
+    /* ---------------------------------------------------------------- */
+
+    addWord(input) {
+      const list = data.lists.find((l) => l.id === input.listId) ?? data.lists[0];
+      const now = clock();
+      const word: Word = {
+        id: uid("w"),
+        term: input.term.trim(),
+        definition: (input.definition ?? "").trim(),
+        definition2: (input.definition2 ?? "").trim(),
+        example: (input.example ?? "").trim(),
+        note: (input.note ?? "").trim(),
+        status: input.status ?? "new",
+        favorite: input.favorite ?? false,
+        tags: dedupeTags(input.tags ?? []),
+        listId: list?.id ?? DEFAULT_LIST_ID,
+        sourceLang: list?.sourceLang ?? "en",
+        targetLang: list?.targetLang ?? "zh-CN",
+        listenCount: 0,
+        srs: null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      commit((d) => {
+        d.words.unshift(word);
+        journal.touch(d, "word", word.id);
+      });
+      return word;
+    },
+
+    updateWord(id, patch) {
+      commit((d) => {
+        const next: Partial<Word> = { ...patch, updatedAt: clock() };
+        if (patch.tags) next.tags = dedupeTags(patch.tags);
+        if (!patchWord(d, id, next)) return;
+        journal.touch(d, "word", id);
+      });
+    },
+
+    deleteWord(id) {
+      const now = clock();
+      commit((d) => journal.purgeWords(d, [id], now));
+    },
+
+    deleteWords(ids) {
+      const now = clock();
+      commit((d) => journal.purgeWords(d, ids, now));
+    },
+
+    toggleFavorite(id) {
+      commit((d) => {
+        const w = d.words.find((x) => x.id === id);
+        if (!w) return;
+        patchWord(d, id, { favorite: !w.favorite, updatedAt: clock() });
+        journal.touch(d, "word", id);
+      });
+    },
+
+    bumpListen(id) {
+      commit((d) => {
+        const w = d.words.find((x) => x.id === id);
+        if (!w) return;
+        patchWord(d, id, { listenCount: w.listenCount + 1, updatedAt: clock() });
+        journal.touch(d, "word", id);
+      });
+    },
+
+    /* ---------------------------------------------------------------- */
+    /* Reviewing                                                         */
+    /* ---------------------------------------------------------------- */
+
+    gradeWord(id, grade, now = clock()) {
+      const word = data.words.find((w) => w.id === id);
+      if (!word) return null;
+      const before = word.srs?.intervalDays ?? 0;
+      const next = applyGrade(word.srs, grade, now);
+      const status = statusForInterval(next.intervalDays);
+      const log: ReviewLog = {
+        id: uid("r"),
+        wordId: id,
+        grade,
+        at: now,
+        intervalBefore: before,
+        intervalAfter: next.intervalDays,
+      };
+      commit((d) => {
+        const w = d.words.find((x) => x.id === id);
+        if (!w) return;
+        // Never demote: keep the highest status the word has earned.
+        const promoted = STATUS_RANK[status] > STATUS_RANK[w.status] ? status : w.status;
+        patchWord(d, id, { srs: next, status: promoted, updatedAt: now });
+        d.logs = [...d.logs, log];
+        journal.touch(d, "word", id);
+        journal.touch(d, "log", log.id);
+      });
+      return { srs: next, status, logId: log.id };
+    },
+
+    /**
+     * Roll back a single grade: restore the schedule the word had before, put
+     * the status back exactly as it was (including the "never demote"
+     * behaviour, which a plain recompute would get wrong) and drop the log.
+     */
+    undoReview(id, prevSrs, prevStatus, logId, now = clock()) {
+      commit((d) => {
+        if (!patchWord(d, id, { srs: prevSrs, status: prevStatus, updatedAt: now })) return;
+        journal.touch(d, "word", id);
+        d.logs = d.logs.filter((log) => log.id !== logId);
+        journal.bury(d, "log", logId, now);
+      });
+    },
+
+    setWordStatus(id, status) {
+      commit((d) => {
+        if (!patchWord(d, id, { status, updatedAt: clock() })) return;
+        journal.touch(d, "word", id);
+      });
+    },
+
+    /** Manually reset a card's schedule back to "new". */
+    resetSrs(id) {
+      commit((d) => {
+        if (!patchWord(d, id, { srs: null, status: "new", updatedAt: clock() })) return;
+        journal.touch(d, "word", id);
+      });
+    },
+
+    /* ---------------------------------------------------------------- */
+    /* Settings & data                                                   */
+    /* ---------------------------------------------------------------- */
+
+    updateSettings(patch) {
+      commit((d) => {
+        d.settings = { ...d.settings, ...patch };
+        journal.touchSettings(d, clock());
+      });
+    },
+
+    async wipeAll() {
+      await persistence.clear();
+      data = withDefaultList(emptyData(), clock());
+      notify();
+      scheduleSave();
+    },
+
+    /* ---------------------------------------------------------------- */
+    /* Sync bridge                                                       */
+    /* ---------------------------------------------------------------- */
+
+    getChangesToPush: () => collectChanges(data),
+    pendingChangeCount: () => journal.pendingTotal(data),
+
+    markPushed(pushed) {
+      commit((d) => journal.settle(d, pushed));
+    },
+
+    /** Merge a server change set into the local snapshot. */
+    applyRemoteChanges(changes) {
+      // Deliberately no `emitLocalChange`: this is the server talking, not the
+      // user, and echoing it would schedule another sync round.
+      data = applyRemote(data, changes);
+      notify();
+      scheduleSave();
+    },
+  };
 }
 
 /* ------------------------------------------------------------------ */
-/* Sync bridge                                                         */
+/* The app's single instance                                          */
 /* ------------------------------------------------------------------ */
 
-/** What still needs to be pushed to the server. */
-export function getChangesToPush(): ChangeSet {
-  return collectChanges(data);
+const store = createStore({
+  persistence: { load: loadSnapshot, save: saveSnapshot, clear: clearSnapshot },
+  seed: seedData,
+});
+
+/** Load the snapshot once at boot; first run seeds a demo deck. */
+export const initStore = store.init;
+export const isReady = store.isReady;
+export const getData = store.get;
+export const createList = store.createList;
+export const renameList = store.renameList;
+export const deleteList = store.deleteList;
+export const addWord = store.addWord;
+export const updateWord = store.updateWord;
+export const deleteWord = store.deleteWord;
+export const deleteWords = store.deleteWords;
+export const toggleFavorite = store.toggleFavorite;
+export const bumpListen = store.bumpListen;
+export const gradeWord = store.gradeWord;
+export const undoReview = store.undoReview;
+export const setWordStatus = store.setWordStatus;
+export const resetSrs = store.resetSrs;
+export const updateSettings = store.updateSettings;
+export const wipeAll = store.wipeAll;
+export const getChangesToPush = store.getChangesToPush;
+export const pendingChangeCount = store.pendingChangeCount;
+export const markPushed = store.markPushed;
+export const applyRemoteChanges = store.applyRemoteChanges;
+
+/** Subscribe a component to the whole snapshot (cheap: shallow object identity). */
+export function useAppData(): AppData {
+  return useSyncExternalStore(store.subscribe, store.get, store.get);
 }
 
-export function pendingChangeCount(): number {
-  return pendingCount(data);
-}
-
-/**
- * Mark records as accepted by the server (called after a successful push).
- *
- * Only clears a pending flag when the local copy is still the exact version we
- * sent — if the user edited the record while the request was in flight, the
- * newer version must stay pending so the next round uploads it.
- */
-export function markPushed(pushed: ChangeSet) {
-  commit((d) => {
-    const wordStamp = (id: string) =>
-      d.words.find((w) => w.id === id)?.updatedAt ?? d.tombstones.words[id] ?? 0;
-    const listStamp = (id: string) =>
-      d.lists.find((l) => l.id === id)?.updatedAt ?? d.tombstones.lists[id] ?? 0;
-    const logStamp = (id: string) =>
-      d.logs.find((l) => l.id === id)?.at ?? d.tombstones.logs[id] ?? 0;
-
-    const settledWords = new Set(
-      pushed.words.filter((r) => wordStamp(r.id) === r.updatedAt).map((r) => r.id),
-    );
-    const settledLists = new Set(
-      pushed.lists.filter((r) => listStamp(r.id) === r.updatedAt).map((r) => r.id),
-    );
-    const settledLogs = new Set(pushed.logs.filter((r) => logStamp(r.id) === r.at).map((r) => r.id));
-
-    d.pending.words = d.pending.words.filter((id) => !settledWords.has(id));
-    d.pending.lists = d.pending.lists.filter((id) => !settledLists.has(id));
-    d.pending.logs = d.pending.logs.filter((id) => !settledLogs.has(id));
-    if (pushed.settings && d.settingsUpdatedAt === pushed.settings.updatedAt) {
-      d.pending.settings = false;
-    }
-  });
-}
-
-/** Merge a server change set into the local snapshot. */
-export function applyRemoteChanges(changes: ChangeSet) {
-  data = applyRemote(data, changes);
-  notify();
-  scheduleSave();
+export function useSettings(): Settings {
+  return useAppData().settings;
 }
 
 /* ------------------------------------------------------------------ */
-/* Selectors                                                           */
+/* Selectors (pure: take the snapshot, return a projection)            */
 /* ------------------------------------------------------------------ */
 
 export function wordsOfList(d: AppData, listId: string): Word[] {
@@ -603,4 +600,4 @@ export function findDuplicate(d: AppData, term: string, listId?: string): Word |
   );
 }
 
-export { freshSrs };
+export { freshSrs, pendingCount };

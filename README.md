@@ -115,7 +115,8 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   │   └── locales/            # zh-CN.ts / en.ts（结构同构，en 受 Dictionary 约束）
 │   ├── lib/
 │   │   ├── db.ts               # IndexedDB + localStorage 持久化
-│   │   ├── store.ts            # 可观察快照 store 与全部数据变更
+│   │   ├── store.ts            # createStore 工厂、可观察快照与全部数据变更
+│   │   ├── journal.ts          # 变更日志：pending / tombstones 的唯一写者
 │   │   ├── srs.ts              # 间隔重复调度（纯函数）
 │   │   ├── quiz.ts             # 出题（纯函数）
 │   │   ├── transfer.ts         # 导入导出：JSON / CSV / Anki TXT
@@ -209,10 +210,11 @@ npm test
 | `src/lib/srs.test.ts` | 50 | 三档评分调度、ease 上下限、间隔上限、状态边界、间隔文案、不可变性 |
 | `src/lib/utils.test.ts` | 20 | 文本归一化、clamp、shuffle、日期差值、dayKey、cx、uid、相对时间 |
 | `src/lib/translate.test.ts` | 24 | 有道词典 / 机器翻译 / MyMemory / Google 各源解析、释义格式化、缓存命中、429 降级与冷却 |
-| `src/lib/syncMerge.test.ts` | 25 | 待推改动收集、LWW 合并、墓碑删除、日志并集去重、`markPushed` 时间戳比对 |
+| `src/lib/syncMerge.test.ts` | 23 | 待推改动收集、LWW 合并、墓碑删除、日志并集去重 |
+| `src/lib/journal.test.ts` | 12 | 用真实 store 实例验证：每次本地编辑都进 pending、删除必留墓碑、删词库级联词与日志、快照不可变、结算的版本守卫 |
 | `src/__tests__/app.smoke.test.tsx` | 5 | 在 jsdom 中真实挂载整个应用：五个页面渲染、主题切换、弹窗开关、搜索过滤 |
 
-共 **124** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
+共 **134** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
 
 冒烟测试通过 `// @vitest-environment jsdom` 单独指定环境，其余用例仍跑在 Node 环境。
 
@@ -233,7 +235,8 @@ npm test
   }
   ```
 
-- **写入策略**：所有变更走 `store.ts` 的 `commit()`，先通知订阅者，再以 220ms 防抖写入快照。
+- **写入策略**：所有变更走 `store.ts` 的 `commit()`，先通知订阅者，再以 220ms 防抖写入快照。`commit` 只浅拷数组，因此记录一律**替换**而非就地修改（`patchWord` / `patchList`），旧快照不会被后续编辑污染。
+- **同步记账**：`pending`（待推改动）与 `tombstones`（删除墓碑）只由 `src/lib/journal.ts` 写入，业务操作不再各自手写 `mark*Dirty`。这样「本地改动必须被推送」「本地删除必须留墓碑」两条不变量由模块保证，新增操作不会漏记账；删词、批量删词、删词库共用同一套级联（`journal.purgeWords`），不会留下孤儿复习日志。
 - **回退链**：IndexedDB 不可用或读写失败 → localStorage 键 `lexumo:data`（JSON 字符串）→ 再失败则仅保存在内存（刷新即丢失）。
 - **版本迁移**：启动时若快照 `version` 低于 `DATA_VERSION`，会就地补齐新字段（`updatedAt` / `tombstones` / `pending` / `settingsUpdatedAt`）并保留原有数据；只有 `version` 高于当前版本（降级运行）才会重新播种。
 - **隐私**：数据默认只在本机。只有在「设置 → 账号与同步」中显式登录后，词库、复习日志与设置才会推送到你填写的服务器地址；不登录则没有任何网络上传。

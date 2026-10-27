@@ -17,6 +17,7 @@ import type {
   Tombstone,
   WordRecord,
 } from "./types";
+import { pendingTotal } from "./journal";
 
 const tombstone = (id: string, updatedAt: number): Tombstone => ({ id, updatedAt, deleted: true });
 
@@ -72,31 +73,14 @@ export function hasChanges(changes: ChangeSet): boolean {
   );
 }
 
-/** Number of records still waiting to be pushed (drives the UI badge). */
-export function pendingCount(data: AppData): number {
-  return (
-    data.pending.words.length +
-    data.pending.lists.length +
-    data.pending.logs.length +
-    (data.pending.settings ? 1 : 0)
-  );
-}
-
-/** Clear the pending flags for records that the server accepted. */
-export function clearPending(data: AppData, pushed: ChangeSet): AppData {
-  const pushedWords = new Set(pushed.words.map((w) => w.id));
-  const pushedLists = new Set(pushed.lists.map((l) => l.id));
-  const pushedLogs = new Set(pushed.logs.map((l) => l.id));
-  return {
-    ...data,
-    pending: {
-      words: data.pending.words.filter((id) => !pushedWords.has(id)),
-      lists: data.pending.lists.filter((id) => !pushedLists.has(id)),
-      logs: data.pending.logs.filter((id) => !pushedLogs.has(id)),
-      settings: pushed.settings ? false : data.pending.settings,
-    },
-  };
-}
+/**
+ * Number of records still waiting to be pushed (drives the UI badge).
+ *
+ * Delegates to the journal, which owns the bookkeeping. Settling pending flags
+ * is *not* here: it is version-guarded and lives in `journal.settle`, because a
+ * naive "clear everything we sent" loses edits made during the request.
+ */
+export const pendingCount = pendingTotal;
 
 const isTombstone = (r: unknown): r is Tombstone =>
   (r as { deleted?: unknown }).deleted === true;

@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  applyRemote,
-  clearPending,
-  collectChanges,
-  hasChanges,
-  pendingCount,
-} from "./syncMerge";
+import { applyRemote, collectChanges, hasChanges, pendingCount } from "./syncMerge";
 import {
   DATA_VERSION,
   DEFAULT_SETTINGS,
@@ -134,36 +128,6 @@ describe("collectChanges", () => {
   it("skips ids that are pending but no longer exist", () => {
     const d = data({ pending: { words: ["ghost"], lists: [], logs: [], settings: false } });
     expect(collectChanges(d).words).toHaveLength(0);
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/* clearPending                                                        */
-/* ------------------------------------------------------------------ */
-
-describe("clearPending", () => {
-  it("drops only the records that were pushed", () => {
-    const d = data({
-      pending: { words: ["w1", "w2"], lists: [], logs: ["g1"], settings: true },
-    });
-    const next = clearPending(d, {
-      words: [word("w1", 1)],
-      lists: [],
-      logs: [],
-      settings: null,
-    });
-    expect(next.pending.words).toEqual(["w2"]);
-    expect(next.pending.logs).toEqual(["g1"]);
-    expect(next.pending.settings).toBe(true);
-  });
-
-  it("clears the settings flag only when settings were pushed", () => {
-    const d = data({ pending: { ...EMPTY_PENDING, settings: true } });
-    const withSettings: ChangeSet = {
-      ...emptyChanges(),
-      settings: { ...DEFAULT_SETTINGS, updatedAt: 5 },
-    };
-    expect(clearPending(d, withSettings).pending.settings).toBe(false);
   });
 });
 
