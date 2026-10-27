@@ -211,10 +211,10 @@ npm test
 | `src/lib/utils.test.ts` | 20 | 文本归一化、clamp、shuffle、日期差值、dayKey、cx、uid、相对时间 |
 | `src/lib/translate.test.ts` | 24 | 有道词典 / 机器翻译 / MyMemory / Google 各源解析、释义格式化、缓存命中、429 降级与冷却 |
 | `src/lib/syncMerge.test.ts` | 23 | 待推改动收集、LWW 合并、墓碑删除、日志并集去重 |
-| `src/lib/journal.test.ts` | 12 | 用真实 store 实例验证：每次本地编辑都进 pending、删除必留墓碑、删词库级联词与日志、快照不可变、结算的版本守卫 |
+| `src/lib/journal.test.ts` | 22 | 用真实 store 实例验证：每次本地编辑都进 pending、删除必留墓碑、删词库级联词与日志、快照不可变、`markPushed` 真的结算、远端改动不算本地编辑 |
 | `src/__tests__/app.smoke.test.tsx` | 5 | 在 jsdom 中真实挂载整个应用：五个页面渲染、主题切换、弹窗开关、搜索过滤 |
 
-共 **134** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
+共 **144** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
 
 冒烟测试通过 `// @vitest-environment jsdom` 单独指定环境，其余用例仍跑在 Node 环境。
 
