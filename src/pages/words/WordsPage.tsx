@@ -430,10 +430,7 @@ export function WordsPage() {
                   )}
                 </div>
 
-                <div
-                  className="row-col-status"
-                  style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}
-                >
+                <div className="row-col-status">
                   <StatusChip status={w.status} label={t(STATUS_LABEL_KEY[w.status])} />
                   <span className="tiny muted">
                     {w.srs ? relativeDay(w.srs.dueAt, lang) : t("words.neverReviewed")}
@@ -442,7 +439,7 @@ export function WordsPage() {
 
                 <div className="row-actions" onClick={(e) => e.stopPropagation()}>
                   <button
-                    className="btn btn-icon btn-sm"
+                    className="btn btn-icon btn-sm row-act-fav"
                     type="button"
                     title={t("common.favorite")}
                     aria-label={t("common.favorite")}
@@ -452,7 +449,7 @@ export function WordsPage() {
                     <Icon name={w.favorite ? "star-filled" : "star"} size={15} />
                   </button>
                   <button
-                    className="btn btn-icon btn-sm"
+                    className="btn btn-icon btn-sm row-act-play"
                     type="button"
                     title={t("words.listens", { n: w.listenCount })}
                     aria-label={t("common.play")}
@@ -461,7 +458,7 @@ export function WordsPage() {
                     <Icon name="volume" size={15} />
                   </button>
                   <button
-                    className="btn btn-icon btn-sm"
+                    className="btn btn-icon btn-sm row-act-edit"
                     type="button"
                     title={t("common.edit")}
                     aria-label={t("common.edit")}
@@ -470,7 +467,7 @@ export function WordsPage() {
                     <Icon name="edit" size={15} />
                   </button>
                   <button
-                    className="btn btn-icon btn-sm"
+                    className="btn btn-icon btn-sm row-act-del"
                     type="button"
                     title={t("common.delete")}
                     aria-label={t("common.delete")}

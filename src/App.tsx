@@ -84,25 +84,21 @@ function useRail() {
   return { rail, toggle };
 }
 
-/** Phone layout: the sidebar becomes an off-canvas drawer behind a hamburger. */
+/** Phone layout: the sidebar gives way to a bottom tab bar. */
 function useMobile() {
   const [mobile, setMobile] = useState(
     () => typeof window !== "undefined" && window.innerWidth <= 720,
   );
-  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 720px)");
-    const sync = () => {
-      setMobile(mq.matches);
-      if (!mq.matches) setMenuOpen(false);
-    };
+    const sync = () => setMobile(mq.matches);
     sync();
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
 
-  return { mobile, menuOpen, setMenuOpen };
+  return mobile;
 }
 
 export function App() {
@@ -110,17 +106,16 @@ export function App() {
   const { page, navigate } = useRouter();
   const data = useAppData();
   const { rail, toggle } = useRail();
-  const { mobile, menuOpen, setMenuOpen } = useMobile();
+  const mobile = useMobile();
   const [helpOpen, setHelpOpen] = useState(false);
   useTheme();
 
-  const goTo = useCallback(
-    (id: PageId) => {
-      navigate(id);
-      setMenuOpen(false);
-    },
-    [navigate],
-  );
+  // Switching pages should start at the top — on a phone the scroll offset of
+  // the previous page otherwise carries over and looks like a broken jump.
+  useEffect(() => {
+    const scroller = document.querySelector(".page");
+    if (scroller) scroller.scrollTop = 0;
+  }, [page]);
 
   const due = dueWords(data).length;
   const streak = streakDays(data);
@@ -172,40 +167,18 @@ export function App() {
   }, [navigate]);
 
   return (
-    <div className={cx("app", rail && "rail", mobile && "mobile", menuOpen && "menu-open")}>
+    <div className={cx("app", rail && "rail", mobile && "mobile")}>
       <a className="skip-link" href="#main-content">
         跳到主要内容
       </a>
 
-      {mobile && (
-        <button
-          className="menu-btn"
-          type="button"
-          onClick={() => setMenuOpen(true)}
-          aria-label="打开菜单"
-          aria-expanded={menuOpen}
-        >
-          <Icon name="list" size={20} />
-        </button>
-      )}
-
-      <aside className="sidebar" aria-hidden={mobile && !menuOpen ? true : undefined}>
+      <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">L</div>
           <div className="brand-text">
             <div className="brand-name">{t("common.appName")}</div>
             <div className="brand-sub">词砚</div>
           </div>
-          {mobile && (
-            <button
-              className="btn btn-quiet btn-sm drawer-close"
-              type="button"
-              onClick={() => setMenuOpen(false)}
-              aria-label="关闭菜单"
-            >
-              <Icon name="x" size={16} />
-            </button>
-          )}
         </div>
 
         <nav className="nav" aria-label="主导航">
@@ -214,7 +187,7 @@ export function App() {
               key={item.id}
               type="button"
               className={cx("nav-item", page === item.id && "active")}
-              onClick={() => goTo(item.id)}
+              onClick={() => navigate(item.id)}
               aria-current={page === item.id ? "page" : undefined}
               title={`${t(item.labelKey)}  (Ctrl+${i + 1})`}
             >
@@ -232,7 +205,7 @@ export function App() {
             <button
               type="button"
               className="sync-chip"
-              onClick={() => goTo("settings")}
+              onClick={() => navigate("settings")}
               title={syncStatus.email ? `${syncLabel} · ${syncStatus.email}` : syncLabel}
             >
               <span className={`sync-dot sync-dot-${syncTone}`} />
@@ -295,11 +268,25 @@ export function App() {
       </aside>
 
       {mobile && (
-        <div
-          className="scrim"
-          onClick={() => setMenuOpen(false)}
-          aria-hidden="true"
-        />
+        <nav className="tabbar" aria-label={t("nav.main")}>
+          {NAV.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={cx("tab-item", page === item.id && "active")}
+              onClick={() => navigate(item.id)}
+              aria-current={page === item.id ? "page" : undefined}
+            >
+              <span className="tab-icon">
+                <Icon name={item.icon} size={21} />
+                {item.id === "flashcards" && due > 0 && (
+                  <span className="tab-badge">{due > 99 ? "99+" : due}</span>
+                )}
+              </span>
+              <span className="tab-label">{t(item.labelKey)}</span>
+            </button>
+          ))}
+        </nav>
       )}
 
       <main className="main" id="main-content" tabIndex={-1}>

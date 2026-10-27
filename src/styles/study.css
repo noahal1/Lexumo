@@ -298,6 +298,19 @@
   }
 }
 
+/* On a phone the shortcut cheat-sheet is dead weight below the card. */
+@media (max-width: 720px) {
+  .study-side {
+    display: none;
+  }
+  .fc-card {
+    min-height: 0;
+  }
+  .fc-stage {
+    padding-bottom: var(--sp-4);
+  }
+}
+
 /* Intro / empty / summary panels */
 .fc-intro {
   display: flex;

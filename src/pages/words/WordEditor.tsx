@@ -38,6 +38,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   const [tags, setTags] = useState<string[]>([]);
   const [listId, setListId] = useState(defaultListId);
   const [status, setStatus] = useState<WordStatus>("new");
+  const [favorite, setFavorite] = useState(false);
   const [error, setError] = useState("");
 
   const [lookupState, setLookupState] = useState<LookupState>("idle");
@@ -63,6 +64,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       setTags(word.tags);
       setListId(word.listId);
       setStatus(word.status);
+      setFavorite(word.favorite);
     } else {
       setTerm("");
       setDefinition("");
@@ -72,6 +74,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       setTags([]);
       setListId(defaultListId);
       setStatus("new");
+      setFavorite(false);
     }
   }, [open, word, defaultListId]);
 
@@ -168,6 +171,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         tags,
         listId,
         status,
+        favorite,
       });
       toast(t("words.wordUpdated"), "ok");
     } else {
@@ -203,6 +207,18 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       subtitle={word ? word.term : t("words.subtitle")}
       footer={
         <>
+          {word && (
+            <button
+              className={favorite ? "btn btn-sm" : "btn btn-sm btn-quiet"}
+              type="button"
+              aria-pressed={favorite}
+              onClick={() => setFavorite((v) => !v)}
+              title={t("common.favorite")}
+            >
+              <Icon name={favorite ? "star-filled" : "star"} size={14} />
+              {t("common.favorite")}
+            </button>
+          )}
           {word && (
             <button
               className="btn btn-danger btn-sm"

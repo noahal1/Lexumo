@@ -267,8 +267,13 @@
   .chart-plot {
     height: 104px;
   }
+  /* Labels are already thinned out by labelStep, so keep them legible rather
+     than shrinking them into noise. */
   .chart-x span {
-    font-size: 9.5px;
+    font-size: 11px;
+  }
+  .goal-ring-of {
+    font-size: 11.5px;
   }
 }
 
@@ -542,11 +547,16 @@
 .range {
   -webkit-appearance: none;
   appearance: none;
+  height: 20px; /* hit area; the visible track is drawn by the pseudo-element */
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-runnable-track {
   height: 6px;
   border-radius: var(--r-full);
   background: var(--line);
-  outline: none;
-  cursor: pointer;
 }
 
 .range::-webkit-slider-thumb {
@@ -554,6 +564,7 @@
   appearance: none;
   width: 16px;
   height: 16px;
+  margin-top: -5px; /* (6px track - 16px thumb) / 2 */
   border-radius: 50%;
   background: var(--jade);
   border: 2px solid var(--surface);
@@ -565,6 +576,12 @@
 .range:active::-webkit-slider-thumb {
   cursor: grabbing;
   transform: scale(1.08);
+}
+
+.range::-moz-range-track {
+  height: 6px;
+  border-radius: var(--r-full);
+  background: var(--line);
 }
 
 .range::-moz-range-thumb {
@@ -579,6 +596,36 @@
 .range:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 4px;
+}
+
+/* Touch: a 6px-tall box is impossible to grab, so grow the hit area and the
+   thumb without changing the visual track thickness. */
+@media (max-width: 720px) {
+  .range {
+    height: 36px;
+  }
+  .range::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+    margin-top: -8px; /* (6px - 22px) / 2 */
+  }
+  .range::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+  }
+  /* 51×31 is the platform-standard switch size (iOS uses the same). */
+  .switch {
+    width: 51px;
+    height: 31px;
+    padding: 3px;
+  }
+  .switch-knob {
+    width: 23px;
+    height: 23px;
+  }
+  .switch[aria-checked="true"] .switch-knob {
+    transform: translateX(22px);
+  }
 }
 
 /* --------------------------------------------------------------------------

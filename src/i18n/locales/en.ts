@@ -70,6 +70,7 @@ export const en: Dictionary = {
     mastered: "Mastered",
   },
   nav: {
+    main: "Main navigation",
     words: "Words",
     flashcards: "Flashcards",
     quiz: "Quiz",

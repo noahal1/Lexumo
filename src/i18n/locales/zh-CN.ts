@@ -68,6 +68,7 @@ const zhCNraw = {
     mastered: "已掌握",
   },
   nav: {
+    main: "主导航",
     words: "词库",
     flashcards: "闪卡",
     quiz: "测验",
