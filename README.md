@@ -80,7 +80,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 | 同步后端 | Node 24（`node:http` + `node:fs`，零第三方依赖），每用户一个 JSON 文件 |
 | 同步协议 | 自建 JSON API，见 [`docs/sync-protocol.md`](docs/sync-protocol.md)：增量 `rev`、LWW、墓碑删除、日志并集 |
 | 样式 | 原生 CSS（设计令牌 + 全局样式），无 UI 框架 |
-| 图标 | Pillow 脚本生成，衬线体「L」字形 |
+| 图标 | Pillow 脚本生成（`src-tauri/icons/generate-icons.py`）：石框 + 纸页 + 石青书脊，几何与理由见 [`docs/icon/README.md`](docs/icon/README.md) |
 
 ## 目录结构
 
@@ -162,7 +162,8 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
     │   ├── 32x32.png
     │   ├── 128x128.png
     │   ├── 128x128@2x.png      # 256×256
-    │   ├── icon.ico            # 16/32/48/64/128/256 多尺寸
+    │   ├── icon.ico            # 16/32/48/64/128/256 多尺寸（16px 用简化画法）
+    │   ├── icon.icns           # macOS 11 个尺寸（16–1024 + @2x）
     │   └── generate-icons.py   # 用 Pillow 重新生成上述图标
     └── src/
         ├── main.rs             # 桌面可执行入口
@@ -360,7 +361,8 @@ npm start
 
 ## 已知限制
 
-- **平台**：以 Windows 为主进行开发；macOS / Linux 打包未验证。macOS 打包还需要 `icon.icns`（当前仅生成 PNG 与 ICO）。
+- **平台**：以 Windows 为主进行开发；macOS / Linux 打包未验证。`icon.icns` 已生成（11 个尺寸，16–1024 加 @2x），但未在 macOS 上实机验证过 Dock 与 Finder 的显示效果。
+- **图标**：由 `src-tauri/icons/generate-icons.py` 用 Pillow 生成，不依赖任何外部素材与字体（图形全部是几何与圆角矩形）。**16px 用的是另一套简化画法**：石头墙加厚、书脊放大 1.55 倍、去掉纸上的墨点，否则那三个细节在 16px 会抗锯齿成一团灰。`.ico` 与 `.icns` 容器是脚本手写拼装的，因为 Pillow 的写入器只会把单张图缩放塞进每个槽位，会丢掉简化画法。
 - **安装包**：`cargo build --release` 已在 Windows 上通过，产物 `src-tauri/target/release/lexumo.exe`（约 12.9 MB）可正常启动并显示窗口。<br>`cargo check` 在最后一次收尾时**未能复现**：`vswhom-sys` 的构建脚本调用 VS2019 BuildTools 的 `cl.exe` 编 `ext/vswhom.cpp` 失败（同一环境此前通过过，属工具链差异，与代码无关；`cargo build --release` 与 `npx tauri build --no-bundle` 都正常完成，说明 Rust 代码本身没问题）。<br>另外 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
 - **自动翻译**：依赖有道词典 / MyMemory 等公开接口，需联网；接口可能限流或变更，届时查词会降级或提示失败，不影响手动录入。缓存 30 天，设置里可清除。
 - **视觉验证**：功能层有 317 个单元 / 冒烟用例；界面另有基于 headless Edge + DevTools 协议的可重复校验脚本（`.shots/`，不随仓库分发），把「看起来对」换成实测数字：五个页面在浅色与深色下的全部文本节点对比度（WCAG AA，0 处不达标，并用一个故意做坏的节点反向验证这套扫描确实能报错）、统计柱状图在 1280 / 760 / 390px 三种宽度 × 7 / 30 / 90 天区间下轴标签不裁切不重叠、手机布局无横向溢出且触控目标 ≥ 40px、提示条不被底部标签栏遮挡、批量选择与撤销删除的完整流程、输入框内打字不触发单键快捷键、以及页面上不残留任何未翻译的 i18n 键；动效则逐条断言 computed `animation-name` / 延迟、翻面过程中途的 `transform` 矩阵、以及模拟「减少动态」后动画确实归零。另用 Hallmark 的 `sloplint`（app 作用域 + 渲染层，7 种宽度 × 5 个页面共 25 张截图）做结构与反模板自检，结果为 0 FAIL / 0 WARN / 1 已记录豁免 / 2 已作答；以及 18 条 DOM 断言，确认石与纸两套材质、强调色、字体、焦点环、控件高度和 320–1920px 无横向溢出确实落到了屏幕上。未做跨平台像素级视觉回归，也没有接入 CI。
@@ -376,4 +378,4 @@ npm start
 - **许可**：本项目以 **GNU AGPL-3.0** 授权，是 Lingueez 的衍生重写，许可证全文见 [`LICENSE.txt`](LICENSE.txt)。
 - **署名（AGPL-3.0 §7(b) 附加条款）**：按上游 [`NOTICE`](NOTICE) 的要求，必须在用户可见的法律声明中保留 **“Lingueez — created by Yurii Lysak”** 这一署名。该署名已展示在应用「设置 → 关于」中，请勿移除。
 - **第三方组件**：React、Vite、Tauri 等依赖的许可见 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)。
-- **图标**：由 `src-tauri/icons/generate-icons.py` 使用 Pillow 生成；「L」字形取自本机 Georgia 衬线字体，字体文件不随应用分发。
+- **图标**：由 `src-tauri/icons/generate-icons.py` 使用 Pillow 生成，全部是几何图形（圆角矩形 + 圆点），不含任何字体字形或第三方素材，可自由随项目分发。
