@@ -229,7 +229,7 @@ export function App() {
             </div>
           </div>
 
-          <div className="row-flex" style={{ gap: 2, padding: "0 2px" }}>
+          <div className="sidebar-actions">
             <button
               className="btn btn-quiet btn-sm"
               type="button"
@@ -257,7 +257,6 @@ export function App() {
               title={rail ? "展开侧栏" : "收起侧栏"}
               aria-label={rail ? "展开侧栏" : "收起侧栏"}
               aria-expanded={!rail}
-              style={{ width: "auto", marginLeft: "auto", padding: 6 }}
             >
               <Icon name="chevron-left" size={16} />
             </button>

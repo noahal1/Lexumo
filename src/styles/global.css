@@ -310,16 +310,26 @@ a:hover {
   justify-content: center;
   padding-inline: 0;
 }
+/* The footer buttons cannot sit side by side in a 68px rail — stack them and
+   drop the auto margin so the expand button stays inside the clipped sidebar. */
+.app.rail .sidebar-actions {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+}
 .app.rail .rail-toggle {
   justify-content: center;
+  margin-left: 0;
 }
 
 .rail-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 7px 10px;
+  width: auto;
+  margin-left: auto;
+  padding: 6px;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -327,6 +337,14 @@ a:hover {
   font-size: var(--fs-sm);
   cursor: pointer;
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+
+/* Footer button row: shortcuts, theme, collapse. */
+.sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px;
 }
 .rail-toggle:hover {
   background: var(--surface-hover);
