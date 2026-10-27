@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Modal, TagInput, useToast } from "@/components/ui";
 import { useT } from "@/i18n";
-import { addWord, findDuplicate, getData, updateWord } from "@/lib/store";
+import { addWord, findDuplicate, updateWord, useAppData } from "@/lib/store";
 import {
   LookupError,
   alternativeMeaning,
@@ -28,7 +28,7 @@ type LookupState = "idle" | "loading" | "error";
 export function WordEditor({ open, word, defaultListId, onClose, onDelete }: WordEditorProps) {
   const t = useT();
   const toast = useToast();
-  const data = getData();
+  const data = useAppData();
 
   const [term, setTerm] = useState("");
   const [definition, setDefinition] = useState("");
@@ -40,6 +40,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   const [status, setStatus] = useState<WordStatus>("new");
   const [favorite, setFavorite] = useState(false);
   const [error, setError] = useState("");
+  const [dismissOpen, setDismissOpen] = useState(false);
 
   const [lookupState, setLookupState] = useState<LookupState>("idle");
   const [lookupError, setLookupError] = useState<LookupFailure | null>(null);
@@ -52,9 +53,10 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       return;
     }
     setError("");
+    setDismissOpen(false);
     setLookupState("idle");
     setLookupError(null);
-    setPhonetic("");
+    setPhonetic(word?.phonetic ?? "");
     if (word) {
       setTerm(word.term);
       setDefinition(word.definition);
@@ -88,6 +90,37 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   const trimmed = term.trim();
   const duplicate = trimmed ? findDuplicate(data, trimmed, listId) : undefined;
   const showDuplicate = Boolean(duplicate && duplicate.id !== word?.id);
+
+  // A draft is dirty when any field differs from what was loaded. The create
+  // baseline is all-empty, so a fetched translation counts too — closing after
+  // auto-translate must not throw the word away without asking.
+  const dirty =
+    term !== (word?.term ?? "") ||
+    phonetic !== (word?.phonetic ?? "") ||
+    definition !== (word?.definition ?? "") ||
+    definition2 !== (word?.definition2 ?? "") ||
+    example !== (word?.example ?? "") ||
+    note !== (word?.note ?? "") ||
+    tags.join("\u0000") !== (word?.tags ?? []).join("\u0000") ||
+    listId !== (word?.listId ?? defaultListId) ||
+    status !== (word?.status ?? "new") ||
+    favorite !== (word?.favorite ?? false);
+
+  /**
+   * Esc, a backdrop click and × all land here. A dirty draft asks first —
+   * inline in the footer, so no second dialog stacks on top of this one.
+   */
+  const requestClose = () => {
+    if (dismissOpen) {
+      setDismissOpen(false);
+      return;
+    }
+    if (dirty) {
+      setDismissOpen(true);
+      return;
+    }
+    onClose();
+  };
 
   /**
    * Look the term up and fill the empty fields.
@@ -164,6 +197,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
     if (word) {
       updateWord(word.id, {
         term: trimmed,
+        phonetic: phonetic.trim(),
         definition: definition.trim(),
         definition2: definition2.trim(),
         example: example.trim(),
@@ -177,6 +211,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
     } else {
       addWord({
         term: trimmed,
+        phonetic: phonetic.trim(),
         definition,
         definition2,
         example,
@@ -201,46 +236,71 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={requestClose}
       width={620}
       title={word ? t("words.editWord") : t("words.addWord")}
       subtitle={word ? word.term : t("words.subtitle")}
       footer={
-        <>
-          {word && (
+        dismissOpen ? (
+          <>
+            <span className="tiny muted" style={{ marginRight: "auto" }}>
+              {t("words.discardConfirm")}
+            </span>
             <button
-              className={favorite ? "btn btn-sm" : "btn btn-sm btn-quiet"}
+              className="btn btn-sm"
               type="button"
-              aria-pressed={favorite}
-              onClick={() => setFavorite((v) => !v)}
-              title={t("common.favorite")}
+              onClick={() => setDismissOpen(false)}
             >
-              <Icon name={favorite ? "star-filled" : "star"} size={14} />
-              {t("common.favorite")}
+              {t("words.keepEditing")}
             </button>
-          )}
-          {word && (
             <button
               className="btn btn-danger btn-sm"
               type="button"
               onClick={() => {
+                setDismissOpen(false);
                 onClose();
-                onDelete(word);
               }}
-              style={{ marginRight: "auto" }}
             >
-              <Icon name="trash" size={14} />
-              {t("common.delete")}
+              {t("words.discardChanges")}
             </button>
-          )}
-          <button className="btn" type="button" onClick={onClose}>
-            {t("common.cancel")}
-          </button>
-          <button className="btn btn-primary" type="button" onClick={save}>
-            <Icon name="check" size={15} />
-            {t("common.save")}
-          </button>
-        </>
+          </>
+        ) : (
+          <>
+            {word && (
+              <button
+                className={favorite ? "btn btn-sm" : "btn btn-sm btn-quiet"}
+                type="button"
+                aria-pressed={favorite}
+                onClick={() => setFavorite((v) => !v)}
+                title={t("common.favorite")}
+              >
+                <Icon name={favorite ? "star-filled" : "star"} size={14} />
+                {t("common.favorite")}
+              </button>
+            )}
+            {word && (
+              <button
+                className="btn btn-danger btn-sm"
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onDelete(word);
+                }}
+                style={{ marginRight: "auto" }}
+              >
+                <Icon name="trash" size={14} />
+                {t("common.delete")}
+              </button>
+            )}
+            <button className="btn" type="button" onClick={requestClose}>
+              {t("common.cancel")}
+            </button>
+            <button className="btn btn-primary" type="button" onClick={save}>
+              <Icon name="check" size={15} />
+              {t("common.save")}
+            </button>
+          </>
+        )
       }
     >
       <div className="stack" style={{ gap: "var(--sp-4)" }} onKeyDown={onKeyDown}>
@@ -267,9 +327,16 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
               }
             }}
             onKeyDown={(e) => {
+              // Enter moves on to the meaning instead of saving. Saving from
+              // here used to abort the blur-triggered lookup, so the flagship
+              // auto-translate never got to run. Ctrl/⌘+Enter still saves.
               if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
                 e.preventDefault();
-                save();
+                if (!trimmed) {
+                  save();
+                  return;
+                }
+                document.getElementById("word-def")?.focus();
               }
             }}
             placeholder={t("words.termPlaceholder")}
@@ -428,9 +495,9 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         </div>
 
         <div className="tiny muted">
-          <span className="kbd">Enter</span> {t("common.save")} ·{" "}
-          <span className="kbd">Ctrl</span>+<span className="kbd">Enter</span> 任意位置保存 ·{" "}
-          <span className="kbd">Esc</span> {t("common.cancel")}
+          <span className="kbd">Enter</span> {t("words.enterNext")} ·{" "}
+          <span className="kbd">Ctrl</span>+<span className="kbd">Enter</span>{" "}
+          {t("words.saveAnywhere")} · <span className="kbd">Esc</span> {t("common.cancel")}
         </div>
       </div>
     </Modal>

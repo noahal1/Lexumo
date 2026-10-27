@@ -1,8 +1,15 @@
 /** App shell: sidebar, theme application, page switching, global shortcuts. */
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Icon, type IconName } from "@/components/Icon";
-import { Modal, ShortcutRow } from "@/components/ui";
-import { useT } from "@/i18n";
+import { Modal, ShortcutRow, useToast } from "@/components/ui";
+import { useT, type MessageKey } from "@/i18n";
 import {
   useAppData,
   reviewsToday,
@@ -10,7 +17,13 @@ import {
   dueWords,
   updateSettings,
 } from "@/lib/store";
-import { getSyncStatus, subscribeSyncStatus } from "@/lib/sync";
+import {
+  SHORTCUTS,
+  SHORTCUT_HELP,
+  useShortcutScope,
+  type ShortcutBinding,
+} from "@/lib/shortcuts";
+import { getSyncStatus, subscribeSyncStatus, type SyncError } from "@/lib/sync";
 import { useRouter, type PageId } from "@/app/router";
 import { cx } from "@/lib/utils";
 import { WordsPage } from "@/pages/words/WordsPage";
@@ -18,8 +31,13 @@ import { FlashcardsPage } from "@/pages/study/FlashcardsPage";
 import { QuizPage } from "@/pages/study/QuizPage";
 import { StatsPage } from "@/pages/stats/StatsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
+import {
+  syncErrorKey,
+  syncStatusLabel,
+  syncStatusTone,
+} from "@/pages/settings/SyncSection";
 
-const NAV: Array<{ id: PageId; icon: IconName; labelKey: string }> = [
+const NAV: Array<{ id: PageId; icon: IconName; labelKey: MessageKey }> = [
   { id: "words", icon: "words", labelKey: "nav.words" },
   { id: "flashcards", icon: "cards", labelKey: "nav.flashcards" },
   { id: "quiz", icon: "quiz", labelKey: "nav.quiz" },
@@ -108,13 +126,40 @@ export function App() {
   const { rail, toggle } = useRail();
   const mobile = useMobile();
   const [helpOpen, setHelpOpen] = useState(false);
+  const toast = useToast();
   useTheme();
 
-  // Switching pages should start at the top — on a phone the scroll offset of
-  // the previous page otherwise carries over and looks like a broken jump.
+  const pendingAnchor = useRef<string | null>(null);
+
+  /** Jump to the sync section — from the sidebar chip or the error toast. */
+  const openSync = useCallback(() => {
+    if (page === "settings") {
+      document.getElementById("set-sync")?.scrollIntoView({ block: "start" });
+      return;
+    }
+    pendingAnchor.current = "set-sync";
+    navigate("settings");
+  }, [page, navigate]);
+
+  // Switching pages should start at the top — instantly, since the page
+  // container no longer animates scrolling (a smooth reset reads as a jump).
   useEffect(() => {
-    const scroller = document.querySelector(".page");
-    if (scroller) scroller.scrollTop = 0;
+    const anchor = pendingAnchor.current;
+    pendingAnchor.current = null;
+    const target = anchor ? document.getElementById(anchor) : null;
+    if (target) {
+      target.scrollIntoView({ block: "start" });
+      return;
+    }
+    const scroller = document.querySelector<HTMLElement>(".page");
+    if (!scroller) return;
+    // `scrollTo` on an element is not implemented everywhere a DOM exists
+    // (jsdom, older WebViews), so fall back to assigning `scrollTop`.
+    if (typeof scroller.scrollTo === "function") {
+      scroller.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    } else {
+      scroller.scrollTop = 0;
+    }
   }, [page]);
 
   const due = dueWords(data).length;
@@ -122,54 +167,57 @@ export function App() {
   const today = reviewsToday(data);
   const dark = data.settings.theme === "dark";
   const syncStatus = useSyncExternalStore(subscribeSyncStatus, getSyncStatus, getSyncStatus);
-  const syncTone =
-    syncStatus.state === "error"
-      ? "danger"
-      : syncStatus.state === "syncing"
-        ? "busy"
-        : syncStatus.pending > 0
-          ? "busy"
-          : "ok";
-  const syncLabel =
-    syncStatus.state === "error"
-      ? t("settings.syncStatusError")
-      : syncStatus.state === "syncing"
-        ? t("settings.syncStatusSyncing")
-        : syncStatus.pending > 0
-          ? t("settings.syncPendingHint", { n: syncStatus.pending })
-          : t("settings.syncStatusIdle");
+  const signedIn = syncStatus.state !== "signed-out";
+  const syncTone = syncStatusTone(syncStatus, signedIn);
+  const syncLabel = syncStatusLabel(t, syncStatus, signedIn);
 
-  // Global shortcuts: Cmd/Ctrl+1..5 switch pages, "?" opens the shortcut sheet.
+  // Background sync failures used to be a 6px dot in the sidebar; say it once,
+  // with a way to jump straight to the section that explains it.
+  const lastSyncError = useRef<SyncError | null>(null);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "?" || (e.shiftKey && e.key === "/")) {
-        const el = e.target as HTMLElement | null;
-        const typing =
-          el &&
-          (el.tagName === "INPUT" ||
-            el.tagName === "TEXTAREA" ||
-            el.tagName === "SELECT" ||
-            el.isContentEditable);
-        if (typing) return;
-        e.preventDefault();
-        setHelpOpen((v) => !v);
-        return;
-      }
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-      const n = Number(e.key);
-      if (n >= 1 && n <= NAV.length) {
-        e.preventDefault();
-        navigate(NAV[n - 1].id);
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [navigate]);
+    const error = syncStatus.error;
+    if (error && error !== lastSyncError.current) {
+      toast(t(syncErrorKey(error)), "err", {
+        action: { label: t("settings.syncGoTo"), onClick: openSync },
+        duration: 8000,
+      });
+    }
+    lastSyncError.current = error;
+  }, [syncStatus.error, toast, t, openSync]);
+
+  // App-scope shortcuts: Cmd/Ctrl+1..5 switch pages, "?" opens this sheet.
+  // Neither may fire while a field has focus or a dialog is open: switching
+  // pages mid-edit used to unmount the editor and silently drop the draft.
+  const appShortcuts = useMemo<ShortcutBinding[]>(
+    () => [
+      {
+        ...SHORTCUTS.pageSwitch,
+        match: (event) => {
+          if (!(event.metaKey || event.ctrlKey) || event.altKey) return false;
+          const index = Number(event.key);
+          return Number.isInteger(index) && index >= 1 && index <= NAV.length;
+        },
+        when: () => document.querySelector('[role="dialog"]') === null,
+        run: (event) => navigate(NAV[Number(event.key) - 1].id),
+      },
+      {
+        ...SHORTCUTS.help,
+        match: (event) =>
+          event.key === "?" || (event.shiftKey === true && event.key === "/"),
+        // "?" still closes the sheet it opened; it just never stacks on top of
+        // another dialog.
+        when: () => helpOpen || document.querySelector('[role="dialog"]') === null,
+        run: () => setHelpOpen((open) => !open),
+      },
+    ],
+    [navigate, helpOpen],
+  );
+  useShortcutScope("app", appShortcuts);
 
   return (
     <div className={cx("app", rail && "rail", mobile && "mobile")}>
       <a className="skip-link" href="#main-content">
-        跳到主要内容
+        {t("shell.skipToContent")}
       </a>
 
       <aside className="sidebar">
@@ -177,11 +225,11 @@ export function App() {
           <div className="brand-mark">L</div>
           <div className="brand-text">
             <div className="brand-name">{t("common.appName")}</div>
-            <div className="brand-sub">词砚</div>
+            <div className="brand-sub">{t("shell.brandSub")}</div>
           </div>
         </div>
 
-        <nav className="nav" aria-label="主导航">
+        <nav className="nav" aria-label={t("nav.main")}>
           {NAV.map((item, i) => (
             <button
               key={item.id}
@@ -205,7 +253,7 @@ export function App() {
             <button
               type="button"
               className="sync-chip"
-              onClick={() => navigate("settings")}
+              onClick={openSync}
               title={syncStatus.email ? `${syncLabel} · ${syncStatus.email}` : syncLabel}
             >
               <span className={`sync-dot sync-dot-${syncTone}`} />
@@ -234,8 +282,8 @@ export function App() {
               className="btn btn-quiet btn-sm"
               type="button"
               onClick={() => setHelpOpen(true)}
-              title="快捷键 (?)"
-              aria-label="快捷键帮助"
+              title={`${t("settings.shortcuts")} (?)`}
+              aria-label={t("settings.shortcuts")}
             >
               <Icon name="keyboard" size={16} />
             </button>
@@ -245,8 +293,8 @@ export function App() {
               onClick={() =>
                 updateSettings({ theme: dark ? "light" : "dark" })
               }
-              title={dark ? "切换到浅色" : "切换到深色"}
-              aria-label={dark ? "切换到浅色主题" : "切换到深色主题"}
+              title={dark ? t("shell.themeToLight") : t("shell.themeToDark")}
+              aria-label={dark ? t("shell.themeToLight") : t("shell.themeToDark")}
             >
               <Icon name={dark ? "sun" : "moon"} size={16} />
             </button>
@@ -254,8 +302,8 @@ export function App() {
               className="rail-toggle"
               type="button"
               onClick={toggle}
-              title={rail ? "展开侧栏" : "收起侧栏"}
-              aria-label={rail ? "展开侧栏" : "收起侧栏"}
+              title={rail ? t("shell.expandRail") : t("shell.collapseRail")}
+              aria-label={rail ? t("shell.expandRail") : t("shell.collapseRail")}
               aria-expanded={!rail}
             >
               <Icon name="chevron-left" size={16} />
@@ -267,7 +315,7 @@ export function App() {
       </aside>
 
       {mobile && (
-        <nav className="tabbar" aria-label={t("nav.main")}>
+        <nav className="tabbar" aria-label={t("nav.tabbar")}>
           {NAV.map((item) => (
             <button
               key={item.id}
@@ -299,31 +347,29 @@ export function App() {
       <Modal
         open={helpOpen}
         onClose={() => setHelpOpen(false)}
-        title="快捷键"
-        subtitle="不用鼠标也能把每天的学习做完"
+        title={t("settings.shortcuts")}
+        subtitle={t("shell.shortcutsSub")}
         width={560}
         footer={
           <button className="btn btn-primary" type="button" onClick={() => setHelpOpen(false)}>
-            知道了
+            {t("common.gotIt")}
           </button>
         }
       >
         <div className="shortcuts">
-          <ShortcutRow keys={["Ctrl", "1…5"]} label="切换页面" />
-          <ShortcutRow keys={["?"]} label="打开这张表" />
-          <ShortcutRow keys={["/"]} label="搜索词条" />
-          <ShortcutRow keys={["n"]} label="新建词条" />
-          <ShortcutRow keys={["空格"]} label="闪卡翻面" />
-          <ShortcutRow keys={["1", "2", "3"]} label="评分（难 / 良 / 易）" />
-          <ShortcutRow keys={["Ctrl", "Z"]} label="撤销上一次评分" />
-          <ShortcutRow keys={["←", "→"]} label="跳过当前卡" />
-          <ShortcutRow keys={["Esc"]} label="关闭弹窗" />
+          {SHORTCUT_HELP.map((shortcut) => (
+            <ShortcutRow
+              key={shortcut.id}
+              keys={shortcut.keys}
+              label={t(shortcut.labelKey)}
+            />
+          ))}
         </div>
         <div className="notice">
           <span className="notice-ico">
             <Icon name="info" size={15} />
           </span>
-          <span>提示：在输入框里输入时，单键快捷键会自动让位，不会打断打字。</span>
+          <span>{t("shell.shortcutsTypingHint")}</span>
         </div>
       </Modal>
     </div>

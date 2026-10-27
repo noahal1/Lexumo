@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/Icon";
-import { useLang, useT } from "@/i18n";
+import { useLang, useT, type MessageKey, type TFunc } from "@/i18n";
 import { useAppData, updateSettings } from "@/lib/store";
 import {
   DEFAULT_SERVER,
@@ -14,11 +14,12 @@ import {
   syncNow,
   testConnection,
   type SyncError,
+  type SyncStatus,
 } from "@/lib/sync";
 import { relativeDay } from "@/lib/utils";
 import { Row, Section, Switch } from "./parts";
 
-const ERROR_KEY: Record<SyncError, string> = {
+const ERROR_KEY: Record<SyncError, MessageKey> = {
   offline: "settings.syncErrorOffline",
   unauthorized: "settings.syncErrorUnauthorized",
   server: "settings.syncErrorServer",
@@ -27,6 +28,36 @@ const ERROR_KEY: Record<SyncError, string> = {
   weak_password: "settings.syncErrorWeakPassword",
   invalid_email: "settings.syncErrorInvalidEmail",
 };
+
+/** i18n key for a failure kind, shared with the shell's error toast. */
+export function syncErrorKey(err: SyncError): MessageKey {
+  return ERROR_KEY[err] ?? "settings.syncErrorServer";
+}
+
+/**
+ * One wording for every surface that shows sync state (sidebar chip, settings
+ * strip, sync section) — three copies used to drift apart.
+ */
+export function syncStatusLabel(t: TFunc, status: SyncStatus, signedIn: boolean): string {
+  if (!signedIn) return t("settings.syncStatusSignedOut");
+  if (status.state === "error") return t("settings.syncStatusError");
+  if (status.state === "syncing") return t("settings.syncStatusSyncing");
+  // "已同步" would be a lie while edits are still queued, so the pending count
+  // wins over the idle wording.
+  if (status.pending > 0) return t("settings.syncPendingHint", { n: status.pending });
+  return t("settings.syncStatusIdle");
+}
+
+/** One tone for every surface that shows sync state. */
+export function syncStatusTone(
+  status: SyncStatus,
+  signedIn: boolean,
+): "ok" | "busy" | "danger" | "muted" {
+  if (!signedIn) return "muted";
+  if (status.state === "error") return "danger";
+  if (status.state === "syncing" || status.pending > 0) return "busy";
+  return "ok";
+}
 
 export function SyncSection() {
   const t = useT();
@@ -48,7 +79,7 @@ export function SyncSection() {
   }, []);
 
   const describe = (err: SyncError | null): string | null =>
-    err ? t(ERROR_KEY[err] ?? "settings.syncErrorServer") : null;
+    err ? t(syncErrorKey(err)) : null;
 
   const handleAuth = async (mode: "signin" | "signup") => {
     setFormError(null);
@@ -95,26 +126,11 @@ export function SyncSection() {
 
   // "已同步" would be a lie while edits are still queued, so the pending count
   // wins over the idle wording.
-  const statusLabel = !signedIn
-    ? t("settings.syncStatusSignedOut")
-    : status.state === "syncing"
-      ? t("settings.syncStatusSyncing")
-      : status.state === "error"
-        ? t("settings.syncStatusError")
-        : status.pending > 0
-          ? t("settings.syncPendingHint", { n: status.pending })
-          : t("settings.syncStatusIdle");
-
-  const statusTone = !signedIn
-    ? "muted"
-    : status.state === "error"
-      ? "danger"
-      : status.state === "syncing" || status.pending > 0
-        ? "busy"
-        : "ok";
+  const statusLabel = syncStatusLabel(t, status, signedIn);
+  const statusTone = syncStatusTone(status, signedIn);
 
   return (
-    <Section icon="cloud" title={t("settings.sync")} note={signedIn ? status.email : undefined}>
+    <Section id="set-sync" icon="cloud" title={t("settings.sync")} note={signedIn ? status.email : undefined}>
       <p className="set-intro">{t("settings.syncIntro")}</p>
 
       {!signedIn ? (

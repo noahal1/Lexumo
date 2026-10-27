@@ -72,7 +72,7 @@ a:hover {
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--r-2xs);
 }
 
 ::-webkit-scrollbar {
@@ -140,7 +140,7 @@ a:hover {
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
   padding: 2px 6px var(--sp-5);
   min-height: 34px;
 }
@@ -149,11 +149,11 @@ a:hover {
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   display: grid;
   place-items: center;
   background: linear-gradient(150deg, var(--jade), var(--jade-ink));
-  color: #f7fffc;
+  color: var(--on-brand);
   font-family: var(--font-display);
   font-size: 19px;
   font-weight: 600;
@@ -187,8 +187,8 @@ a:hover {
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2);
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -198,14 +198,14 @@ a:hover {
   text-align: left;
   white-space: nowrap;
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
-    box-shadow var(--dur-1) var(--ease);
+    box-shadow var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
 }
 .nav-item:hover {
   background: var(--surface-hover);
   color: var(--ink);
 }
 .nav-item:active {
-  transform: translateY(0.5px);
+  transform: scale(0.99);
 }
 .nav-item.active {
   background: var(--surface);
@@ -398,7 +398,6 @@ a:hover {
   flex: 1;
   overflow: auto;
   padding: 0 var(--sp-8) var(--sp-10);
-  scroll-behavior: smooth;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
@@ -422,7 +421,7 @@ a:hover {
   justify-content: center;
   gap: 7px;
   height: var(--control-h);
-  padding: 0 13px;
+  padding: 0 var(--sp-3);
   border-radius: var(--r-sm);
   border: 1px solid var(--btn-line);
   background: var(--btn-bg);
@@ -440,7 +439,7 @@ a:hover {
   border-color: var(--line-strong);
 }
 .btn:active {
-  transform: translateY(0.5px);
+  transform: scale(0.985);
 }
 .btn:disabled,
 .btn[aria-disabled="true"] {
@@ -450,7 +449,7 @@ a:hover {
 }
 .btn-primary {
   --btn-bg: var(--jade);
-  --btn-fg: #f7fffc;
+  --btn-fg: var(--on-brand);
   --btn-line: transparent;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), var(--shadow-xs);
 }
@@ -618,7 +617,7 @@ a:hover {
   width: 18px;
   height: 18px;
   flex: 0 0 18px;
-  border-radius: 5px;
+  border-radius: var(--r-2xs);
   border: 1.5px solid var(--line-strong);
   background: var(--surface);
   color: transparent;
@@ -632,7 +631,7 @@ a:hover {
 .check.on {
   background: var(--jade);
   border-color: var(--jade);
-  color: #f7fffc;
+  color: var(--on-brand);
 }
 
 .search {
@@ -676,9 +675,9 @@ a:hover {
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 24px;
-  padding: 0 9px;
+  gap: var(--sp-1);
+  height: var(--sp-6);
+  padding: 0 var(--sp-2);
   border-radius: var(--r-full);
   font-size: var(--fs-xs);
   font-weight: 540;
@@ -744,13 +743,13 @@ a:hover {
   border: 0;
   background: transparent;
   color: var(--ink-3);
-  padding: 5px 11px;
+  padding: var(--sp-1) var(--sp-3);
   border-radius: var(--r-xs);
   cursor: pointer;
   font-size: var(--fs-sm);
   font-weight: 540;
   transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
-    box-shadow var(--dur-1) var(--ease);
+    box-shadow var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
   white-space: nowrap;
 }
 .segmented button:hover {
@@ -762,7 +761,7 @@ a:hover {
   box-shadow: var(--shadow-xs);
 }
 .seg-count {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
   color: var(--ink-3);
   background: var(--surface-2);
@@ -866,7 +865,7 @@ a:hover {
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.5fr) 132px 92px;
   align-items: center;
   gap: var(--sp-4);
-  padding: 9px var(--sp-5);
+  padding: var(--sp-2) var(--sp-5);
   border-bottom: 1px solid var(--line);
   cursor: pointer;
   transition: background var(--dur-1) var(--ease);
@@ -882,8 +881,8 @@ a:hover {
 }
 .row-head {
   cursor: default;
-  padding-top: 9px;
-  padding-bottom: 9px;
+  padding-top: var(--sp-2);
+  padding-bottom: var(--sp-2);
   background: var(--surface-2);
   font-size: var(--fs-xs);
   letter-spacing: 0.06em;
@@ -916,7 +915,7 @@ a:hover {
 .row-meta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   color: var(--ink-3);
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
@@ -929,10 +928,30 @@ a:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* One-line muted snippet for a search hit inside a word row. */
+.row-match {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Word list: 4 columns (term / definition / status / actions) */
 .row-words {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 148px 124px;
+}
+/* In select mode the row gains a leading checkbox column and drops the hover
+   action cluster (the bulk bar owns every action there). */
+.row-words.selecting {
+  grid-template-columns: 20px minmax(0, 1fr) minmax(0, 1.6fr) 148px;
+  cursor: pointer;
+}
+.row-words.is-picked {
+  background: var(--jade-soft);
+}
+.row-words.is-picked:hover {
+  background: var(--jade-soft);
 }
 .row-col-status {
   display: flex;
@@ -1067,6 +1086,37 @@ a:hover {
 /* ============================================================
    Toast
    ============================================================ */
+/* Bulk-selection bar: replaces the footer hints while rows are being picked. */
+.bulk-bar {
+  position: sticky;
+  bottom: var(--sp-4);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  z-index: var(--z-sticky);
+}
+.bulk-count {
+  font-size: var(--fs-sm);
+  font-weight: 560;
+  color: var(--ink);
+  padding-inline: var(--sp-2);
+  min-width: 84px;
+  font-variant-numeric: tabular-nums;
+}
+.bulk-bar .bulk-danger {
+  color: var(--danger);
+}
+.bulk-bar .bulk-danger:hover {
+  background: var(--rose-soft);
+}
+
 .toast-stack {
   position: fixed;
   bottom: var(--sp-6);
@@ -1082,8 +1132,8 @@ a:hover {
 .toast {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 10px 16px;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
   border-radius: var(--r-full);
   background: var(--ink);
   color: var(--bg);
@@ -1092,6 +1142,10 @@ a:hover {
   box-shadow: var(--shadow-md);
   animation: toast-in var(--dur-3) var(--ease-out);
   max-width: min(520px, 92vw);
+}
+.toast.is-leaving {
+  animation: toast-out 170ms var(--ease-in) both;
+  pointer-events: none;
 }
 .toast-ico {
   display: grid;
@@ -1112,6 +1166,54 @@ a:hover {
   height: 7px;
   border-radius: 50%;
   background: var(--amber);
+}
+
+/* A toast that carries an action can wrap to two lines, so drop the pill
+   radius for a softer capsule and keep the action/close hit areas inside. */
+.toast.has-action {
+  border-radius: var(--r-md);
+  padding-right: var(--sp-2);
+  gap: var(--sp-3);
+}
+.toast-action {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 620;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background var(--dur-1) var(--ease);
+}
+.toast-action:hover {
+  background: rgba(127, 127, 127, 0.22);
+}
+.toast-close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    opacity var(--dur-1) var(--ease),
+    background var(--dur-1) var(--ease);
+}
+.toast-close:hover {
+  opacity: 1;
+  background: rgba(127, 127, 127, 0.22);
 }
 
 /* ============================================================
@@ -1155,11 +1257,10 @@ a:hover {
 .stat-tile {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-2);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-xs);
   padding: var(--sp-5);
 }
 .stat-label {
@@ -1178,8 +1279,8 @@ a:hover {
   font-variant-numeric: tabular-nums;
 }
 .stat-sub {
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
 }
 
 .progress {
@@ -1192,7 +1293,7 @@ a:hover {
   height: 100%;
   border-radius: var(--r-full);
   background: var(--jade);
-  transition: width var(--dur-4) var(--ease-out);
+  transition: width var(--dur-3) var(--ease-out);
 }
 .progress.thick {
   height: 10px;
@@ -1217,7 +1318,7 @@ a:hover {
 }
 .ring-fill {
   stroke: var(--jade);
-  transition: stroke-dashoffset var(--dur-4) var(--ease-out);
+  transition: stroke-dashoffset var(--dur-3) var(--ease-out);
 }
 
 /* ============================================================
@@ -1257,7 +1358,7 @@ a:hover {
   gap: var(--sp-4);
   font-size: var(--fs-base);
   color: var(--ink-2);
-  padding-bottom: 6px;
+  padding-bottom: var(--sp-2);
   border-bottom: 1px dashed var(--line);
 }
 
@@ -1301,12 +1402,12 @@ a:hover {
 .kbd {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   line-height: 1.5;
-  padding: 0 5px;
+  padding: 0 var(--sp-1);
   border: 1px solid var(--line-strong);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: var(--r-2xs);
   background: var(--surface-2);
   color: var(--ink-2);
   white-space: nowrap;
@@ -1325,13 +1426,13 @@ a:hover {
 mark {
   background: var(--amber-soft);
   color: var(--ink);
-  border-radius: 3px;
+  border-radius: var(--r-2xs);
   padding: 0 1px;
 }
 .tag-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: var(--sp-1);
 }
 .link-btn {
   border: 0;
@@ -1379,6 +1480,17 @@ mark {
     transform: none;
   }
 }
+/* Toasts leave the way they came, only faster. */
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
 @keyframes rise {
   from {
     opacity: 0;
@@ -1391,6 +1503,85 @@ mark {
 }
 .rise {
   animation: rise var(--dur-3) var(--ease-out) both;
+}
+
+/* List rows and tiles enter in sequence. Opacity + a few pixels of travel only:
+   no scale, so a row's measured size never changes mid-animation (that would
+   make click targets and layout probes jitter). */
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes tile-in {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* The bulk-selection bar is a footer that appears when you start picking rows;
+   it rises from where the old footer hint was so the swap reads as one thing. */
+@keyframes bar-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ============================================================
+   Motion — applied
+   ============================================================ */
+
+/* Every page fades in on navigation. Opacity only: a transform on the page
+   container would become the containing block for the sticky table header. */
+.page-inner {
+  animation: fade-in var(--dur-3) var(--ease-out) both;
+}
+
+/* Word rows stagger in. The delay is set inline per row (capped) so a 400-word
+   library costs the same ~0.3s as a 10-word one. */
+.row-words:not(.row-head) {
+  animation: row-in var(--dur-3) var(--ease-out) both;
+}
+
+.bulk-bar {
+  animation: bar-rise var(--dur-3) var(--ease-out) both;
+}
+
+/* Dashboard tiles settle in one after another. */
+.dash-tiles > .stat-tile {
+  animation: tile-in var(--dur-4) var(--ease-out) both;
+}
+.dash-tiles > .stat-tile:nth-child(1) {
+  animation-delay: 0ms;
+}
+.dash-tiles > .stat-tile:nth-child(2) {
+  animation-delay: calc(var(--stagger) * 2);
+}
+.dash-tiles > .stat-tile:nth-child(3) {
+  animation-delay: calc(var(--stagger) * 4);
+}
+.dash-tiles > .stat-tile:nth-child(4) {
+  animation-delay: calc(var(--stagger) * 6);
+}
+.dash-tiles > .stat-tile:nth-child(5) {
+  animation-delay: calc(var(--stagger) * 8);
+}
+.dash-tiles > .stat-tile:nth-child(6) {
+  animation-delay: calc(var(--stagger) * 10);
 }
 
 /* ============================================================
@@ -1485,6 +1676,17 @@ mark {
   box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.02), 0 -6px 20px -12px rgba(20, 18, 12, 0.22);
 }
 
+/*
+ * Keep toasts above the phone tab bar instead of on top of it. The toast stack
+ * is rendered by ToastProvider, a sibling of `.app` — so this has to be a media
+ * query, not an `.app.mobile` descendant selector, or it never matches.
+ */
+@media (max-width: 720px) {
+  .toast-stack {
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 .tab-item {
   display: flex;
   flex-direction: column;
@@ -1498,14 +1700,15 @@ mark {
   background: transparent;
   color: var(--ink-3);
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 500;
   line-height: 1.1;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition:
     color var(--dur-1) var(--ease),
-    background var(--dur-1) var(--ease);
+    background var(--dur-1) var(--ease),
+    transform var(--dur-1) var(--ease);
 }
 
 .tab-item.active {
@@ -1515,6 +1718,7 @@ mark {
 
 .tab-item:active {
   background: var(--surface-2);
+  transform: scale(0.94);
 }
 
 .tab-item.active:active {
@@ -1536,8 +1740,8 @@ mark {
   padding: 0 4px;
   border-radius: var(--r-full);
   background: var(--jade);
-  color: #f7fffc;
-  font-size: 11px;
+  color: var(--on-brand);
+  font-size: var(--fs-xs);
   font-weight: 600;
   line-height: 17px;
   text-align: center;
@@ -1674,7 +1878,7 @@ mark {
     background: var(--surface-2);
   }
   .btn:active {
-    transform: translateY(0.5px);
+    transform: scale(0.97);
   }
 }
 
@@ -1740,4 +1944,39 @@ mark {
 .app.rail .sync-chip {
   justify-content: center;
   padding: 7px 0;
+}
+
+/* ---------- Select mode on narrow screens ----------
+   The leading checkbox column is fixed, so every breakpoint's grid-template
+   needs it re-declared; otherwise the check lands in the term column. */
+@media (max-width: 1000px) {
+  .row-words.selecting {
+    grid-template-columns: 20px minmax(0, 1fr) minmax(0, 1.2fr) 132px;
+  }
+}
+@media (max-width: 820px) {
+  .row-words.selecting {
+    grid-template-columns: 20px minmax(0, 1fr) 120px;
+  }
+}
+@media (max-width: 640px) {
+  .row-words.selecting {
+    grid-template-columns: 20px minmax(0, 1fr) 108px;
+  }
+}
+@media (max-width: 620px) {
+  /* Phones: keep the two-line row, put the check beside the term. */
+  .row-words.selecting {
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "check term status"
+      "check def status";
+  }
+  .row-words.selecting > .check {
+    grid-area: check;
+    align-self: center;
+  }
+  .row-words.selecting > .row-flex {
+    grid-area: term;
+  }
 }

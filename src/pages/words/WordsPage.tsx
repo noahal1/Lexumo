@@ -1,7 +1,7 @@
 /**
  * 词库页：词库切换、搜索、状态/标签筛选、排序、增删改、发音与收藏。
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import {
   ConfirmDialog,
@@ -10,6 +10,7 @@ import {
   PageShell,
   Segmented,
   StatusChip,
+  TagInput,
   useToast,
 } from "@/components/ui";
 import { useLang, useT } from "@/i18n";
@@ -19,8 +20,11 @@ import {
   createList,
   deleteList,
   deleteWord,
+  deleteWords,
   renameList,
+  restoreWord,
   toggleFavorite,
+  updateWord,
   useAppData,
   useSettings,
 } from "@/lib/store";
@@ -33,6 +37,7 @@ import {
   type WordList,
 } from "@/lib/types";
 import { cx, relativeDay } from "@/lib/utils";
+import { SHORTCUTS, useShortcutScope, type KeyEventLike, type ShortcutBinding } from "@/lib/shortcuts";
 import {
   buildWordIndex,
   queryWords,
@@ -71,6 +76,50 @@ function highlight(text: string, q: string): ReactNode {
   return out;
 }
 
+/* ------------------------------------------------------------------ */
+/* Remembered view state                                               */
+/* ------------------------------------------------------------------ */
+const VIEW_STORAGE_KEY = "lexumo.words.view.v1";
+const STATUS_VALUES: readonly StatusFilter[] = [
+  "all",
+  "new",
+  "reviewing",
+  "learning",
+  "mastered",
+];
+const SORT_VALUES: readonly SortKey[] = ["recent", "alpha", "due", "status"];
+
+interface SavedView {
+  listId?: string;
+  status?: StatusFilter;
+  sort?: SortKey;
+  favoriteOnly?: boolean;
+}
+
+/**
+ * The list/filter/sort the user last looked at. Reopening the page used to snap
+ * back to the first list and "recent", so a one-list-per-topic setup felt like
+ * it forgot everything on every visit.
+ */
+function readSavedView(): SavedView {
+  try {
+    const raw = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as SavedView;
+    return {
+      listId: typeof parsed.listId === "string" ? parsed.listId : undefined,
+      status:
+        parsed.status && STATUS_VALUES.includes(parsed.status) ? parsed.status : undefined,
+      sort: parsed.sort && SORT_VALUES.includes(parsed.sort) ? parsed.sort : undefined,
+      favoriteOnly:
+        typeof parsed.favoriteOnly === "boolean" ? parsed.favoriteOnly : undefined,
+    };
+  } catch {
+    // Private mode / corrupted value: just start from the default view.
+    return {};
+  }
+}
+
 export function WordsPage() {
   const t = useT();
   const lang = useLang();
@@ -79,18 +128,51 @@ export function WordsPage() {
   const settings = useSettings();
 
   // One filter atom for the whole toolbar; listId lives here too so switching
-  // lists and resetting filters share the same update path.
-  const [filters, setFilters] = useState<WordQuery>(() => ({
-    listId: data.lists[0]?.id ?? "",
-    sort: "recent",
-  }));
+  // lists and resetting filters share the same update path. The last view is
+  // restored on open, with the saved list dropped if it no longer exists.
+  const [filters, setFilters] = useState<WordQuery>(() => {
+    const saved = readSavedView();
+    const savedListExists =
+      Boolean(saved.listId) && data.lists.some((l) => l.id === saved.listId);
+    return {
+      listId: savedListExists ? saved.listId! : (data.lists[0]?.id ?? ""),
+      sort: saved.sort ?? "recent",
+      status: saved.status ?? "all",
+      favoriteOnly: saved.favoriteOnly ?? false,
+    };
+  });
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Word | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Word | null>(null);
   const [listMgrOpen, setListMgrOpen] = useState(false);
 
+  // Select mode: a quiet, reversible way to act on several words at once.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [tagDialogOpen, setTagDialogOpen] = useState(false);
+  const [bulkTags, setBulkTags] = useState<string[]>([]);
+
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // Persist the view shape only — never the search text, because reopening the
+  // page with a stale query would look like the list had lost its words.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        VIEW_STORAGE_KEY,
+        JSON.stringify({
+          listId: filters.listId,
+          status: filters.status ?? "all",
+          sort: filters.sort ?? "recent",
+          favoriteOnly: Boolean(filters.favoriteOnly),
+        }),
+      );
+    } catch {
+      // Storage unavailable — the view simply will not be remembered.
+    }
+  }, [filters.listId, filters.status, filters.sort, filters.favoriteOnly]);
 
   // Keep the selection valid if the active list disappears.
   useEffect(() => {
@@ -143,10 +225,10 @@ export function WordsPage() {
   const selectList = (id: string) =>
     setFilters((f) => ({ ...f, listId: id, tag: undefined }));
 
-  const openCreate = () => {
+  const openCreate = useCallback(() => {
     setEditing(null);
     setEditorOpen(true);
-  };
+  }, []);
 
   const openEdit = (word: Word) => {
     setEditing(word);
@@ -162,29 +244,126 @@ export function WordsPage() {
     bumpListen(word.id);
   };
 
-  // Keyboard: "/" focuses search, "n" creates a word.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement | null;
-      const typing =
-        el &&
-        (el.tagName === "INPUT" ||
-          el.tagName === "TEXTAREA" ||
-          el.tagName === "SELECT" ||
-          el.isContentEditable);
-      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (editorOpen || listMgrOpen || pendingDelete) return;
-      if (e.key === "/") {
-        e.preventDefault();
-        searchRef.current?.focus();
-      } else if (e.key === "n" || e.key === "N") {
-        e.preventDefault();
-        openCreate();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [editorOpen, listMgrOpen, pendingDelete]);
+  // Page-scope shortcuts, all of them declared here as data:
+  //   normal mode — "/" focuses search, "n" creates a word
+  //   select mode — Esc leaves, Ctrl/⌘+A selects the filtered rows
+  // The dialogs suspend the normal pair (the old listeners returned early
+  // too). Select mode's keys are opt-in: Ctrl+A has to work even though focus
+  // may sit in a field, and both are suspended while one of its dialogs is up.
+  const pageShortcuts = useMemo<ShortcutBinding[]>(() => {
+    if (selectMode) {
+      if (tagDialogOpen || bulkDeleteOpen) return [];
+      return [
+        {
+          id: "words.exitSelect",
+          keys: ["Esc"],
+          labelKey: "shortcuts.closeModal",
+          scope: "page",
+          showInHelp: false,
+          allowWhenTyping: true,
+          match: (event) => event.key === "Escape",
+          run: () => exitSelect(),
+        },
+        {
+          id: "words.selectAll",
+          keys: ["Ctrl", "A"],
+          labelKey: "words.select",
+          scope: "page",
+          showInHelp: false,
+          allowWhenTyping: true,
+          match: (event) =>
+            Boolean(event.metaKey || event.ctrlKey) &&
+            (event.key === "a" || event.key === "A"),
+          run: () => setSelected(new Set(filtered.map((w) => w.id))),
+        },
+      ];
+    }
+    if (editorOpen || listMgrOpen || pendingDelete) return [];
+    const unmodified = (event: KeyEventLike) =>
+      !event.metaKey && !event.ctrlKey && !event.altKey;
+    return [
+      {
+        ...SHORTCUTS.search,
+        match: (event) => unmodified(event) && event.key === "/",
+        run: () => searchRef.current?.focus(),
+      },
+      {
+        ...SHORTCUTS.addWord,
+        match: (event) => unmodified(event) && (event.key === "n" || event.key === "N"),
+        run: () => openCreate(),
+      },
+    ];
+  }, [
+    editorOpen,
+    listMgrOpen,
+    pendingDelete,
+    selectMode,
+    tagDialogOpen,
+    bulkDeleteOpen,
+    filtered,
+    openCreate,
+  ]);
+  useShortcutScope("page", pageShortcuts);
+
+  /* ---- select mode -------------------------------------------------- */
+  const selectedWords = useMemo(
+    () => data.words.filter((w) => selected.has(w.id)),
+    [data.words, selected],
+  );
+
+  const exitSelect = () => {
+    setSelectMode(false);
+    setSelected(new Set());
+  };
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // "Select all" means what is on screen: the filtered rows, not the library.
+  const selectAllFiltered = () => setSelected(new Set(filtered.map((w) => w.id)));
+
+  const confirmBulkDelete = () => {
+    // Snapshot words + their review logs before the cascade removes both, so
+    // undo puts the scheduling history back, not just the bare terms.
+    const victims = selectedWords.map((word) => ({
+      word,
+      logs: data.logs.filter((l) => l.wordId === word.id),
+    }));
+    deleteWords(victims.map((v) => v.word.id));
+    setBulkDeleteOpen(false);
+    exitSelect();
+    toast(t("words.bulkDeleted", { n: victims.length }), "ok", {
+      action: {
+        label: t("common.undo"),
+        onClick: () => victims.forEach((v) => restoreWord(v.word, v.logs)),
+      },
+      duration: 8000,
+    });
+  };
+
+  const favoriteSelected = () => {
+    selectedWords.forEach((w) => {
+      if (!w.favorite) updateWord(w.id, { favorite: true });
+    });
+    toast(t("words.favoritedCount", { n: selectedWords.length }), "ok");
+  };
+
+  const applyBulkTags = () => {
+    if (bulkTags.length === 0) return;
+    selectedWords.forEach((w) => updateWord(w.id, { tags: [...w.tags, ...bulkTags] }));
+    setBulkTags([]);
+    setTagDialogOpen(false);
+    toast(t("words.tagsAdded", { n: selectedWords.length }), "ok");
+  };
+
+  // Select mode is not a dialog, so it owns its two keys (Esc leaves, Ctrl/⌘+A
+  // selects the filtered rows) — declared in `pageShortcuts` above with the
+  // rest, so there is no second keydown listener and no second typing guard.
 
   const statusOptions: Array<{ value: StatusFilter; label: string; count: number }> = [
     { value: "all", label: t("common.all"), count: counts.all },
@@ -324,6 +503,16 @@ export function WordsPage() {
           <Icon name={filters.favoriteOnly ? "star-filled" : "star"} size={16} />
         </button>
 
+        <button
+          type="button"
+          className={cx("btn btn-sm", selectMode ? "btn-primary" : "btn-quiet")}
+          onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+          aria-pressed={selectMode}
+        >
+          <Icon name={selectMode ? "check" : "list"} size={14} />
+          {selectMode ? t("common.done") : t("words.select")}
+        </button>
+
         {filtersActive && (
           <button type="button" className="btn btn-quiet btn-sm" onClick={resetFilters}>
             <Icon name="x" size={14} />
@@ -359,26 +548,46 @@ export function WordsPage() {
       ) : (
         <div className="card card-flush rise">
           <div className="list">
-            <div className="row row-words row-head">
+            <div className={cx("row row-words row-head", selectMode && "selecting")}>
+              {selectMode && <span aria-hidden="true" />}
               <span>{t("words.term")}</span>
               <span className="row-col-def">{t("common.definition")}</span>
               <span className="row-col-status">{t("common.status")}</span>
               <span style={{ textAlign: "right" }}>{t("common.actions")}</span>
             </div>
-            {filtered.map((w) => (
+            {filtered.map((w, index) => {
+              const picked = selected.has(w.id);
+              return (
               <div
                 key={w.id}
-                className="row row-words"
-                onClick={() => openEdit(w)}
-                role="button"
+                className={cx("row row-words", selectMode && "selecting", picked && "is-picked")}
+                /* Rows settle in one after another. Capped at 8 so a newly
+                   filtered row never waits more than ~130ms to appear. */
+                style={{ animationDelay: `${Math.min(index, 8) * 16}ms` }}
+                aria-selected={selectMode ? picked : undefined}
+                onClick={() => (selectMode ? toggleSelected(w.id) : openEdit(w))}
+                role={selectMode ? "checkbox" : "button"}
                 tabIndex={0}
                 onKeyDown={(e) => {
+                  // Only the row itself reacts — Enter on the nested delete /
+                  // play / favourite buttons must not open the editor.
+                  if (e.target !== e.currentTarget) return;
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    openEdit(w);
+                    if (selectMode) toggleSelected(w.id);
+                    else openEdit(w);
                   }
                 }}
               >
+                {selectMode && (
+                  <span
+                    className={cx("check", picked && "on")}
+                    aria-hidden="true"
+                    style={{ pointerEvents: "none" }}
+                  >
+                    {picked && <Icon name="check" size={12} />}
+                  </span>
+                )}
                 <div className="row-flex" style={{ minWidth: 0, gap: 7 }}>
                   {w.favorite && (
                     <span className="row-fav" aria-hidden="true">
@@ -408,7 +617,11 @@ export function WordsPage() {
                   </span>
                 </div>
 
-                <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                <div
+                  className="row-actions"
+                  onClick={(e) => e.stopPropagation()}
+                  style={selectMode ? { display: "none" } : undefined}
+                >
                   <button
                     className="btn btn-icon btn-sm row-act-fav"
                     type="button"
@@ -448,12 +661,66 @@ export function WordsPage() {
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
 
-      {filtered.length > 0 && (
+      {selectMode && (
+        <div className="bulk-bar" role="region" aria-label={t("words.bulkTitle")}>
+          <span className="bulk-count" aria-live="polite">
+            {t("words.selected", { n: selected.size })}
+          </span>
+          <button
+            type="button"
+            className="btn btn-quiet btn-sm"
+            onClick={selectAllFiltered}
+            disabled={selected.size === filtered.length}
+          >
+            <Icon name="check" size={14} />
+            {t("words.selectAll")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-sm"
+            onClick={favoriteSelected}
+            disabled={selected.size === 0}
+          >
+            <Icon name="star" size={14} />
+            {t("words.favoriteSelected")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-sm"
+            onClick={() => setTagDialogOpen(true)}
+            disabled={selected.size === 0}
+          >
+            <Icon name="tag" size={14} />
+            {t("words.tagSelected")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-sm bulk-danger"
+            onClick={() => setBulkDeleteOpen(true)}
+            disabled={selected.size === 0}
+          >
+            <Icon name="trash" size={14} />
+            {t("words.deleteSelected")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-quiet btn-sm"
+            onClick={exitSelect}
+            style={{ marginLeft: "auto" }}
+          >
+            <Icon name="x" size={14} />
+            {t("common.cancel")}
+          </button>
+        </div>
+      )}
+
+      {filtered.length > 0 && !selectMode && (
         <div className="row-flex tiny muted" style={{ marginTop: "var(--sp-4)", gap: 6 }}>
           <span>
             {t("common.total")} {filtered.length} {t("common.words")}
@@ -490,12 +757,63 @@ export function WordsPage() {
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
           if (pendingDelete) {
+            // Restore the word *and* its review logs, so undo is a real undo.
+            const logs = data.logs.filter((l) => l.wordId === pendingDelete.id);
             deleteWord(pendingDelete.id);
-            toast(t("words.wordDeleted"), "ok");
+            toast(t("words.wordDeleted"), "ok", {
+              action: {
+                label: t("common.undo"),
+                onClick: () => restoreWord(pendingDelete, logs),
+              },
+              duration: 8000,
+            });
           }
           setPendingDelete(null);
         }}
       />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        title={t("words.bulkDeleteConfirm", { n: selected.size })}
+        body={t("words.bulkDeleteBody")}
+        confirmLabel={t("words.deleteSelected")}
+        cancelLabel={t("common.cancel")}
+        onCancel={() => setBulkDeleteOpen(false)}
+        onConfirm={confirmBulkDelete}
+      />
+
+      <Modal
+        open={tagDialogOpen}
+        onClose={() => setTagDialogOpen(false)}
+        title={t("words.tagSelected")}
+        width={420}
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setTagDialogOpen(false)}
+            >
+              {t("common.cancel")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={applyBulkTags}
+              disabled={bulkTags.length === 0}
+            >
+              {t("common.save")}
+            </button>
+          </>
+        }
+      >
+        <TagInput
+          value={bulkTags}
+          onChange={setBulkTags}
+          placeholder={t("words.tagsPlaceholder")}
+          hint={t("words.bulkTagsHint", { n: selected.size })}
+        />
+      </Modal>
 
       <ListManagerModal
         open={listMgrOpen}

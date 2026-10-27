@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { SessionResult } from "@/components/SessionResult";
 import {
+  ConfirmDialog,
   EmptyState,
   PageShell,
   ProgressBar,
@@ -22,6 +23,7 @@ import {
   type QuizQuestion,
 } from "@/lib/quiz";
 import { createSession, type Session, type SessionProgress } from "@/lib/session";
+import { SHORTCUTS, useShortcutScope, type ShortcutBinding } from "@/lib/shortcuts";
 import { getData, useAppData } from "@/lib/store";
 import { speak, speechSupported, stopSpeaking } from "@/lib/tts";
 import type { Word } from "@/lib/types";
@@ -65,6 +67,7 @@ export function QuizPage() {
   const [elapsed, setElapsed] = useState(0);
   const sessionRef = useRef<Session | null>(null);
   const [progress, setProgress] = useState<SessionProgress | null>(null);
+  const [confirmFinish, setConfirmFinish] = useState(false);
 
   const startedAtRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,9 +87,14 @@ export function QuizPage() {
   const total = progress?.total ?? 0;
   const score = progress?.correct ?? 0;
   const answeredCount = progress?.reviewed ?? 0;
-  /* A quiz is scored against the whole round, so finishing early still divides
-     by the question count — the same formula the page used before. */
-  const accuracy = total > 0 ? score / total : 0;
+  /* Score against the questions actually answered: quitting early must not turn
+     a clean 3/3 into "30%". */
+  const accuracy = answeredCount > 0 ? score / answeredCount : 0;
+  const perfect =
+    answeredCount > 0 &&
+    answeredCount === questions.length &&
+    score === answeredCount;
+  const endedEarly = answeredCount > 0 && answeredCount < questions.length;
   const questionLabel =
     progress && progress.total > 0
       ? t("quiz.question", {
@@ -135,7 +143,18 @@ export function QuizPage() {
     stopSpeaking();
     setElapsed(Date.now() - startedAtRef.current);
     setPhase("done");
+    setConfirmFinish(false);
   }, [clearTimer]);
+
+  /* Looking at results early is fine, but say how many questions are left. */
+  const requestFinish = useCallback(() => {
+    const current = sessionRef.current?.progress();
+    if (current && current.reviewed > 0 && !current.done) {
+      setConfirmFinish(true);
+      return;
+    }
+    finish();
+  }, [finish]);
 
   const goNext = useCallback(() => {
     clearTimer();
@@ -152,7 +171,7 @@ export function QuizPage() {
     (dir: QuizDirection) => {
       const built = buildQuiz(getData().words, dir, QUIZ_ROUND);
       if (built.length === 0) {
-        toast("词语不足，暂时无法生成测验", "info");
+        toast(t("quiz.noWords"), "info");
         return;
       }
       const session = createSession({
@@ -167,7 +186,7 @@ export function QuizPage() {
       startedAtRef.current = Date.now();
       setPhase("active");
     },
-    [toast],
+    [toast, t],
   );
 
   const choose = useCallback(
@@ -183,12 +202,17 @@ export function QuizPage() {
         next[position] = option;
         return next;
       });
-      session.record({ correct: option === question.answerIndex });
+      const isCorrect = option === question.answerIndex;
+      session.record({ correct: isCorrect });
       setProgress(session.progress());
-      timerRef.current = setTimeout(() => {
-        timerRef.current = null;
-        goNext();
-      }, 900);
+      /* A correct answer may glide on, but a miss must stay put until the
+         correction has actually been read. */
+      if (isCorrect) {
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null;
+          goNext();
+        }, 900);
+      }
     },
     [selected, questions, goNext],
   );
@@ -199,50 +223,40 @@ export function QuizPage() {
   }, [clearTimer]);
 
   /* 1–4 / A–D pick an option · Enter advances */
-  useEffect(() => {
-    if (phase !== "active") return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-
-      if (event.key === "Enter") {
-        if (selected !== null) {
-          event.preventDefault();
-          goNext();
-        }
-        return;
-      }
-
-      const mapped = KEY_TO_INDEX[event.key.toLowerCase()];
-      if (mapped !== undefined) {
-        event.preventDefault();
-        choose(mapped);
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+  const pageShortcuts = useMemo<ShortcutBinding[]>(() => {
+    if (phase !== "active") return [];
+    return [
+      {
+        ...SHORTCUTS.quizAnswer,
+        match: (event) => event.key === "Enter",
+        when: () => selected !== null,
+        run: () => goNext(),
+      },
+      {
+        ...SHORTCUTS.quizChoose,
+        match: (event) => KEY_TO_INDEX[event.key.toLowerCase()] !== undefined,
+        run: (event) => choose(KEY_TO_INDEX[event.key.toLowerCase()]),
+      },
+    ];
   }, [phase, selected, choose, goNext]);
+  useShortcutScope("page", pageShortcuts);
 
   const sidePanel = (
     <aside className="study-side">
       <StatTile
         label={t("quiz.score")}
         value={`${score} / ${answeredCount}`}
-        sub={questionLabel || `${eligible.length} 个可用词语`}
+        sub={questionLabel || t("quiz.eligible", { n: eligible.length })}
         icon="target"
       />
       <div className="card card-pad stack">
         <div className="card-title">{t("settings.shortcuts")}</div>
         <div className="shortcuts">
-          <ShortcutRow keys={["A", "B", "C", "D"]} label="选择答案" />
-          <ShortcutRow keys={["1", "2", "3", "4"]} label="选择答案（数字）" />
+          <ShortcutRow keys={["A", "B", "C", "D"]} label={t("quiz.chooseAnswer")} />
+          <ShortcutRow
+            keys={["1", "2", "3", "4"]}
+            label={t("quiz.chooseAnswerNum")}
+          />
           <ShortcutRow keys={["Enter"]} label={t("quiz.next")} />
         </div>
       </div>
@@ -255,7 +269,7 @@ export function QuizPage() {
       subtitle={t("quiz.subtitle")}
       actions={
         phase === "active" ? (
-          <button type="button" className="btn btn-quiet" onClick={finish}>
+          <button type="button" className="btn btn-quiet" onClick={requestFinish}>
             {t("quiz.finish")}
           </button>
         ) : (
@@ -289,7 +303,7 @@ export function QuizPage() {
                 <div className="row-flex wrap">
                   <span className="chip chip-tag">{directionLabel}</span>
                   <span className="chip chip-new">
-                    {eligible.length} 个可用词语
+                    {t("quiz.eligible", { n: eligible.length })}
                   </span>
                 </div>
                 <div className="study-actions">
@@ -302,9 +316,7 @@ export function QuizPage() {
                     <Icon name="arrow-right" size={17} />
                   </button>
                 </div>
-                <p className="tiny muted">
-                  键盘 A–D 或 1–4 选择 · Enter 下一题
-                </p>
+                <p className="tiny muted">{t("quiz.keyboardHint")}</p>
               </div>
             ) : (
               <div className="card">
@@ -446,9 +458,9 @@ export function QuizPage() {
                 </>
               ) : (
                 <p className="tiny muted">
-                  按 <span className="kbd">A</span>–<span className="kbd">D</span>{" "}
-                  或 <span className="kbd">1</span>–<span className="kbd">4</span>{" "}
-                  选择答案
+                  <span className="kbd">A</span>–<span className="kbd">D</span> /{" "}
+                  <span className="kbd">1</span>–<span className="kbd">4</span>{" "}
+                  {t("quiz.chooseHintSuffix")}
                 </p>
               )}
             </div>
@@ -461,19 +473,29 @@ export function QuizPage() {
             <SessionResult
               accuracy={accuracy}
               ringValue={score}
-              ringMax={Math.max(questions.length, 1)}
+              ringMax={Math.max(answeredCount, 1)}
               ringSize={140}
               accuracyLabel={t("quiz.accuracy")}
               title={
-                score === questions.length && questions.length > 0
+                perfect
                   ? t("quiz.perfect")
-                  : t("quiz.keepGoing")
+                  : endedEarly
+                    ? t("quiz.endedEarly")
+                    : t("quiz.keepGoing")
               }
               text={t("quiz.result")}
               leftStat={
                 <StatTile
                   label={t("quiz.score")}
-                  value={`${score} / ${questions.length}`}
+                  value={`${score} / ${answeredCount}`}
+                  sub={
+                    answeredCount < questions.length
+                      ? t("quiz.answeredCount", {
+                          n: answeredCount,
+                          total: questions.length,
+                        })
+                      : undefined
+                  }
                 />
               }
               rightStat={
@@ -534,7 +556,7 @@ export function QuizPage() {
                                 }
                               >
                                 {item.answer === null
-                                  ? "未作答"
+                                  ? t("quiz.unanswered")
                                   : item.question.options[item.answer]}
                               </b>
                             </span>
@@ -568,6 +590,16 @@ export function QuizPage() {
           {sidePanel}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmFinish}
+        title={t("quiz.exitTitle")}
+        body={t("quiz.exitConfirm")}
+        confirmLabel={t("quiz.exit")}
+        cancelLabel={t("common.cancel")}
+        danger={false}
+        onConfirm={finish}
+        onCancel={() => setConfirmFinish(false)}
+      />
     </PageShell>
   );
 }

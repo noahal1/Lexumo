@@ -16,6 +16,7 @@ import {
   pendingChangeCount,
 } from "./store";
 import { EMPTY_CHANGES, hasChanges } from "./syncMerge";
+import { decodeChangeSet, encodeChangeSet } from "./wire";
 import { onLocalChange } from "./localChanges";
 import type { ChangeSet } from "./types";
 
@@ -292,7 +293,9 @@ async function runSync(): Promise<boolean> {
     return false;
   }
   publish({ state: "syncing", error: null }, config);
-  const sent = getChangesToPush();
+  // Encode at the edge: the snapshot may still contain `_rev` from a version
+  // of the app that merged raw wire records, and the server must never see it.
+  const sent = encodeChangeSet(getChangesToPush());
   try {
     const res = await request<SyncResponse>(config.server, "/api/sync", {
       method: "POST",
@@ -300,8 +303,9 @@ async function runSync(): Promise<boolean> {
       body: { since: config.rev, changes: hasChanges(sent) ? sent : EMPTY_CHANGES },
     });
     // One round, one call: the round owns the settle-then-merge order, so the
-    // "clear before merge" rule can no longer be forgotten here.
-    applyRound({ sent, received: res.changes ?? EMPTY_CHANGES });
+    // "clear before merge" rule can no longer be forgotten here. Decoding first
+    // keeps the server's `_rev` out of the snapshot and the backup.
+    applyRound({ sent, received: decodeChangeSet(res.changes) });
     const next: SyncConfig = {
       ...config,
       rev: res.rev,
@@ -361,12 +365,13 @@ export function initSync(): void {
     refreshSyncStatus();
     scheduleSoon();
   });
-  // Lightweight poll: the store has no change hooks, and this only fires work
-  // when something is actually waiting to be pushed.
+  // Poll for remote edits on the timer. It deliberately does not check whether
+  // anything is pending: a device that is idle locally still has to learn about
+  // another device's edits. The request is a normal round with an empty
+  // `changes`, so the server contract is unchanged.
   timer = setInterval(() => {
     if (!isSignedIn()) return;
     if (!getData().settings.autoSync) return;
-    if (pendingChangeCount() === 0) return;
     void syncNow();
   }, 15_000);
   // First round shortly after boot, so a fresh device fills up quickly.

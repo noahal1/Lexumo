@@ -3,9 +3,11 @@
  *
  * Only *types* are imported from the store (`import type`), so this module
  * stays free of runtime store code and cannot create a circular dependency.
+ * `wire` is a pure edge module with no imports of its own beyond types.
  */
 import type { AppData, Word, WordStatus } from "./types";
 import type { NewWordInput } from "./store";
+import { encodeAppData } from "./wire";
 
 export interface ImportResult {
   words: NewWordInput[];
@@ -27,9 +29,33 @@ const CSV_COLUMNS = [
 /* Export                                                              */
 /* ------------------------------------------------------------------ */
 
-/** Full, pretty-printed snapshot: { version, lists, words, logs, settings }. */
+/**
+ * JSON backup: the user's data, and only the user's data.
+ *
+ * `pending` and `tombstones` belong to the sync engine — importing a file that
+ * carried them would resurrect stale flags, and `_rev` is server bookkeeping
+ * that must never be mistaken for a field of a word. The records are rebuilt
+ * through the wire edge, which also scrubs `_rev` from snapshots saved before
+ * the client stopped merging raw wire records.
+ *
+ * `parseImport` reads only `words`, so the extra fields it does not read are
+ * dropped on import by construction; old backups that contain `pending` /
+ * `tombstones` still import.
+ */
 export function exportJson(data: AppData): string {
-  return JSON.stringify(data, null, 2);
+  const clean = encodeAppData(data);
+  return JSON.stringify(
+    {
+      version: clean.version,
+      lists: clean.lists,
+      words: clean.words,
+      logs: clean.logs,
+      settings: clean.settings,
+      settingsUpdatedAt: clean.settingsUpdatedAt,
+    },
+    null,
+    2,
+  );
 }
 
 function csvCell(value: string): string {

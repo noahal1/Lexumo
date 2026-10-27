@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { EmptyState, PageShell, Ring, Segmented, StatTile } from "@/components/ui";
 import { useRouter } from "@/app/router";
-import { useLang, useT } from "@/i18n";
+import { useT, type MessageKey } from "@/i18n";
 import { useAppData } from "@/lib/store";
 import { DAY_MS, formatInterval } from "@/lib/srs";
 import { STATUS_LABEL_KEY, STATUS_ORDER, type Grade, type WordStatus } from "@/lib/types";
@@ -28,7 +28,7 @@ const STATUS_COLOR: Record<WordStatus, string> = {
   mastered: "var(--jade)",
 };
 
-const GRADES: Array<{ grade: Grade; labelKey: string; color: string }> = [
+const GRADES: Array<{ grade: Grade; labelKey: MessageKey; color: string }> = [
   { grade: "hard", labelKey: "flashcards.gradeHard", color: "var(--rose)" },
   { grade: "good", labelKey: "flashcards.gradeGood", color: "var(--sky)" },
   { grade: "easy", labelKey: "flashcards.gradeEasy", color: "var(--jade)" },
@@ -115,14 +115,12 @@ function KvRow({
 
 export function StatsPage() {
   const t = useT();
-  const lang = useLang();
   const { navigate } = useRouter();
   const data = useAppData();
   const [range, setRange] = useState<Range>("30");
 
   const now = Date.now();
   const days = range === "7" ? 7 : range === "30" ? 30 : 90;
-  const zh = lang === "zh-CN";
 
   /* Headline numbers -------------------------------------------------
      One summarize() call owns the arithmetic. The activity series and the
@@ -172,6 +170,26 @@ export function StatsPage() {
   const seriesPeak = series.reduce((max, d) => Math.max(max, d.count), 0);
   const seriesAvg = seriesTotal / days;
   const labelStep = days <= 7 ? 1 : days <= 30 ? 5 : 15;
+  /* Which days get a tick. Today is always labelled, and it is pinned to the
+     right edge — so a scheduled tick that would land within one step of it is
+     dropped rather than crowding it into an overlap. A fixed `i % step` rule
+     alone put two labels 4px apart on a 390px screen. */
+  const lastIdx = series.length - 1;
+  const labelIdx: number[] = [];
+  for (let i = 0; i <= lastIdx; i += labelStep) {
+    if (lastIdx - i >= labelStep) labelIdx.push(i);
+  }
+  if (labelIdx[labelIdx.length - 1] !== lastIdx) labelIdx.push(lastIdx);
+  const xLabels = labelIdx.map((i) => {
+    const day = series[i];
+    return {
+      key: day.key,
+      label: day.label,
+      isToday: day.isToday,
+      pct: (i / Math.max(1, lastIdx)) * 100,
+      edge: i === 0 ? "first" : i === lastIdx ? "last" : undefined,
+    };
+  });
 
   /* Grade mix over the selected window ------------------------------- */
   const windowStart = todayStart - (days - 1) * DAY_MS;
@@ -193,14 +211,10 @@ export function StatsPage() {
           <EmptyState
             icon="words"
             title={t("stats.noData")}
-            text={
-              zh
-                ? "先添加几个词语，统计会随着你的学习慢慢长出形状。"
-                : "Add a few words first — your stats will take shape as you study."
-            }
+            text={t("stats.emptyHint")}
             action={
               <button type="button" className="btn btn-primary" onClick={() => navigate("words")}>
-                {zh ? "添加词语" : "Add words"}
+                {t("stats.addWords")}
               </button>
             }
           />
@@ -216,7 +230,7 @@ export function StatsPage() {
       actions={
         dueToday > 0 ? (
           <button type="button" className="btn btn-primary" onClick={() => navigate("flashcards")}>
-            {zh ? `开始复习 · ${dueToday}` : `Review · ${dueToday}`}
+            {t("stats.reviewWithCount", { n: dueToday })}
           </button>
         ) : undefined
       }
@@ -228,14 +242,14 @@ export function StatsPage() {
             icon="words"
             label={t("stats.totalWords")}
             value={total}
-            sub={zh ? `${data.lists.length} 个词库` : `${data.lists.length} lists`}
+            sub={t("stats.listsCount", { n: data.lists.length })}
           />
           <StatTile
             icon="check"
             label={t("stats.mastered")}
             value={mastered}
             accent="var(--jade)"
-            sub={zh ? `占全部 ${masteryPct}%` : `${masteryPct}% of all words`}
+            sub={t("stats.masteryShare", { n: masteryPct })}
           />
           <StatTile
             icon="cards"
@@ -244,9 +258,7 @@ export function StatsPage() {
             sub={
               reached
                 ? t("stats.goalReached")
-                : zh
-                  ? `还差 ${remaining} 次到目标`
-                  : `${remaining} to go today`
+                : t("stats.remainingToGoal", { n: remaining })
             }
           />
           <StatTile
@@ -278,7 +290,7 @@ export function StatsPage() {
                     <span className="goal-done">{t("stats.goalReached")}</span>
                   ) : (
                     <span className="goal-remain">
-                      {zh ? `还差 ${remaining} 次复习` : `${remaining} reviews to go`}
+                      {t("stats.remainingReviews", { n: remaining })}
                     </span>
                   )}
                   <span className="goal-foot">
@@ -286,7 +298,7 @@ export function StatsPage() {
                   </span>
                   {overdue > 0 && (
                     <span className="goal-foot is-warn">
-                      {zh ? `逾期 ${overdue} 个词语` : `${overdue} overdue`}
+                      {t("stats.overdueCount", { n: overdue })}
                     </span>
                   )}
                 </div>
@@ -297,7 +309,7 @@ export function StatsPage() {
           <section className="card">
             <CardHead
               title={t("stats.statusDistribution")}
-              sub={zh ? `共 ${total} 个词语` : `${total} words in total`}
+              sub={t("stats.wordsInTotal", { n: total })}
             />
             <div className="card-pad">
               <div className="dist">
@@ -322,21 +334,19 @@ export function StatsPage() {
         {/* Activity over time ---------------------------------------- */}
         <section className="card">
           <CardHead
-            title={zh ? `近 ${days} 天复习` : `Reviews · last ${days} days`}
+            title={t("stats.reviewsLastDays", { n: days })}
             sub={
               hasReviews
-                ? zh
-                  ? `累计 ${seriesTotal} 次`
-                  : `${seriesTotal} reviews`
+                ? t("stats.windowTotal", { n: days, total: seriesTotal })
                 : undefined
             }
             right={
               <Segmented<Range>
                 value={range}
-                ariaLabel={zh ? "选择统计区间" : "Select range"}
+                ariaLabel={t("stats.selectRange")}
                 options={RANGE_OPTIONS.map((r) => ({
                   value: r.value,
-                  label: zh ? `${r.days} 天` : `${r.days}d`,
+                  label: t("stats.rangeDays", { n: r.days }),
                 }))}
                 onChange={setRange}
               />
@@ -349,16 +359,18 @@ export function StatsPage() {
                   className={days >= 90 ? "chart-plot dense" : "chart-plot"}
                   role="img"
                   aria-label={
-                    zh
-                      ? `近 ${days} 天共复习 ${seriesTotal} 次，最高一天 ${seriesPeak} 次`
-                      : `${seriesTotal} reviews in the last ${days} days, peak ${seriesPeak}`
+                    t("stats.chartSummary", {
+                      days,
+                      total: seriesTotal,
+                      peak: seriesPeak,
+                    })
                   }
                 >
                   {series.map((day) => (
                     <div
                       className="chart-col"
                       key={day.key}
-                      title={`${day.label} · ${day.count} ${zh ? "次" : "reviews"}`}
+                      title={`${day.label} · ${t("stats.reviewCount", { n: day.count })}`}
                     >
                       <div
                         className={
@@ -378,23 +390,34 @@ export function StatsPage() {
                       />
                     </div>
                   ))}
+                  <div
+                    className="chart-avg"
+                    style={{ bottom: `${Math.min(100, (seriesAvg / seriesMax) * 100)}%` }}
+                  />
+                  <span className="chart-y-max">{seriesPeak}</span>
                 </div>
                 <div className="chart-x" aria-hidden="true">
-                  {series.map((day, i) => (
-                    <span key={day.key} className={day.isToday ? "is-today" : undefined}>
-                      {i % labelStep === 0 || i === series.length - 1 ? day.label : ""}
+                  {xLabels.map((l) => (
+                    <span
+                      key={l.key}
+                      className={[l.edge && `is-${l.edge}`, l.isToday && "is-today"]
+                        .filter(Boolean)
+                        .join(" ")}
+                      style={{ left: `${l.pct}%` }}
+                    >
+                      {l.label}
                     </span>
                   ))}
                 </div>
                 <div className="chart-foot">
                   <span>
-                    {zh ? "日均" : "Daily avg"} <b>{seriesAvg.toFixed(1)}</b>
+                    {t("stats.dailyAvg")} <b>{seriesAvg.toFixed(1)}</b>
                   </span>
                   <span>
-                    {zh ? "单日最高" : "Peak"} <b>{seriesPeak}</b>
+                    {t("stats.peakDay")} <b>{seriesPeak}</b>
                   </span>
                   <span>
-                    {t("stats.totalReviews")} <b>{data.logs.length}</b>
+                    {t("stats.allReviews")} <b>{data.logs.length}</b>
                   </span>
                 </div>
               </div>
@@ -402,19 +425,15 @@ export function StatsPage() {
               <div className="dash-empty">
                 <EmptyState
                   icon="cards"
-                  title={zh ? "还没有复习记录" : "No reviews yet"}
-                  text={
-                    zh
-                      ? "完成第一次闪卡复习后，这里会显示你每天积累的复习量。"
-                      : "Finish your first flashcard session and your daily volume will appear here."
-                  }
+                  title={t("stats.noReviews")}
+                  text={t("stats.noReviewsHint")}
                   action={
                     <button
                       type="button"
                       className="btn btn-primary"
                       onClick={() => navigate("flashcards")}
                     >
-                      {zh ? "去复习" : "Start reviewing"}
+                      {t("stats.startReviewing")}
                     </button>
                   }
                 />
@@ -427,8 +446,8 @@ export function StatsPage() {
         <div className="dash-split">
           <section className="card">
             <CardHead
-              title={zh ? "评分分布" : "Grade mix"}
-              sub={zh ? `近 ${days} 天` : `last ${days} days`}
+              title={t("stats.gradeMix")}
+              sub={t("stats.lastDays", { n: days })}
             />
             <div className="card-pad">
               {gradeTotal > 0 ? (
@@ -451,12 +470,8 @@ export function StatsPage() {
                 <div className="dash-empty">
                   <EmptyState
                     icon="quiz"
-                    title={zh ? "暂无评分数据" : "No grades yet"}
-                    text={
-                      zh
-                        ? "复习时用「困难 / 记得 / 简单」评分，这里会显示你的记忆质量。"
-                        : "Grade cards as hard / good / easy and your recall quality shows up here."
-                    }
+                    title={t("stats.noGrades")}
+                    text={t("stats.noGradesHint")}
                   />
                 </div>
               )}
@@ -465,8 +480,8 @@ export function StatsPage() {
 
           <section className="card">
             <CardHead
-              title={zh ? "记忆留存率" : "Retention"}
-              sub={zh ? "答对次数 / 复习次数" : "correct / total reviews"}
+              title={t("stats.retention")}
+              sub={t("stats.retentionSub")}
             />
             <div className="card-pad">
               <div className="metric-line" style={{ marginBottom: "var(--sp-3)" }}>
@@ -475,30 +490,29 @@ export function StatsPage() {
                 </span>
                 <span className="tiny muted">
                   {retention === null
-                    ? zh
-                      ? "还没有可计算的复习"
-                      : "not enough data yet"
-                    : zh
-                      ? `${reviewSum} 次复习 · ${correctSum} 次答对`
-                      : `${reviewSum} reviews · ${correctSum} correct`}
+                    ? t("stats.notEnoughData")
+                    : t("stats.retentionDetail", {
+                        reviews: reviewSum,
+                        correct: correctSum,
+                      })}
                 </span>
               </div>
               <div className="kv">
                 <KvRow
-                  label={zh ? "逾期词语" : "Overdue words"}
+                  label={t("stats.overdueWords")}
                   value={overdue}
                   warn={overdue > 0}
                 />
                 <KvRow
-                  label={zh ? "已复习词语" : "Words reviewed"}
+                  label={t("stats.reviewedWords")}
                   value={`${reviewedWords} / ${total}`}
                 />
                 <KvRow
-                  label={zh ? "今日待复习" : "Due today"}
+                  label={t("stats.dueToday")}
                   value={dueToday}
                 />
                 <KvRow
-                  label={zh ? "平均复习间隔" : "Avg. interval"}
+                  label={t("stats.avgInterval")}
                   value={scheduled > 0 ? formatInterval(Math.round(avgInterval)) : "—"}
                 />
               </div>

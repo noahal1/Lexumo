@@ -30,6 +30,7 @@ import type {
   AppData,
   ChangeSet,
   Grade,
+  ReviewLog,
   Settings,
   SrsState,
   Tombstones,
@@ -111,6 +112,7 @@ export interface StoreOptions {
 
 export interface NewWordInput {
   term: string;
+  phonetic?: string;
   definition?: string;
   definition2?: string;
   example?: string;
@@ -142,6 +144,8 @@ export interface Store {
   updateWord(id: string, patch: Partial<Word>): void;
   deleteWord(id: string): void;
   deleteWords(ids: string[]): void;
+  /** Undo a delete: put the word back together with the review logs it lost. */
+  restoreWord(word: Word, logs?: ReviewLog[]): void;
   toggleFavorite(id: string): void;
   bumpListen(id: string): void;
 
@@ -336,6 +340,7 @@ export function createStore(options: StoreOptions): Store {
       const word: Word = {
         id: uid("w"),
         term: input.term.trim(),
+        phonetic: (input.phonetic ?? "").trim(),
         definition: (input.definition ?? "").trim(),
         definition2: (input.definition2 ?? "").trim(),
         example: (input.example ?? "").trim(),
@@ -375,6 +380,25 @@ export function createStore(options: StoreOptions): Store {
     deleteWords(ids) {
       const now = clock();
       commit((d) => journal.purgeWords(d, ids, now));
+    },
+
+    restoreWord(word, logs = []) {
+      const now = clock();
+      commit((d) => {
+        // Already back (double-clicked undo, or the word was re-added by hand).
+        if (d.words.some((w) => w.id === word.id)) return;
+        // Undo has to un-bury what the delete buried, or the next sync round
+        // would push a tombstone for a word the user can see in the list.
+        delete d.tombstones.words[word.id];
+        d.words.unshift({ ...word, updatedAt: now });
+        journal.touch(d, "word", word.id);
+        for (const log of logs) {
+          if (d.logs.some((l) => l.id === log.id)) continue;
+          delete d.tombstones.logs[log.id];
+          d.logs.push({ ...log });
+          journal.touch(d, "log", log.id);
+        }
+      });
     },
 
     toggleFavorite(id) {
@@ -473,7 +497,23 @@ export function createStore(options: StoreOptions): Store {
 
     async wipeAll() {
       await persistence.clear();
-      data = withDefaultList(emptyData(), clock());
+      const now = clock();
+      // A wipe has to travel like any other delete. Dropping the records
+      // silently would leave no tombstones, so the next sign-in would pull the
+      // whole library straight back from the server. Every id that goes away
+      // is therefore buried in the fresh snapshot.
+      const wiped = withDefaultList(emptyData(), now);
+      for (const word of data.words) journal.bury(wiped, "word", word.id, now);
+      for (const log of data.logs) journal.bury(wiped, "log", log.id, now);
+      for (const list of data.lists) {
+        if (list.id !== DEFAULT_LIST_ID) journal.bury(wiped, "list", list.id, now);
+      }
+      // The fresh snapshot recreates the default list under this same fixed id,
+      // so that id is not deleted — a tombstone would tell the server to drop
+      // the list we just made, and the echoed delete would remove it locally
+      // too. It is pushed as an edit instead, which also resets the name.
+      journal.touch(wiped, "list", DEFAULT_LIST_ID);
+      data = wiped;
       notify();
       scheduleSave();
     },
@@ -519,6 +559,7 @@ export const addWord = store.addWord;
 export const updateWord = store.updateWord;
 export const deleteWord = store.deleteWord;
 export const deleteWords = store.deleteWords;
+export const restoreWord = store.restoreWord;
 export const toggleFavorite = store.toggleFavorite;
 export const bumpListen = store.bumpListen;
 export const gradeWord = store.gradeWord;

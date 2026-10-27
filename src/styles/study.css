@@ -94,6 +94,34 @@
    Flashcards
    -------------------------------------------------------------------------- */
 
+/* Turning the card over. `perspective()` lives inside the transform so the card
+   needs no wrapper element: rotating it directly still reads as depth. The turn
+   is two halves — the front rotates to edge-on, JS swaps the face, then the back
+   rotates in from the other side. Splitting it means the DOM swap happens when
+   the card is invisible, so no text is ever seen mirrored. */
+@keyframes fc-turn-out {
+  from {
+    transform: perspective(1200px) rotateY(0deg);
+  }
+  to {
+    transform: perspective(1200px) rotateY(-88deg);
+  }
+}
+@keyframes fc-turn-in {
+  from {
+    transform: perspective(1200px) rotateY(88deg);
+  }
+  to {
+    transform: perspective(1200px) rotateY(0deg);
+  }
+}
+.fc-card.is-turn-out {
+  animation: fc-turn-out 130ms var(--ease-in) both;
+}
+.fc-card.is-turn-in {
+  animation: fc-turn-in 180ms var(--ease-turn) both;
+}
+
 .fc-card {
   position: relative;
   display: flex;
@@ -135,7 +163,7 @@
   font-size: var(--fs-xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--ink-4);
+  color: var(--ink-3);
 }
 
 /* The face is the scroll container: long definitions scroll, not the page. */
@@ -233,7 +261,7 @@
   justify-content: center;
   gap: 8px;
   font-size: var(--fs-xs);
-  color: var(--ink-4);
+  color: var(--ink-3);
 }
 
 /* Grade buttons: equal thirds, keyboard hint + resulting interval. */
@@ -241,6 +269,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-3);
+  animation: rise var(--dur-3) var(--ease-out) both;
 }
 
 .fc-grade {
@@ -440,7 +469,7 @@
 }
 
 .quiz-option:active:not(:disabled) {
-  transform: translateY(0.5px);
+  transform: scale(0.99);
 }
 
 .quiz-option:focus-visible {
@@ -491,7 +520,7 @@
 .quiz-option.is-correct .quiz-key {
   background: var(--jade);
   border-color: var(--jade);
-  color: #f7fffc;
+  color: var(--on-brand);
 }
 
 .quiz-option.is-wrong {
@@ -503,11 +532,66 @@
 .quiz-option.is-wrong .quiz-key {
   background: var(--rose);
   border-color: var(--rose);
-  color: #fff;
+  color: var(--on-rose);
 }
 
 .quiz-option.is-dim {
   opacity: 0.55;
+}
+
+/* Answer feedback. The correct option gives a small "settle" (it is confirmed,
+   not celebrated), the picked-but-wrong one shakes once — the motion carries the
+   same meaning as the colour, so it still reads with motion off and it does not
+   rely on red alone. */
+@keyframes quiz-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes quiz-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-5px);
+  }
+  40% {
+    transform: translateX(4px);
+  }
+  60% {
+    transform: translateX(-3px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+@keyframes key-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.quiz-option.is-correct {
+  animation: quiz-pop var(--dur-3) var(--ease-out);
+}
+.quiz-option.is-wrong {
+  animation: quiz-shake 320ms var(--ease);
+}
+.quiz-option.is-correct .quiz-key,
+.quiz-option.is-wrong .quiz-key {
+  animation: key-pop 320ms var(--ease-out);
 }
 
 .quiz-foot {

@@ -32,6 +32,11 @@
   --jade-soft: #dfeee9;
   --jade-ink: #0a4a3f;
 
+  /* Foregrounds for text/glyphs sitting ON a brand fill. In dark mode the
+     fills get lighter, so these must flip to dark ink — never hardcode them. */
+  --on-brand: #f7fffc;
+  --on-rose: #ffffff;
+
   /* ---- semantic accents (darkened for AA on their soft bg) ---- */
   --amber: #8f5810;    /* 4.9:1 on amber-soft */
   --amber-soft: #f6e8d2;
@@ -59,8 +64,8 @@
 
   --fs-xs: 12px;
   --fs-sm: 13px;
-  --fs-base: 14px;
-  --fs-md: 15.5px;
+  --fs-base: 15px;
+  --fs-md: 16px;
   --fs-lg: 19px;
   --fs-xl: 27px;
   --fs-2xl: 34px;
@@ -79,6 +84,7 @@
   --sp-12: 48px;
 
   /* ---- radii ---- */
+  --r-2xs: 4px;
   --r-xs: 6px;
   --r-sm: 8px;
   --r-md: 12px;
@@ -93,13 +99,24 @@
   --shadow-lg: 0 18px 44px rgba(33, 31, 26, 0.16), 0 4px 12px rgba(33, 31, 26, 0.07);
   --ring: 0 0 0 3px var(--jade-soft);
 
-  /* ---- motion ---- */
+  /* ---- motion ----
+     One easing family for the whole app. Entrances decelerate (--ease-out),
+     exits accelerate (--ease-in), and the flashcard turn gets its own curve so
+     it feels like paper being flipped rather than a UI element sliding.
+     Nothing overshoots: this app is quiet, so no springy bounce. */
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 0.7, 0.2);
+  --ease-turn: cubic-bezier(0.32, 0.72, 0.4, 1);
   --dur-1: 120ms;
   --dur-2: 180ms;
   --dur-3: 260ms;
   --dur-4: 420ms;
+  --dur-5: 620ms;
+  /* Per-item delay for lists that enter in sequence. Kept short on purpose:
+     `animation-fill-mode: both` holds the "from" state during the delay, so a
+     long stagger makes newly filtered rows appear late. */
+  --stagger: 16ms;
 
   /* ---- layout ---- */
   --sidebar-w: 236px;
@@ -119,13 +136,13 @@
 
   --bg: #10120f;
   --bg-deep: #0b0d0a;
-  --surface: #171a15;
-  --surface-2: #1d211b;
-  --surface-hover: #22261f;
+  --surface: #1b1f19;
+  --surface-2: #22261f;
+  --surface-hover: #272c24;
   --surface-sunken: #0d0f0c;
 
-  --line: #2a2f27;
-  --line-strong: #3a4036;
+  --line: #3a4136;
+  --line-strong: #6b7466;
 
   --ink: #ece9df;
   --ink-2: #c2beb2;
@@ -136,6 +153,10 @@
   --jade-hover: #6ddcc2;
   --jade-soft: #14332c;
   --jade-ink: #9fe8d6;
+
+  /* Light fills need dark glyphs: 8.7:1 on --jade, 6.4:1 on --rose. */
+  --on-brand: #06231c;
+  --on-rose: #2a0f0a;
 
   --amber: #e0a458;
   --amber-soft: #3a2a12;
@@ -151,9 +172,13 @@
   --danger: #e0806e;
   --focus: #58cfb2;
 
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.62), 0 4px 12px rgba(0, 0, 0, 0.4);
+  /* On near-black a drop shadow is invisible, so elevation is carried by a
+     hairline top highlight plus a deeper shadow. */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.66), 0 4px 12px rgba(0, 0, 0, 0.45);
   --ring: 0 0 0 3px rgba(88, 207, 178, 0.22);
 }

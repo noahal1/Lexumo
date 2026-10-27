@@ -1,16 +1,20 @@
-/** Shared UI primitives used by every page. */
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+/**
+ * Shared UI primitives used by every page.
+ *
+ * The heavier pieces live next door and are re-exported here so call sites
+ * keep importing from one place:
+ *   - `Modal.tsx`    — focus-trapped dialog + ConfirmDialog
+ *   - `Toast.tsx`    — toast queue and its provider
+ *   - `TagInput.tsx` — tag chip and the inline tag editor
+ */
+import { useId, type ReactNode } from "react";
 import { cx } from "@/lib/utils";
 import { Icon, type IconName } from "@/components/Icon";
+
+export { ConfirmDialog, Modal } from "@/components/Modal";
+export { ToastProvider, useToast } from "@/components/Toast";
+export type { ToastAction, ToastFn, ToastKind, ToastOptions } from "@/components/Toast";
+export { TagChip, TagInput } from "@/components/TagInput";
 
 /* ------------------------------------------------------------------ */
 /* Page shell — every page uses this so headers stay consistent        */
@@ -80,215 +84,6 @@ export function Segmented<T extends string>({
       ))}
     </div>
   );
-}
-
-/* ------------------------------------------------------------------ */
-/* Modal — with focus trap and focus restoration                       */
-/* ------------------------------------------------------------------ */
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-export function Modal({
-  open,
-  onClose,
-  title,
-  subtitle,
-  children,
-  footer,
-  width,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: string;
-  subtitle?: string;
-  children: ReactNode;
-  footer?: ReactNode;
-  width?: number;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const titleId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement as HTMLElement | null;
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-        return;
-      }
-      // Keep Tab inside the dialog — otherwise focus escapes to the page behind.
-      if (e.key !== "Tab" || !ref.current) return;
-      const nodes = Array.from(ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-        (el) => el.offsetParent !== null || el === document.activeElement,
-      );
-      if (nodes.length === 0) return;
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", onKey, true);
-    const first = ref.current?.querySelector<HTMLElement>(
-      "input, textarea, select, button:not(.modal-close)",
-    );
-    first?.focus();
-
-    return () => {
-      document.removeEventListener("keydown", onKey, true);
-      previous?.focus?.();
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
-  return (
-    <div
-      className="overlay"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        ref={ref}
-        tabIndex={-1}
-        style={width ? { width: `min(${width}px, 100%)` } : undefined}
-      >
-        <div className="modal-head">
-          <div style={{ minWidth: 0 }}>
-            <div className="modal-title" id={titleId}>
-              {title}
-            </div>
-            {subtitle && <div className="modal-sub">{subtitle}</div>}
-          </div>
-          <button className="modal-close" onClick={onClose} aria-label="关闭" type="button">
-            <Icon name="x" size={17} />
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-        {footer && <div className="modal-foot">{footer}</div>}
-      </div>
-    </div>
-  );
-}
-
-export function ConfirmDialog({
-  open,
-  title,
-  body,
-  confirmLabel,
-  cancelLabel,
-  danger = true,
-  onConfirm,
-  onCancel,
-}: {
-  open: boolean;
-  title: string;
-  body?: string;
-  confirmLabel: string;
-  cancelLabel: string;
-  danger?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <Modal
-      open={open}
-      onClose={onCancel}
-      title={title}
-      width={440}
-      footer={
-        <>
-          <button className="btn" onClick={onCancel} type="button">
-            {cancelLabel}
-          </button>
-          <button
-            className={cx("btn", danger ? "btn-danger" : "btn-primary")}
-            onClick={onConfirm}
-            type="button"
-          >
-            {confirmLabel}
-          </button>
-        </>
-      }
-    >
-      {body && (
-        <p className="muted" style={{ margin: 0, lineHeight: 1.6 }}>
-          {body}
-        </p>
-      )}
-    </Modal>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Toast                                                               */
-/* ------------------------------------------------------------------ */
-interface ToastItem {
-  id: number;
-  text: string;
-  kind: "ok" | "err" | "info";
-}
-type ToastFn = (text: string, kind?: ToastItem["kind"]) => void;
-
-const ToastContext = createContext<ToastFn>(() => {});
-
-const TOAST_ICON: Record<ToastItem["kind"], IconName> = {
-  ok: "check",
-  err: "alert",
-  info: "info",
-};
-
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<ToastItem[]>([]);
-  const seq = useRef(0);
-
-  const dismiss = useCallback((id: number) => {
-    setItems((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
-  const push = useCallback<ToastFn>(
-    (text, kind = "info") => {
-      const id = ++seq.current;
-      setItems((prev) => [...prev.slice(-2), { id, text, kind }]);
-      setTimeout(() => dismiss(id), 2600);
-    },
-    [dismiss],
-  );
-
-  return (
-    <ToastContext.Provider value={push}>
-      {children}
-      <div className="toast-stack" aria-live="polite" aria-atomic="false">
-        {items.map((t) => (
-          <div
-            key={t.id}
-            className={cx("toast", `toast-${t.kind}`)}
-            role="status"
-            onClick={() => dismiss(t.id)}
-            style={{ pointerEvents: "auto", cursor: "default" }}
-          >
-            <span className="toast-ico" aria-hidden="true">
-              <Icon name={TOAST_ICON[t.kind]} size={14} />
-            </span>
-            {t.text}
-          </div>
-        ))}
-      </div>
-    </ToastContext.Provider>
-  );
-}
-
-export function useToast(): ToastFn {
-  return useContext(ToastContext);
 }
 
 /* ------------------------------------------------------------------ */
@@ -399,93 +194,6 @@ export function StatusChip({ status, label }: { status: string; label: string })
       <span className="dot" />
       {label}
     </span>
-  );
-}
-
-export function TagChip({ tag }: { tag: string }) {
-  return <span className="chip chip-tag">#{tag}</span>;
-}
-
-/* ------------------------------------------------------------------ */
-/* Inline editable tag input                                           */
-/* ------------------------------------------------------------------ */
-export function TagInput({
-  value,
-  onChange,
-  placeholder,
-  hint,
-}: {
-  value: string[];
-  onChange: (tags: string[]) => void;
-  placeholder?: string;
-  hint?: string;
-}) {
-  const [draft, setDraft] = useState("");
-
-  const commit = () => {
-    const tag = draft.trim().replace(/^#/, "");
-    if (!tag) return;
-    if (!value.some((t) => t.toLowerCase() === tag.toLowerCase())) {
-      onChange([...value, tag]);
-    }
-    setDraft("");
-  };
-
-  return (
-    <div className="field">
-      <div
-        className="input"
-        style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", height: "auto", minHeight: 40, padding: "5px 8px" }}
-      >
-        {value.map((tag) => (
-          <span key={tag} className="chip chip-tag" style={{ gap: 4 }}>
-            #{tag}
-            <button
-              type="button"
-              onClick={() => onChange(value.filter((t) => t !== tag))}
-              className="btn-quiet"
-              style={{
-                border: 0,
-                background: "transparent",
-                color: "inherit",
-                cursor: "pointer",
-                padding: 0,
-                display: "grid",
-                placeItems: "center",
-              }}
-              aria-label={`移除标签 ${tag}`}
-            >
-              <Icon name="x" size={11} />
-            </button>
-          </span>
-        ))}
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === ",") {
-              e.preventDefault();
-              commit();
-            } else if (e.key === "Backspace" && !draft && value.length) {
-              onChange(value.slice(0, -1));
-            }
-          }}
-          onBlur={commit}
-          placeholder={value.length ? "" : placeholder}
-          style={{
-            flex: 1,
-            minWidth: 100,
-            border: 0,
-            outline: "none",
-            background: "transparent",
-            color: "var(--ink)",
-            padding: "3px 0",
-            height: 24,
-          }}
-        />
-      </div>
-      {hint && <span className="hint">{hint}</span>}
-    </div>
   );
 }
 

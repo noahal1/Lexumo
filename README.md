@@ -10,7 +10,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 
 ## 功能
 
-- **词库管理**：多词库、增删改查、搜索、状态筛选、标签筛选、排序、收藏；每条词条包含主释义、补充释义、例句、笔记、标签。
+- **词库管理**：多词库、增删改查、搜索、状态筛选、标签筛选、排序、收藏；每条词条包含主释义、补充释义、例句、笔记、标签、音标。支持批量操作（全选 / 收藏 / 加标签 / 删除所选）；删除词条后可在提示条上「撤销」，词条与它的复习记录一起回来。
 - **添加时自动翻译**：新建词条时输入单词并失焦，自动查词典填入释义、补充释义、例句与音标；可一键「重新翻译」强制覆盖。桌面版通过 Rust 代理查有道词典（音标 + 词性 + 双语例句），网页版降级到有道 / MyMemory / Google 机器翻译链；结果缓存 30 天，命中限流时自动冷却换源，查不到不阻塞手动填写，设置里可整体关闭。
 - **间隔重复**：SM-2 变体调度，评分分为 `easy / good / hard`；ease 限制在 `[1.3, 2.5]`，间隔限制在 `[1, 3650]` 天；卡片状态由已获得的间隔推导：`new → reviewing → learning → mastered`。
 - **闪卡复习**：四种组卡方式（到期卡片 / 新卡片 / 全部词语 / 收藏词语，各自显示数量）、到期队列 + 新卡队列（受每日新卡上限约束）、翻面后仍保留词形、评分按钮上直接预览「下次间隔」、可随时「撤销上一次」评分或跳过、中途可「结束本轮」、键盘快捷键、自动/手动 TTS 发音。
@@ -20,7 +20,8 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 - **导入 / 导出**：JSON 快照、CSV 表格、Anki TXT 三种格式。
 - **多端同步（可选）**：仓库自带一个零依赖的 Node 同步后端（`server/`），注册账号后可在多台设备间增量同步词库、词条、复习日志与设置。本地优先：不登录、不联网也能完整使用，登录后离线改动会在恢复网络时自动补推。冲突按 `updatedAt` 后写胜出（LWW），删除以墓碑传播，日志按 id 并集去重。侧栏与设置页实时显示同步状态与待同步条数，可关闭自动同步。
 - **本地优先**：IndexedDB 单快照持久化，localStorage 兜底；默认无账号、无遥测，同步是可选的。
-- **界面与可用性**：暖纸色 / 深色双主题（跟随系统），侧栏可折叠为图标栏，启动骨架屏，词条行悬停才显示操作区，搜索命中高亮；全局快捷键与「?」快捷键帮助；弹窗带焦点陷阱，正文对比度满足 WCAG AA。
+- **界面与可用性**：暖纸色 / 深色双主题（跟随系统），侧栏可折叠为图标栏，启动骨架屏，词条行悬停才显示操作区，搜索命中高亮；全局快捷键与「?」快捷键帮助；弹窗带焦点陷阱，正文对比度满足 WCAG AA（深浅两套主题的每个页面都实测过）。错误用 `role="alert"` 播报、约 6 秒；成功提示约 3.2 秒，鼠标悬停或聚焦时暂停计时；带「撤销」的提示保留 8 秒。所有提示都能手点关闭。
+- **动效**：翻页淡入、列表逐行落位、闪卡两段式翻面、测验对错反馈、按下缩放、提示条进出。全部走系统「减少动态」设置——开启后动画时长归零，闪卡直接出答案，不靠定时器。
 
 ## 键盘操作
 
@@ -33,14 +34,16 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 | <kbd>/</kbd> | 聚焦搜索框（词库页） |
 | <kbd>n</kbd> | 新建词条（词库页） |
 | <kbd>Space</kbd> | 翻开 / 盖上闪卡 |
-| <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | 闪卡评分（困难 / 良好 / 简单） |
+| <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | 闪卡评分（困难 / 记得 / 简单） |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> | 撤销上一次闪卡评分或跳过 |
 | <kbd>←</kbd> <kbd>→</kbd> | 跳过当前卡片 |
 | <kbd>A</kbd>–<kbd>D</kbd> 或 <kbd>1</kbd>–<kbd>4</kbd> | 选择测验选项 |
 | <kbd>Enter</kbd> | 测验下一题 |
 | <kbd>Esc</kbd> | 关闭弹窗 / 清空搜索 |
 
-> 在输入框内输入时，单键快捷键会自动让位，不会误触发。
+> 快捷键只有一个来源：`src/lib/shortcuts.ts` 里唯一的 `document` keydown 监听器，配一个守卫函数（输入框 / `contentEditable` / 下拉框内让位，输入法组字中一律不响应）和一份声明式绑定表。作用域优先级只声明一处（弹窗 > 页面 > 全局），帮助面板里的条目由同一份绑定表生成，因此不会出现「帮助里写着、实际按了没反应」。
+
+> 在输入框内输入时，单键快捷键会自动让位，不会误触发；用中文输入法打拼音时（组字过程中）同样不会触发——按 <kbd>n</kbd> 不会在选字途中打开新建词条，<kbd>Space</kbd> 也不会在选字途中翻卡。
 
 ## 手机与触屏
 
@@ -93,7 +96,8 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 ├── THIRD-PARTY-LICENSES.md     # 第三方组件许可
 ├── docs/
 │   ├── app-ui.png              # README 界面截图
-│   └── sync-protocol.md        # 同步接口契约（后端与客户端共同的唯一规范）
+│   ├── sync-protocol.md        # 同步接口契约（后端与客户端共同的唯一规范）
+│   └── usability-round.md      # 一轮可用性审计的记录：改了什么、为什么、怎么验证的
 ├── server/                     # 自建同步后端（零依赖 Node）
 │   ├── package.json            # npm start / npm test
 │   ├── README.md               # 部署、环境变量、端点说明
@@ -110,10 +114,14 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   ├── components/
 │   │   ├── Icon.tsx            # 内联 SVG 图标集
 │   │   ├── SessionResult.tsx   # 闪卡/测验共用的结算页（正确率只在这里格式化）
-│   │   └── ui.tsx              # 通用 UI：PageShell / Modal / Toast / ProgressBar 等
+│   │   ├── Modal.tsx           # 焦点陷阱对话框与 ConfirmDialog
+│   │   ├── Toast.tsx           # 提示条队列（悬停暂停自动消失）
+│   │   ├── TagInput.tsx        # 标签胶囊与行内标签编辑器
+│   │   └── ui.tsx              # 其余通用 UI（PageShell / Segmented / Ring / StatTile 等），并再导出上面三个模块
 │   ├── i18n/
-│   │   ├── index.tsx           # 翻译函数与 Provider
-│   │   └── locales/            # zh-CN.ts / en.ts（结构同构，en 受 Dictionary 约束）
+│   │   ├── index.tsx           # 翻译函数与 Provider；`TFunc` 的 key 被约束为 `MessageKey`
+│   │   ├── i18n.test.ts        # 字典自检：两种语言路径一致、无空串、每个 key 都能解析、插值
+│   │   └── locales/            # zh-CN.ts / en.ts（结构同构，en 受 Dictionary 约束；zh-CN 导出 MessageKey）
 │   ├── lib/
 │   │   ├── db.ts               # IndexedDB + localStorage 持久化
 │   │   ├── store.ts            # createStore 工厂、可观察快照与全部数据变更
@@ -131,6 +139,8 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   │   ├── translate.ts        # 查词/翻译：有道解析、多源降级、缓存
 │   │   ├── sync.ts             # 同步客户端：会话、增量推送/拉取、自动同步循环
 │   │   ├── syncMerge.ts        # 纯函数：收集待推改动、合并远端改动（LWW/墓碑）、一轮同步的结算与合并
+│   │   ├── wire.ts             # 同步线格式边界：逐字段重建记录，服务器盖的 _rev 无法回写/回推/进备份
+│   │   ├── shortcuts.ts        # 快捷键的单一来源：作用域优先级 + IME 与输入框让位 + 「?」帮助用的定义表
 │   │   ├── localChanges.ts     # 无依赖的本地变更事件总线（避免 store ↔ sync 循环）
 │   │   └── tts.ts              # 语音合成封装
 │   ├── __tests__/
@@ -211,18 +221,24 @@ npm test
 
 | 文件 | 用例数 | 覆盖内容 |
 | --- | --- | --- |
-| `src/lib/srs.test.ts` | 66 | 三档评分调度、ease 上下限、间隔上限、状态边界、间隔文案、不可变性；`reviewCard` 的「永不降级」、复习日志字段、`undoGrade` 是评分的精确逆、`previewGrades` 与实际评分一致 |
-| `src/lib/utils.test.ts` | 20 | 文本归一化、clamp、shuffle、日期差值、dayKey、cx、uid、相对时间 |
-| `src/lib/translate.test.ts` | 24 | 有道词典 / 机器翻译 / MyMemory / Google 各源解析、释义格式化、缓存命中、429 降级与冷却 |
+| `src/lib/srs.test.ts` | 65 | 三档评分调度、ease 上下限、间隔上限、状态边界、间隔文案、不可变性；`reviewCard` 的「永不降级」、复习日志字段、`undoGrade` 是评分的精确逆、`previewGrades` 与实际评分一致 |
+| `src/lib/translate.test.ts` | 40 | 有道词典 / 机器翻译 / MyMemory / Google 各源解析、释义格式化、缓存命中、429 降级与冷却、注入的查词适配器与时钟 |
 | `src/lib/syncMerge.test.ts` | 23 | 待推改动收集、LWW 合并、墓碑删除、日志并集去重 |
-| `src/lib/syncRound.test.ts` | 13 | 一轮同步的结算与合并：发送后结算、在途编辑仍留 pending、远端合并但不算本地编辑、墓碑删除、旧记录 LWW 落败、回声不重复 |
-| `src/lib/journal.test.ts` | 22 | 用真实 store 实例验证：每次本地编辑都进 pending、删除必留墓碑、删词库级联词与日志、快照不可变、`applyRound` 真的结算、远端改动不算本地编辑 |
-| `src/lib/session.test.ts` | 19 | 学习会话状态机：全程进度、hard 算复习但不算答对、skip 语义、undo 双向精确还原、空列表、正确率不为 NaN |
+| `src/lib/journal.test.ts` | 23 | 用真实 store 实例验证：每次本地编辑都进 pending、删除必留墓碑、删词库级联词与日志、快照不可变、`applyRound` 真的结算、远端改动不算本地编辑 |
 | `src/lib/wordIndex.test.ts` | 22 | 每库分桶与状态计数、标签池排序（含同次数 localeCompare 兜底）、到期判定、四种筛选与四种排序、统计头条各数字 |
+| `src/lib/shortcuts.test.ts` | 20 | 快捷键的单一来源：作用域优先级（modal > page > app）、输入框内单键让位、修饰键组合仍生效、注册与卸载、`SHORTCUT_HELP` 与真实绑定一致 |
+| `src/lib/utils.test.ts` | 20 | 文本归一化、clamp、shuffle、日期差值、dayKey、cx、uid、相对时间 |
+| `src/lib/session.test.ts` | 19 | 学习会话状态机：全程进度、hard 算复习但不算答对、skip 语义、undo 双向精确还原、空列表、正确率不为 NaN |
+| `src/lib/quiz.test.ts` | 18 | 出题：选项不重复且必含正确答案、同词不重复、词表不足四个时不崩、三种题面模式 |
+| `src/lib/wire.test.ts` | 14 | 同步线格式：逐字段重建让服务器盖的 `_rev` 无法回写/回推/进备份、畸形记录被丢弃、`decode/encode` 往返无损 |
+| `src/lib/syncRound.test.ts` | 13 | 一轮同步的结算与合并：发送后结算、在途编辑仍留 pending、远端合并但不算本地编辑、墓碑删除、旧记录 LWW 落败、回声不重复 |
 | `src/lib/dayStats.test.ts` | 9 | 今日复习数只算本地午夜之后、连续天数（今天空着不断档、缺一天即停、同一天多次只算一天、跨月不串） |
 | `src/__tests__/app.smoke.test.tsx` | 5 | 在 jsdom 中真实挂载整个应用：五个页面渲染、主题切换、弹窗开关、搜索过滤 |
+| `src/i18n/i18n.test.ts` | 6 | 字典自检：中文/英文路径完全一致、没有空串值、每个键在两种语言里都能解析出文案（不会把键名本身显示给用户）、`{var}` 插值与未知占位符保留 |
 
-共 **223** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
+共 **297** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
+
+> 文案的键名在编译期就是强类型的：`TFunc` 只接受 `MessageKey`（从 `zh-CN.ts` 的字典推导出的点路径联合类型）。写错一个键名会在 `tsc` 阶段报 `TS2345`，而不是在界面上静默显示成 `stats.titel`。
 
 冒烟测试通过 `// @vitest-environment jsdom` 单独指定环境，其余用例仍跑在 Node 环境。
 
@@ -250,6 +266,8 @@ npm test
 - **复习决策**：`src/lib/srs.ts` 不只算间隔，也拥有「评完这一档之后这张卡是什么状态」的完整决策——`reviewCard(card, grade, now, ids)` 返回 `{ srs, status, log }`，其中状态按「永不降级」规则提升、复习日志在模块内部铸造；`undoGrade(prev, log)` 是它的精确逆（**故意不重算**，否则一张刚失手的已掌握卡片会被降级回去），`previewGrades` 让评分按钮预览的正是将要执行的那条规则。`store.ts` 里只剩持久化与同步记账，因此这条不变量不会再因为出现第二个调用者而被绕开。
 - **词库派生**：状态计数、标签池、到期桶、筛选排序与统计头条全部由 `src/lib/wordIndex.ts` 一次遍历产出（`buildWordIndex` / `queryWords` / `summarize`），页面不再各自手写一份。今日复习数与连续天数归 `src/lib/dayStats.ts` 所有，侧栏与统计页读同一份实现。此前词库页表头的到期数是全局的、标签下拉却作用于单个词库，会出现「选了标签却是空列表」这类前后不一致；现在表头、标签下拉与列表都描述同一个词库，侧栏徽标仍保持全局。
 - **回退链**：IndexedDB 不可用或读写失败 → localStorage 键 `lexumo:data`（JSON 字符串）→ 再失败则仅保存在内存（刷新即丢失）。
+- **线格式边界**：服务器给每条记录额外盖一个 `_rev` 字段，它属于服务器的簿记，不属于词条。`src/lib/wire.ts` 的 `decodeChangeSet` 在边界上逐字段重建领域记录（剥掉 `_rev` 与任何未知键，形状不符的记录直接丢弃而不是抛错），`encodeChangeSet` 负责上行；因此 `_rev` 不会写进快照、不会被下次上传回推、也不会跑进用户的 JSON 备份。备份导出用 `encodeAppData` 只写领域字段（`version` / `lists` / `words` / `logs` / `settings` / `settingsUpdatedAt`），不把 `pending` / `tombstones` 这些同步簿记交给用户。
+- **清空数据的传播**：清空会为每个被删的词、词库、日志写墓碑（否则下次登录同步会把「已清空」的数据再拉回来）；唯独默认词库只更新时间戳而不写墓碑——它的 id 是固定值，新快照一定会重建它，写墓碑会让回声删除把刚建好的空词库也删掉，最终一个词库都不剩。
 - **版本迁移**：启动时若快照 `version` 低于 `DATA_VERSION`，会就地补齐新字段（`updatedAt` / `tombstones` / `pending` / `settingsUpdatedAt`）并保留原有数据；只有 `version` 高于当前版本（降级运行）才会重新播种。
 - **隐私**：数据默认只在本机。只有在「设置 → 账号与同步」中显式登录后，词库、复习日志与设置才会推送到你填写的服务器地址；不登录则没有任何网络上传。
 
@@ -328,9 +346,9 @@ npm start
 ## 已知限制
 
 - **平台**：以 Windows 为主进行开发；macOS / Linux 打包未验证。macOS 打包还需要 `icon.icns`（当前仅生成 PNG 与 ICO）。
-- **安装包**：`cargo check` 与 `cargo build --release` 均已在 Windows 上通过，产物 `src-tauri/target/release/lexumo.exe`（约 12.7 MB）可正常启动并显示窗口。但 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
+- **安装包**：`cargo build --release` 已在 Windows 上通过，产物 `src-tauri/target/release/lexumo.exe`（约 12.9 MB）可正常启动并显示窗口。<br>`cargo check` 在最后一次收尾时**未能复现**：`vswhom-sys` 的构建脚本调用 VS2019 BuildTools 的 `cl.exe` 编 `ext/vswhom.cpp` 失败（同一环境此前通过过，属工具链差异，与代码无关；`cargo build --release` 与 `npx tauri build --no-bundle` 都正常完成，说明 Rust 代码本身没问题）。<br>另外 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
 - **自动翻译**：依赖有道词典 / MyMemory 等公开接口，需联网；接口可能限流或变更，届时查词会降级或提示失败，不影响手动录入。缓存 30 天，设置里可清除。
-- **视觉验证**：功能层有 jsdom 冒烟测试覆盖；界面另用 headless Edge + DevTools 协议做了实测——五个页面均渲染、无控制台异常与失败请求、无横向溢出，并核对了设计令牌的实际取值、深色主题配色反转、860px 窄窗口下侧栏折叠、以及词条行「悬停显形操作区」的透明度变化。学习流程另外用真实键盘/鼠标事件跑过完整一轮：闪卡翻面、三档评分、撤销回到同一张卡、结算页「答对 / 已复习」与百分比互相吻合，测验四选一、即时反馈、Enter 推进到结算页。未做跨平台像素级视觉回归。
+- **视觉验证**：功能层有 297 个单元 / 冒烟用例；界面另有基于 headless Edge + DevTools 协议的可重复校验脚本（`.shots/`，不随仓库分发），把「看起来对」换成实测数字：五个页面在浅色与深色下的全部文本节点对比度（WCAG AA，0 处不达标，并用一个故意做坏的节点反向验证这套扫描确实能报错）、统计柱状图在 1280 / 760 / 390px 三种宽度 × 7 / 30 / 90 天区间下轴标签不裁切不重叠、手机布局无横向溢出且触控目标 ≥ 40px、提示条不被底部标签栏遮挡、批量选择与撤销删除的完整流程、输入框内打字不触发单键快捷键、以及页面上不残留任何未翻译的 i18n 键；动效则逐条断言 computed `animation-name` / 延迟、翻面过程中途的 `transform` 矩阵、以及模拟「减少动态」后动画确实归零。未做跨平台像素级视觉回归，也没有接入 CI。
 - **TTS**：依赖系统语音合成引擎，可用音色与语言随平台而异；部分语言可能没有可用语音，此时听音功能静默降级。
 - **同步**：自带的后端是单进程、每用户一个 JSON 文件的实现，适合个人或小规模自建；不支持集群、无数据库、无备份策略。传输默认是明文 HTTP（本机或局域网内使用没问题，暴露到公网请自行在前面加 HTTPS 反向代理）。令牌存在 localStorage，有效期 30 天。改名前的旧本地数据不会自动迁移（存储键已随应用改名更换）。
 - **规模**：采用「全量快照 + 防抖写盘」，词条量很大（约 2 万以上）时每次写入会有可感知延迟。同步也是整条记录增量传输，单次最多 5000 条改动。

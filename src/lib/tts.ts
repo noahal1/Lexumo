@@ -58,8 +58,6 @@ export interface SpeakOptions {
   onEnd?: () => void;
 }
 
-let currentUtterance: SpeechSynthesisUtterance | null = null;
-
 export function speak(text: string, opts: SpeakOptions = {}): void {
   if (!speechSupported() || !text.trim()) {
     opts.onEnd?.();
@@ -84,17 +82,13 @@ export function speak(text: string, opts: SpeakOptions = {}): void {
     }
   }
   if (opts.onEnd) u.onend = () => opts.onEnd?.();
-  currentUtterance = u;
   synth.speak(u);
 }
 
 export function stopSpeaking(): void {
   if (speechSupported()) window.speechSynthesis.cancel();
-  currentUtterance = null;
 }
 
 export function isSpeaking(): boolean {
   return speechSupported() ? window.speechSynthesis.speaking : false;
 }
-
-export { currentUtterance };

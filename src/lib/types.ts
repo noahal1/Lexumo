@@ -1,5 +1,7 @@
 /** Core domain types for Lexumo. Persisted as a single versioned snapshot. */
 
+import type { MessageKey } from "@/i18n/locales/zh-CN";
+
 export type WordStatus = "new" | "reviewing" | "learning" | "mastered";
 export type Grade = "hard" | "good" | "easy";
 export type ThemeMode = "light" | "dark" | "system";
@@ -20,6 +22,12 @@ export interface SrsState {
 export interface Word {
   id: string;
   term: string;
+  /**
+   * IPA transcription without the slashes, when known. Filled by auto-translate
+   * and shown in the list and on the flashcard back. Optional because records
+   * written before it existed have none.
+   */
+  phonetic?: string;
   /** Primary meaning in the target language. */
   definition: string;
   /** Secondary definition / nuance / example translation. */
@@ -162,7 +170,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 export const STATUS_ORDER: WordStatus[] = ["new", "reviewing", "learning", "mastered"];
 
-export const STATUS_LABEL_KEY: Record<WordStatus, string> = {
+export const STATUS_LABEL_KEY: Record<WordStatus, MessageKey> = {
   new: "status.new",
   reviewing: "status.reviewing",
   learning: "status.learning",

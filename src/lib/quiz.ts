@@ -18,6 +18,25 @@ export interface QuizQuestion {
   answerIndex: number;
 }
 
+/**
+ * 一轮测验出不了题的原因。
+ *
+ * `buildQuiz` 曾经只用空数组表示失败，于是"词不够""干扰项不够""这一轮根本
+ * 没意义"三种情况在调用方看来一模一样，只能再数一遍词去猜。把原因做成
+ * 返回值，判断就只留在这个模块里。
+ */
+export type QuizShortfall =
+  | "empty-round"
+  | "no-eligible-words"
+  | "not-enough-words"
+  | "not-enough-distractors";
+
+interface QuizPlan {
+  questions: QuizQuestion[];
+  /** null 表示这一轮可以出题。 */
+  shortfall: QuizShortfall | null;
+}
+
 function answerOf(word: Word, direction: QuizDirection): string {
   return direction === "termToDef" ? word.definition.trim() : word.term.trim();
 }
@@ -29,15 +48,20 @@ export function quizEligibleWords(words: Word[]): Word[] {
 
 /**
  * 生成一轮测验：每题 4 选 1，干扰项取自其它词的释义（或词形），
- * 按文本去重；选项顺序随机。词语不足或干扰项不足时返回空数组。
+ * 按文本去重；选项顺序随机。
+ *
+ * 单个词凑不齐干扰项时跳过它（一轮可能因此不满），整轮一题都出不了时
+ * 用 `shortfall` 说明原因，而不是让调用方对着空数组猜。
  */
-export function buildQuiz(
+function planQuiz(
   words: Word[],
   direction: QuizDirection,
-  count: number = QUIZ_ROUND,
-): QuizQuestion[] {
+  count: number,
+): QuizPlan {
   const pool = quizEligibleWords(words);
-  if (pool.length < QUIZ_CHOICES || count <= 0) return [];
+  if (count <= 0) return { questions: [], shortfall: "empty-round" };
+  if (pool.length === 0) return { questions: [], shortfall: "no-eligible-words" };
+  if (pool.length < QUIZ_CHOICES) return { questions: [], shortfall: "not-enough-words" };
 
   const picked = shuffle(pool).slice(0, count);
   const questions: QuizQuestion[] = [];
@@ -70,5 +94,26 @@ export function buildQuiz(
     });
   }
 
-  return questions;
+  return {
+    questions,
+    shortfall: questions.length === 0 ? "not-enough-distractors" : null,
+  };
+}
+
+/** 这一轮的问题；出不了题时是空数组，原因见 `quizShortfall`。 */
+export function buildQuiz(
+  words: Word[],
+  direction: QuizDirection,
+  count: number = QUIZ_ROUND,
+): QuizQuestion[] {
+  return planQuiz(words, direction, count).questions;
+}
+
+/** 这一轮为什么出不了题；能出题时返回 null。 */
+export function quizShortfall(
+  words: Word[],
+  direction: QuizDirection,
+  count: number = QUIZ_ROUND,
+): QuizShortfall | null {
+  return planQuiz(words, direction, count).shortfall;
 }

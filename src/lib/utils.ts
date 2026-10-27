@@ -29,14 +29,6 @@ export function daysBetween(a: number, b: number): number {
   return Math.round((startOfDay(b) - startOfDay(a)) / 86_400_000);
 }
 
-export function formatDate(ts: number, lang: string): string {
-  return new Date(ts).toLocaleDateString(lang, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
 export function relativeDay(ts: number, lang: string): string {
   const diff = daysBetween(Date.now(), ts);
   if (diff === 0) return lang === "zh-CN" ? "今天" : "today";

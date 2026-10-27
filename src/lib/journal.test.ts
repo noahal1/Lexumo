@@ -424,3 +424,49 @@ describe("settle is version-guarded", () => {
     expect(d.pending.settings).toBe(false);
   });
 });
+
+describe("wiping the library is propagatable", () => {
+  it("wipeAll tombstones every dropped id so the next sync pushes the deletions", async () => {
+    const { store, advance } = await freshStore();
+    const extra = store.createList({ name: "Doomed", sourceLang: "en", targetLang: "zh-CN" });
+    const a = store.addWord({ term: "a", listId: extra.id });
+    const b = store.addWord({ term: "b", listId: DEFAULT_LIST_ID });
+    advance();
+    const graded = store.gradeWord(a.id, "good")!;
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
+    expect(pendingTotal(store.get())).toBe(0);
+
+    advance();
+    await store.wipeAll();
+    const data = store.get();
+
+    expect(data.words).toEqual([]);
+    expect(data.logs).toEqual([]);
+    expect(data.lists.map((l) => l.id)).toEqual([DEFAULT_LIST_ID]);
+
+    // Absence cannot travel: without these tombstones the server would hand
+    // the whole library back on the next sign-in.
+    expect(data.tombstones.words[a.id]).toBe(T0 + 2_000);
+    expect(data.tombstones.words[b.id]).toBe(T0 + 2_000);
+    expect(data.tombstones.logs[graded.logId]).toBe(T0 + 2_000);
+    expect(data.tombstones.lists[extra.id]).toBe(T0 + 2_000);
+    expect(data.pending.words).toEqual(expect.arrayContaining([a.id, b.id]));
+    expect(data.pending.logs).toContain(graded.logId);
+    expect(data.pending.lists).toContain(extra.id);
+
+    // The wipe recreates the default list under the same fixed id, so that id
+    // must stay a live record rather than a tombstone.
+    expect(data.tombstones.lists[DEFAULT_LIST_ID]).toBeUndefined();
+    expect(data.pending.lists).toContain(DEFAULT_LIST_ID);
+
+    // The deletions really are in the outbound set, not just in the bookkeeping.
+    const changes = store.getChangesToPush();
+    expect(changes.words.filter((r) => "deleted" in r)).toHaveLength(2);
+    expect(changes.logs.some((r) => "deleted" in r && r.id === graded.logId)).toBe(true);
+    expect(changes.lists.some((r) => "deleted" in r && r.id === extra.id)).toBe(true);
+
+    // And one completed round settles the wipe: nothing left to push.
+    store.applyRound({ sent: changes, received: EMPTY_CHANGES });
+    expect(pendingTotal(store.get())).toBe(0);
+  });
+});

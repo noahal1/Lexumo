@@ -1,7 +1,11 @@
 /**
  * Pure helpers that translate between the local `AppData` snapshot and the
- * wire `ChangeSet` used by the sync server. No I/O here — everything is a
+ * domain `ChangeSet` that is merged into it. No I/O here — everything is a
  * function of its inputs, which keeps the merge rules unit-testable.
+ *
+ * The wire format itself lives in `wire.ts`: records reach these functions
+ * already decoded (no `_rev`, no unknown keys), which is what lets the merge
+ * rules be stated purely in terms of the domain types.
  *
  * Conflict rules (mirrors docs/sync-protocol.md):
  * - words / lists / settings: last-write-wins on `updatedAt`
@@ -98,7 +102,11 @@ const isLogTombstone = (r: LogRecord): r is { id: string; at: number; deleted: t
   (r as { deleted?: unknown }).deleted === true;
 
 /**
- * Merge a server change set into the local snapshot.
+ * Merge a decoded server change set into the local snapshot.
+ *
+ * Callers must pass records that already went through `wire.decodeChangeSet`:
+ * merging is a domain operation, and the snapshot must never inherit wire
+ * bookkeeping such as `_rev`.
  *
  * A local record wins over the incoming one when it is still pending *and*
  * strictly newer — that happens when the user edited something between the

@@ -14,6 +14,12 @@
  *    dictionary payload (phonetic, part-of-speech senses, bilingual examples).
  *  - Browser: only providers that send `Access-Control-Allow-Origin` are
  *    usable, and those are plain machine translation with tighter rate limits.
+ *
+ * The provider chain is data, not a branch: `createLookup` receives the adapter
+ * list plus an injected cache and clock. The app's chain is assembled once by
+ * `defaultAdapters()` (the only place `isTauri()` is consulted), while tests
+ * build a lookup with fake adapters and a fake clock — no global `fetch`
+ * patching, and the desktop path is reachable under plain Node.
  */
 import { invoke } from "@tauri-apps/api/core";
 
@@ -66,71 +72,130 @@ interface CacheRecord {
 
 type CacheMap = Record<string, CacheRecord>;
 
-let memoryCache: CacheMap | null = null;
+/** The slice of `Storage` the cache needs; `null` keeps everything in memory. */
+export interface LookupStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+/**
+ * Injected time source. The cache TTL and the 429 cooldown both read it, so a
+ * test can move time forward without waiting or resetting module state.
+ */
+export interface LookupClock {
+  now(): number;
+}
+
+export const systemClock: LookupClock = { now: () => Date.now() };
+
+/** Cache as seen by the orchestrator: TTL is already applied by `get`. */
+export interface LookupCache {
+  get(key: string): LookupResult | null;
+  set(key: string, result: LookupResult): void;
+  size(): number;
+  clear(): void;
+}
+
+export interface LookupCacheOptions {
+  /** Defaults to `localStorage` when it exists, otherwise memory only. */
+  storage?: LookupStorage | null;
+  key?: string;
+  ttlMs?: number;
+  max?: number;
+  clock?: LookupClock;
+}
 
 function cacheKey(term: string, from: string, to: string): string {
   return `${from}>${to}:${term.trim().toLowerCase()}`;
 }
 
-function readCache(): CacheMap {
-  if (memoryCache) return memoryCache;
-  let parsed: CacheMap = {};
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (raw) parsed = JSON.parse(raw) as CacheMap;
-  } catch {
-    parsed = {};
-  }
-  memoryCache = parsed;
-  return parsed;
+function defaultStorage(): LookupStorage | null {
+  return typeof localStorage !== "undefined" ? localStorage : null;
 }
 
-function persistCache(map: CacheMap): void {
-  memoryCache = map;
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(map));
-  } catch {
-    // Quota or privacy mode: the in-memory copy still helps this session.
+/**
+ * Build a lookup cache. Persistence, the 30-day TTL and the size cap are the
+ * same as before; the only change is that they belong to an instance, so two
+ * lookups (or two tests) never share state.
+ */
+export function createLookupCache(options: LookupCacheOptions = {}): LookupCache {
+  const storage = options.storage !== undefined ? options.storage : defaultStorage();
+  const storageKey = options.key ?? CACHE_KEY;
+  const ttlMs = options.ttlMs ?? CACHE_TTL_MS;
+  const max = options.max ?? CACHE_MAX;
+  const clock = options.clock ?? systemClock;
+
+  // Loaded on first use so importing this module never touches localStorage.
+  let map: CacheMap | null = null;
+
+  function read(): CacheMap {
+    if (map) return map;
+    let parsed: CacheMap = {};
+    try {
+      const raw = storage?.getItem(storageKey);
+      if (raw) parsed = JSON.parse(raw) as CacheMap;
+    } catch {
+      parsed = {};
+    }
+    map = parsed;
+    return parsed;
   }
+
+  function persist(next: CacheMap): void {
+    map = next;
+    try {
+      storage?.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      // Quota or privacy mode: the in-memory copy still helps this session.
+    }
+  }
+
+  return {
+    get(key) {
+      const current = read();
+      const hit = current[key];
+      if (!hit) return null;
+      if (clock.now() - hit.at > ttlMs) {
+        delete current[key];
+        persist(current);
+        return null;
+      }
+      return { ...hit.result, fromCache: true };
+    },
+    set(key, result) {
+      const current = read();
+      current[key] = { at: clock.now(), result: { ...result, fromCache: false } };
+      const keys = Object.keys(current);
+      if (keys.length > max) {
+        // Drop the oldest quarter; cheap and good enough for a lookup cache.
+        const sorted = keys.sort((a, b) => current[a].at - current[b].at);
+        for (const k of sorted.slice(0, Math.ceil(keys.length / 4))) delete current[k];
+      }
+      persist(current);
+    },
+    size() {
+      return Object.keys(read()).length;
+    },
+    clear() {
+      map = {};
+      try {
+        storage?.removeItem(storageKey);
+      } catch {
+        // ignore
+      }
+    },
+  };
 }
 
-function readCached(key: string): LookupResult | null {
-  const map = readCache();
-  const hit = map[key];
-  if (!hit) return null;
-  if (Date.now() - hit.at > CACHE_TTL_MS) {
-    delete map[key];
-    persistCache(map);
-    return null;
-  }
-  return { ...hit.result, fromCache: true };
-}
-
-function writeCached(key: string, result: LookupResult): void {
-  const map = readCache();
-  map[key] = { at: Date.now(), result: { ...result, fromCache: false } };
-  const keys = Object.keys(map);
-  if (keys.length > CACHE_MAX) {
-    // Drop the oldest quarter; cheap and good enough for a lookup cache.
-    const sorted = keys.sort((a, b) => map[a].at - map[b].at);
-    for (const k of sorted.slice(0, Math.ceil(keys.length / 4))) delete map[k];
-  }
-  persistCache(map);
-}
-
-/** Wipe the dictionary cache (used by the settings page). */
+/** Wipe the default instance's cache (used by the settings page). */
 export function clearLookupCache(): void {
-  memoryCache = {};
-  try {
-    localStorage.removeItem(CACHE_KEY);
-  } catch {
-    // ignore
-  }
+  getDefaultLookup().clearCache();
 }
 
-/** Number of cached terms — shown in settings as a hint. */
+/** Number of cached terms in the default instance — shown in settings. */
 export function lookupCacheSize(): number {
-  return Object.keys(readCache()).length;
+  return getDefaultLookup().cacheSize();
 }
 
 /* --------------------------------------------------------------- helpers */
@@ -341,25 +406,25 @@ export function parseGoogle(raw: unknown, term: string): LookupResult | null {
 /* ------------------------------------------------------------- providers */
 
 const COOLDOWN_MS = 90_000;
-const cooldown = new Map<ProviderId, number>();
 
-function cooling(provider: ProviderId): boolean {
-  const until = cooldown.get(provider);
-  if (!until) return false;
-  if (Date.now() > until) {
-    cooldown.delete(provider);
-    return false;
-  }
-  return true;
+/** Per-call context the network adapters need beyond the term itself. */
+export interface LookupContext {
+  from: string;
+  to: string;
+  /** Shared timeout/cancel signal for the whole lookup. */
+  signal: AbortSignal;
 }
 
-function markCooling(provider: ProviderId): void {
-  cooldown.set(provider, Date.now() + COOLDOWN_MS);
-}
-
-/** Reset provider cooldowns (tests). */
-export function resetProviderCooldown(): void {
-  cooldown.clear();
+/**
+ * One dictionary provider. `canServe` is consulted before `fetch`, so a chain
+ * may hold providers that only cover some language pairs. `fetch` returns null
+ * when the provider answered but had nothing (fall through to the next one) and
+ * throws `LookupError("rate-limited")` to trigger that provider's cooldown.
+ */
+export interface LookupAdapter {
+  readonly id: ProviderId;
+  canServe(from: string, to: string): boolean;
+  fetch(term: string, context: LookupContext): Promise<LookupResult | null>;
 }
 
 interface ProxyResponse {
@@ -369,13 +434,21 @@ interface ProxyResponse {
   error: string | null;
 }
 
-async function viaTauri(term: string): Promise<LookupResult | null> {
-  const res = await invoke<ProxyResponse>("lookup_word", { term });
-  if (!res.ok) {
-    if (res.status === 429) throw new LookupError("rate-limited");
-    return null;
-  }
-  return parseYoudao(JSON.parse(res.body), term);
+/** The desktop transport: a Rust command proxying Youdao (no CORS involved). */
+export function tauriAdapter(): LookupAdapter {
+  return {
+    id: "youdao",
+    // The proxy answers or it does not; there is no language-pair gate.
+    canServe: () => true,
+    async fetch(term) {
+      const res = await invoke<ProxyResponse>("lookup_word", { term });
+      if (!res.ok) {
+        if (res.status === 429) throw new LookupError("rate-limited");
+        return null;
+      }
+      return parseYoudao(JSON.parse(res.body), term);
+    },
+  };
 }
 
 async function fetchJson(url: string, signal: AbortSignal): Promise<unknown> {
@@ -401,50 +474,73 @@ function timeoutSignal(signal: AbortSignal | undefined, ms: number): AbortSignal
   return controller.signal;
 }
 
-async function viaYoudaoWeb(
-  term: string,
-  from: string,
-  to: string,
-  signal: AbortSignal,
-): Promise<LookupResult | null> {
-  const url =
-    "https://aidemo.youdao.com/trans?" +
-    new URLSearchParams({ q: term, from: youdaoLang(from), to: youdaoLang(to) }).toString();
-  const raw = await fetchJson(url, signal);
-  const parsed = parseYoudaoTranslation(raw, term);
-  if (!parsed && errorCodeOf(raw) === 411) throw new LookupError("rate-limited");
-  return parsed;
+export function youdaoWebAdapter(): LookupAdapter {
+  return {
+    id: "youdao-web",
+    canServe: () => true,
+    async fetch(term, { from, to, signal }) {
+      const url =
+        "https://aidemo.youdao.com/trans?" +
+        new URLSearchParams({ q: term, from: youdaoLang(from), to: youdaoLang(to) }).toString();
+      const raw = await fetchJson(url, signal);
+      const parsed = parseYoudaoTranslation(raw, term);
+      if (!parsed && errorCodeOf(raw) === 411) throw new LookupError("rate-limited");
+      return parsed;
+    },
+  };
 }
 
-async function viaMyMemory(
-  term: string,
-  from: string,
-  to: string,
-  signal: AbortSignal,
-): Promise<LookupResult | null> {
-  const url =
-    "https://api.mymemory.translated.net/get?" +
-    new URLSearchParams({ q: term, langpair: myMemoryPair(from, to) }).toString();
-  return parseMyMemory(await fetchJson(url, signal), term);
+export function myMemoryAdapter(): LookupAdapter {
+  return {
+    id: "mymemory",
+    canServe: () => true,
+    async fetch(term, { from, to, signal }) {
+      const url =
+        "https://api.mymemory.translated.net/get?" +
+        new URLSearchParams({ q: term, langpair: myMemoryPair(from, to) }).toString();
+      return parseMyMemory(await fetchJson(url, signal), term);
+    },
+  };
 }
 
-async function viaGoogle(
-  term: string,
-  from: string,
-  to: string,
-  signal: AbortSignal,
-): Promise<LookupResult | null> {
-  const url =
-    "https://translate.googleapis.com/translate_a/single?" +
-    new URLSearchParams({
-      client: "gtx",
-      sl: youdaoLang(from),
-      tl: youdaoLang(to),
-      dt: "t",
-      q: term,
-    }).toString();
-  return parseGoogle(await fetchJson(url, signal), term);
+export function googleAdapter(): LookupAdapter {
+  return {
+    id: "google",
+    canServe: () => true,
+    async fetch(term, { from, to, signal }) {
+      const url =
+        "https://translate.googleapis.com/translate_a/single?" +
+        new URLSearchParams({
+          client: "gtx",
+          sl: youdaoLang(from),
+          tl: youdaoLang(to),
+          dt: "t",
+          q: term,
+        }).toString();
+      return parseGoogle(await fetchJson(url, signal), term);
+    },
+  };
 }
+
+/** The browser fallback chain, in its historical order. */
+export function createBrowserAdapters(): LookupAdapter[] {
+  return [youdaoWebAdapter(), myMemoryAdapter(), googleAdapter()];
+}
+
+/** The desktop chain: one adapter, the Rust proxy. */
+export function createTauriAdapters(): LookupAdapter[] {
+  return [tauriAdapter()];
+}
+
+/**
+ * The chain the app ships with. `isTauri()` is read here — once, at the edge —
+ * and never inside the orchestrator.
+ */
+export function defaultAdapters(): LookupAdapter[] {
+  return isTauri() ? createTauriAdapters() : createBrowserAdapters();
+}
+
+/* ------------------------------------------------------------- lookup core */
 
 export interface LookupOptions {
   from?: string;
@@ -454,61 +550,133 @@ export interface LookupOptions {
   signal?: AbortSignal;
 }
 
+/** What a lookup instance exposes. */
+export interface Lookup {
+  lookupTerm(term: string, options?: LookupOptions): Promise<LookupResult>;
+  clearCache(): void;
+  cacheSize(): number;
+  /** Forget the 429 cooldowns (kept for the old module-level test hook). */
+  resetCooldown(): void;
+}
+
+export interface LookupDeps {
+  /** Fallback order, first to last. */
+  adapters: LookupAdapter[];
+  /** Defaults to a fresh cache bound to `clock`. */
+  cache?: LookupCache;
+  /** Defaults to `systemClock`. */
+  clock?: LookupClock;
+}
+
 /**
- * Look a term up, trying the cache first and then each provider in turn.
- *
- * Throws `LookupError` when every provider failed; `reason` lets the UI say
- * something more useful than "出错了".
+ * Build a lookup from its parts. The adapter list is data, and the cache and
+ * cooldown live in this closure, so a test can make a fresh instance per case
+ * instead of resetting module globals.
  */
-export async function lookupTerm(term: string, options: LookupOptions = {}): Promise<LookupResult> {
-  const cleaned = normalizeTerm(term);
-  if (!cleaned) throw new LookupError("not-found", "empty term");
+export function createLookup({ adapters, cache, clock = systemClock }: LookupDeps): Lookup {
+  const store = cache ?? createLookupCache({ clock });
+  const cooldown = new Map<ProviderId, number>();
 
-  const from = options.from ?? "en";
-  const to = options.to ?? "zh-CN";
-  const key = cacheKey(cleaned, from, to);
-
-  if (!options.force) {
-    const cached = readCached(key);
-    if (cached) return cached;
+  function cooling(provider: ProviderId): boolean {
+    const until = cooldown.get(provider);
+    if (!until) return false;
+    if (clock.now() > until) {
+      cooldown.delete(provider);
+      return false;
+    }
+    return true;
   }
 
-  const signal = timeoutSignal(options.signal, 9_000);
-  const attempts: { id: ProviderId; run: () => Promise<LookupResult | null> }[] = isTauri()
-    ? [{ id: "youdao", run: () => viaTauri(cleaned) }]
-    : [
-        { id: "youdao-web", run: () => viaYoudaoWeb(cleaned, from, to, signal) },
-        { id: "mymemory", run: () => viaMyMemory(cleaned, from, to, signal) },
-        { id: "google", run: () => viaGoogle(cleaned, from, to, signal) },
-      ];
+  function markCooling(provider: ProviderId): void {
+    cooldown.set(provider, clock.now() + COOLDOWN_MS);
+  }
 
-  let rateLimited = false;
-  let reachable = false;
+  /**
+   * Look a term up, trying the cache first and then each adapter in turn.
+   *
+   * Throws `LookupError` when every adapter failed; `reason` lets the UI say
+   * something more useful than "出错了".
+   */
+  async function lookupTerm(term: string, options: LookupOptions = {}): Promise<LookupResult> {
+    const cleaned = normalizeTerm(term);
+    if (!cleaned) throw new LookupError("not-found", "empty term");
 
-  for (const attempt of attempts) {
-    if (cooling(attempt.id)) {
-      rateLimited = true;
-      continue;
+    const from = options.from ?? "en";
+    const to = options.to ?? "zh-CN";
+    const key = cacheKey(cleaned, from, to);
+
+    if (!options.force) {
+      const cached = store.get(key);
+      if (cached) return cached;
     }
-    try {
-      const result = await attempt.run();
-      reachable = true;
-      if (result) {
-        writeCached(key, result);
-        return result;
-      }
-    } catch (error) {
-      if (options.signal?.aborted) throw error;
-      if (error instanceof LookupError && error.reason === "rate-limited") {
-        markCooling(attempt.id);
+
+    const signal = timeoutSignal(options.signal, 9_000);
+    const context: LookupContext = { from, to, signal };
+
+    let rateLimited = false;
+    let reachable = false;
+
+    for (const adapter of adapters) {
+      if (!adapter.canServe(from, to)) continue;
+      if (cooling(adapter.id)) {
         rateLimited = true;
+        continue;
+      }
+      try {
+        const result = await adapter.fetch(cleaned, context);
+        reachable = true;
+        if (result) {
+          store.set(key, result);
+          return result;
+        }
+      } catch (error) {
+        if (options.signal?.aborted) throw error;
+        if (error instanceof LookupError && error.reason === "rate-limited") {
+          markCooling(adapter.id);
+          rateLimited = true;
+        }
       }
     }
+
+    if (rateLimited) throw new LookupError("rate-limited");
+    if (!reachable) throw new LookupError("offline");
+    throw new LookupError("not-found");
   }
 
-  if (rateLimited) throw new LookupError("rate-limited");
-  if (!reachable) throw new LookupError("offline");
-  throw new LookupError("not-found");
+  return {
+    lookupTerm,
+    clearCache: () => store.clear(),
+    cacheSize: () => store.size(),
+    resetCooldown: () => cooldown.clear(),
+  };
+}
+
+/* -------------------------------------------------------- default instance */
+
+let defaultLookup: Lookup | null = null;
+
+/**
+ * The app-wide lookup. Built lazily so importing this module in Node touches
+ * neither `localStorage` nor `isTauri()`; the chain is assembled once, here.
+ */
+function getDefaultLookup(): Lookup {
+  if (!defaultLookup) {
+    defaultLookup = createLookup({ adapters: defaultAdapters() });
+  }
+  return defaultLookup;
+}
+
+/**
+ * Module-level entry point kept for existing callers (the word editor). New
+ * code should take a `Lookup` from `createLookup` instead.
+ */
+export function lookupTerm(term: string, options: LookupOptions = {}): Promise<LookupResult> {
+  return getDefaultLookup().lookupTerm(term, options);
+}
+
+/** Reset provider cooldowns on the default instance (tests / manual retry). */
+export function resetProviderCooldown(): void {
+  getDefaultLookup().resetCooldown();
 }
 
 /* ----------------------------------------------------------- formatting */

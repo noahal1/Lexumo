@@ -4,6 +4,7 @@
  */
 import type { AppData, Grade, ReviewLog, SrsState, Word, WordStatus } from "./types";
 import { DATA_VERSION, DEFAULT_LIST_ID, DEFAULT_SETTINGS } from "./types";
+import { touch } from "./journal";
 import { DAY_MS } from "./srs";
 
 interface SeedWord {
@@ -211,7 +212,7 @@ export function seedData(now = Date.now()): AppData {
   }));
 
   const logs = makeLogs(words, now);
-  return {
+  const data: AppData = {
     version: DATA_VERSION,
     lists: [
       {
@@ -228,13 +229,13 @@ export function seedData(now = Date.now()): AppData {
     settings: { ...DEFAULT_SETTINGS },
     settingsUpdatedAt: now - 7 * DAY_MS,
     tombstones: { words: {}, lists: {}, logs: {} },
-    // Everything the seed created is pending, so the first sign-in uploads the
-    // demo deck to the account instead of leaving the server empty.
-    pending: {
-      words: words.map((w) => w.id),
-      lists: [DEFAULT_LIST_ID],
-      logs: logs.map((l) => l.id),
-      settings: false,
-    },
+    pending: { words: [], lists: [], logs: [], settings: false },
   };
+  // The seed is created offline, so nothing has been uploaded yet and every
+  // record is pending. Going through the journal keeps `pending` owned by one
+  // module instead of a second hand-written copy that could drift from it.
+  for (const word of words) touch(data, "word", word.id);
+  touch(data, "list", DEFAULT_LIST_ID);
+  for (const log of logs) touch(data, "log", log.id);
+  return data;
 }

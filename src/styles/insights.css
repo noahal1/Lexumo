@@ -22,6 +22,14 @@
   gap: var(--sp-4);
 }
 
+/* auto-fit would settle on 3 columns across most of the icon-rail range,
+   leaving the 4th tile orphaned on its own row. Force 2×2 instead. */
+@media (max-width: 860px) {
+  .dash-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .dash-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -63,7 +71,7 @@
 .goal-meta {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: var(--sp-2);
   min-width: 0;
   flex: 1 1 160px;
 }
@@ -93,8 +101,8 @@
 }
 
 .goal-ring-of {
-  font-size: 10.5px;
-  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -115,9 +123,9 @@
 .goal-foot {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
   margin-top: 2px;
 }
 
@@ -138,7 +146,7 @@
 .dist-item {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 
 .dist-head {
@@ -164,8 +172,8 @@
 
 .dist-num {
   margin-left: auto;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -181,16 +189,38 @@
 }
 
 .chart-plot {
+  position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 4px;
-  height: 132px;
+  gap: var(--sp-1);
+  height: 128px;
   padding-bottom: 1px;
   border-bottom: 1px solid var(--line);
 }
 
 .chart-plot.dense {
   gap: 2px;
+}
+
+/* Dashed reference line at the window average — gives the bars a benchmark. */
+.chart-avg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--line-strong);
+  pointer-events: none;
+}
+
+/* Peak value, pinned top-right so bar heights have an absolute meaning. */
+.chart-y-max {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  font-size: var(--fs-xs);
+  line-height: 1;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .chart-col {
@@ -204,10 +234,15 @@
 
 .chart-bar {
   width: 100%;
-  border-radius: 4px 4px 2px 2px;
+  border-radius: var(--r-2xs) var(--r-2xs) 0 0;
   background: var(--jade);
   opacity: 0.8;
-  transition: height var(--dur-4) var(--ease-out), opacity var(--dur-1) var(--ease);
+  transition: height var(--dur-3) var(--ease-out), opacity var(--dur-1) var(--ease);
+}
+
+/* At 90 days the bars are only a few px wide — any radius reads as a pill. */
+.chart-plot.dense .chart-bar {
+  border-radius: 2px 2px 0 0;
 }
 
 .chart-col:hover .chart-bar {
@@ -224,24 +259,31 @@
   box-shadow: 0 0 0 1px var(--jade-soft);
 }
 
+/* Labels are absolutely positioned and only rendered where labelStep allows,
+   so a long window can never squeeze them into clipped fragments. */
 .chart-x {
-  display: flex;
-  gap: 4px;
-}
-
-.chart-plot.dense + .chart-x {
-  gap: 2px;
+  position: relative;
+  height: 18px;
 }
 
 .chart-x span {
-  flex: 1 1 0;
-  min-width: 0;
-  text-align: center;
-  font-size: 10.5px;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: var(--fs-xs);
+  line-height: 18px;
   color: var(--ink-3);
   white-space: nowrap;
-  overflow: hidden;
   font-variant-numeric: tabular-nums;
+}
+
+/* Edge labels would overflow the plot; pin them to the track instead. */
+.chart-x span.is-first {
+  transform: none;
+}
+
+.chart-x span.is-last {
+  transform: translateX(-100%);
 }
 
 .chart-x span.is-today {
@@ -253,8 +295,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2) var(--sp-5);
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
 }
 
 .chart-foot b {
@@ -267,14 +309,8 @@
   .chart-plot {
     height: 104px;
   }
-  /* Labels are already thinned out by labelStep, so keep them legible rather
-     than shrinking them into noise. */
-  .chart-x span {
-    font-size: 11px;
-  }
-  .goal-ring-of {
-    font-size: 11.5px;
-  }
+  /* Labels are already thinned out by labelStep, so never shrink them below
+     the --fs-xs floor to buy horizontal room. */
 }
 
 /* --------------------------------------------------------------------------
@@ -291,7 +327,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
-  padding: 8px 0;
+  padding: var(--sp-2) 0;
   font-size: var(--fs-sm);
 }
 
@@ -403,8 +439,8 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--sp-4);
-  padding: 9px 12px;
-  margin: 0 -12px;
+  padding: var(--sp-2) var(--sp-3);
+  margin: 0 calc(var(--sp-3) * -1);
   border-radius: var(--r-sm);
   transition: background var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
@@ -537,7 +573,7 @@
 
 .switch[aria-checked="true"] .switch-knob {
   transform: translateX(18px);
-  background: #f7fffc;
+  background: var(--on-brand);
 }
 
 /* --------------------------------------------------------------------------
@@ -679,7 +715,7 @@
 .import-preview .row {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   cursor: default;
-  padding: 8px 14px;
+  padding: var(--sp-2) var(--sp-3);
 }
 
 .import-preview .row-term {
@@ -741,11 +777,11 @@
    -------------------------------------------------------------------------- */
 
 .btn:active:not(:disabled) {
-  transform: translateY(0.5px);
+  transform: scale(0.985);
 }
 
 .segmented button:active {
-  transform: translateY(0.5px);
+  transform: scale(0.98);
 }
 
 .segmented button:focus-visible {

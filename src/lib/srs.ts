@@ -198,11 +198,6 @@ export function previewGrades(
   return { hard: preview("hard"), good: preview("good"), easy: preview("easy") };
 }
 
-export function isDue(srs: SrsState | null, now = Date.now()): boolean {
-  if (!srs) return true;
-  return srs.dueAt <= now;
-}
-
 export function isNew(srs: SrsState | null): boolean {
   return !srs || srs.reviewCount === 0;
 }

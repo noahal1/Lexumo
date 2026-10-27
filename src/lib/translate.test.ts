@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 import {
   LookupError,
   alternativeMeaning,
   clearLookupCache,
+  createBrowserAdapters,
+  createLookup,
+  createLookupCache,
+  createTauriAdapters,
   formatSenses,
   lookupCacheSize,
-  lookupTerm,
   normalizeTerm,
   parseGoogle,
   parseMyMemory,
@@ -13,7 +17,17 @@ import {
   parseYoudaoTranslation,
   primaryMeaning,
   resetProviderCooldown,
+  type Lookup,
+  type LookupAdapter,
+  type LookupClock,
+  type LookupContext,
+  type LookupResult,
+  type ProviderId,
 } from "./translate";
+
+// The desktop transport is a Tauri command, not `fetch`; mocking the bridge is
+// what makes the shipping path testable in plain Node.
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 /** A trimmed-down but structurally faithful `dict.youdao.com/jsonapi` payload. */
 const youdaoPayload = {
@@ -51,6 +65,32 @@ const myMemoryPayload = {
 };
 
 const googlePayload = [[["坦率的", "candid", null, null]], null, "en"];
+
+/* ------------------------------------------------------------- test helpers */
+
+function makeResult(provider: ProviderId, meaning: string, term = "candid"): LookupResult {
+  return {
+    term,
+    phonetic: "",
+    senses: [{ pos: "", meaning }],
+    examples: [],
+    provider,
+    fromCache: false,
+  };
+}
+
+function fakeAdapter(
+  id: ProviderId,
+  run: (term: string, context: LookupContext) => Promise<LookupResult | null>,
+  canServe: (from: string, to: string) => boolean = () => true,
+): LookupAdapter {
+  return { id, canServe, fetch: run };
+}
+
+/** A lookup whose cache and cooldown are fresh, memory-only and time-frozen. */
+function makeLookup(adapters: LookupAdapter[], clock: LookupClock = { now: () => 0 }): Lookup {
+  return createLookup({ adapters, cache: createLookupCache({ storage: null, clock }), clock });
+}
 
 describe("parseYoudao", () => {
   it("splits part-of-speech senses and keeps the phonetic", () => {
@@ -168,9 +208,12 @@ describe("lookupTerm", () => {
       json: async () => body,
     }) as unknown as Response;
 
+  // One instance per test: the cache and the cooldown used to be module
+  // globals that `beforeEach` had to reset by hand.
+  let lookup: Lookup;
+
   beforeEach(() => {
-    clearLookupCache();
-    resetProviderCooldown();
+    lookup = makeLookup(createBrowserAdapters());
   });
 
   afterEach(() => {
@@ -181,7 +224,7 @@ describe("lookupTerm", () => {
     const fetchMock = vi.fn(async () => jsonResponse({ errorCode: 0, translation: ["坦率的"] }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await lookupTerm("candid");
+    const result = await lookup.lookupTerm("candid");
     expect(result.senses[0].meaning).toBe("坦率的");
     expect(result.provider).toBe("youdao-web");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -191,11 +234,11 @@ describe("lookupTerm", () => {
     const fetchMock = vi.fn(async () => jsonResponse({ errorCode: 0, translation: ["坦率的"] }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await lookupTerm("candid");
-    const second = await lookupTerm("Candid  ");
+    await lookup.lookupTerm("candid");
+    const second = await lookup.lookupTerm("Candid  ");
     expect(second.fromCache).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(lookupCacheSize()).toBe(1);
+    expect(lookup.cacheSize()).toBe(1);
   });
 
   it("falls through to the next provider when one is rate limited", async () => {
@@ -207,7 +250,7 @@ describe("lookupTerm", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await lookupTerm("candid");
+    const result = await lookup.lookupTerm("candid");
     expect(result.provider).toBe("mymemory");
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -217,8 +260,8 @@ describe("lookupTerm", () => {
       "fetch",
       vi.fn(async () => jsonResponse({}, 429)),
     );
-    await expect(lookupTerm("candid")).rejects.toBeInstanceOf(LookupError);
-    await expect(lookupTerm("candid")).rejects.toMatchObject({ reason: "rate-limited" });
+    await expect(lookup.lookupTerm("candid")).rejects.toBeInstanceOf(LookupError);
+    await expect(lookup.lookupTerm("candid")).rejects.toMatchObject({ reason: "rate-limited" });
   });
 
   it("reports not-found when providers answer but have nothing", async () => {
@@ -226,13 +269,13 @@ describe("lookupTerm", () => {
       "fetch",
       vi.fn(async () => jsonResponse({ errorCode: 0, translation: [] })),
     );
-    await expect(lookupTerm("zzzzqqq")).rejects.toMatchObject({ reason: "not-found" });
+    await expect(lookup.lookupTerm("zzzzqqq")).rejects.toMatchObject({ reason: "not-found" });
   });
 
   it("rejects an empty term without touching the network", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    await expect(lookupTerm("   ")).rejects.toMatchObject({ reason: "not-found" });
+    await expect(lookup.lookupTerm("   ")).rejects.toMatchObject({ reason: "not-found" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -240,8 +283,228 @@ describe("lookupTerm", () => {
     const fetchMock = vi.fn(async () => jsonResponse({ errorCode: 0, translation: ["坦率的"] }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await lookupTerm("candid");
-    await lookupTerm("candid", { force: true });
+    await lookup.lookupTerm("candid");
+    await lookup.lookupTerm("candid", { force: true });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("adapter chain", () => {
+  it("follows the injected adapter order, not a hard-coded chain", async () => {
+    const first = vi.fn(async () => makeResult("google", "第一"));
+    const second = vi.fn(async () => makeResult("mymemory", "第二"));
+    const lookup = makeLookup([fakeAdapter("google", first), fakeAdapter("mymemory", second)]);
+
+    const found = await lookup.lookupTerm("candid");
+    expect(found.provider).toBe("google");
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
+  });
+
+  it("skips an adapter whose canServe is false", async () => {
+    const skipped = vi.fn(async () => makeResult("google", "不该出现"));
+    const served = vi.fn(async () => makeResult("mymemory", "坦率的"));
+    const lookup = makeLookup([
+      fakeAdapter("google", skipped, () => false),
+      fakeAdapter("mymemory", served),
+    ]);
+
+    const found = await lookup.lookupTerm("candid", { from: "en", to: "zh-CN" });
+    expect(found.provider).toBe("mymemory");
+    expect(skipped).not.toHaveBeenCalled();
+    expect(served).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the language pair through to canServe", async () => {
+    const seen: [string, string][] = [];
+    const lookup = makeLookup([
+      fakeAdapter(
+        "google",
+        async () => makeResult("google", "x"),
+        (from, to) => {
+          seen.push([from, to]);
+          return true;
+        },
+      ),
+    ]);
+
+    await lookup.lookupTerm("candid", { from: "ja", to: "ko" });
+    expect(seen).toEqual([["ja", "ko"]]);
+  });
+
+  it("exercises the desktop adapter path with an injected adapter", async () => {
+    // This is the path that ships, and it had no test while the chain was a
+    // literal chosen by `isTauri()` inside the orchestrator.
+    const tauriFetch = vi.fn(async () => makeResult("youdao", "坦率的"));
+    const lookup = makeLookup([fakeAdapter("youdao", tauriFetch)]);
+
+    const found = await lookup.lookupTerm("candid");
+    expect(found.provider).toBe("youdao");
+    expect(tauriFetch).toHaveBeenCalledWith(
+      "candid",
+      expect.objectContaining({ from: "en", to: "zh-CN" }),
+    );
+  });
+
+  it("reports not-found when every adapter answers with nothing", async () => {
+    const lookup = makeLookup([
+      fakeAdapter("google", async () => null),
+      fakeAdapter("mymemory", async () => null),
+    ]);
+    await expect(lookup.lookupTerm("zzzzqqq")).rejects.toMatchObject({ reason: "not-found" });
+  });
+
+  it("reports offline when every adapter fails without answering", async () => {
+    const lookup = makeLookup([
+      fakeAdapter("google", async () => {
+        throw new LookupError("offline");
+      }),
+      fakeAdapter("mymemory", async () => {
+        throw new Error("boom");
+      }),
+    ]);
+    await expect(lookup.lookupTerm("candid")).rejects.toMatchObject({ reason: "offline" });
+  });
+
+  it("reports rate-limited when every adapter is cooling", async () => {
+    const lookup = makeLookup([
+      fakeAdapter("google", async () => {
+        throw new LookupError("rate-limited");
+      }),
+    ]);
+    await expect(lookup.lookupTerm("candid")).rejects.toMatchObject({ reason: "rate-limited" });
+    await expect(lookup.lookupTerm("candid")).rejects.toMatchObject({ reason: "rate-limited" });
+  });
+
+  it("treats a chain where no adapter can serve as offline", async () => {
+    const lookup = makeLookup([
+      fakeAdapter("google", async () => makeResult("google", "x"), () => false),
+    ]);
+    await expect(lookup.lookupTerm("candid")).rejects.toMatchObject({ reason: "offline" });
+  });
+});
+
+describe("tauri adapter (the shipping path)", () => {
+  const invokeMock = vi.mocked(invoke);
+
+  beforeEach(() => {
+    invokeMock.mockReset();
+  });
+
+  it("calls lookup_word and parses the dictionary payload", async () => {
+    invokeMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: JSON.stringify(youdaoPayload),
+      error: null,
+    });
+
+    const lookup = makeLookup(createTauriAdapters());
+    const found = await lookup.lookupTerm("candid");
+
+    expect(invokeMock).toHaveBeenCalledWith("lookup_word", { term: "candid" });
+    expect(found.provider).toBe("youdao");
+    expect(found.senses).toHaveLength(4);
+    expect(found.phonetic).toBe("ˈkændɪd");
+  });
+
+  it("marks the provider cooling when the proxy reports 429", async () => {
+    invokeMock.mockResolvedValue({ ok: false, status: 429, body: "", error: "rate limited" });
+
+    const lookup = makeLookup(createTauriAdapters());
+    await expect(lookup.lookupTerm("candid")).rejects.toMatchObject({ reason: "rate-limited" });
+
+    // The cooldown is per instance and still inside the window: no second call.
+    await expect(lookup.lookupTerm("candid")).rejects.toMatchObject({ reason: "rate-limited" });
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports not-found when the proxy answers with an error body", async () => {
+    invokeMock.mockResolvedValue({ ok: false, status: 500, body: "", error: "boom" });
+
+    const lookup = makeLookup(createTauriAdapters());
+    await expect(lookup.lookupTerm("candid")).rejects.toMatchObject({ reason: "not-found" });
+  });
+});
+
+describe("cache and cooldown live in the instance", () => {
+  it("skips an adapter during the cooldown window and retries after it", async () => {
+    let now = 1_000;
+    const clock: LookupClock = { now: () => now };
+    // Typed so the mock can later be re-armed to return a result.
+    const limited = vi.fn<(...args: [string, LookupContext]) => Promise<LookupResult | null>>(
+      async () => {
+        throw new LookupError("rate-limited");
+      },
+    );
+    const fallback = vi.fn(async () => makeResult("mymemory", "坦率的"));
+    const lookup = makeLookup(
+      [fakeAdapter("youdao-web", limited), fakeAdapter("mymemory", fallback)],
+      clock,
+    );
+
+    const first = await lookup.lookupTerm("candid");
+    expect(first.provider).toBe("mymemory");
+    expect(limited).toHaveBeenCalledTimes(1);
+
+    // Still inside the 90 s window: the rate-limited adapter is skipped.
+    now += 89_000;
+    const second = await lookup.lookupTerm("candid", { force: true });
+    expect(second.provider).toBe("mymemory");
+    expect(limited).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledTimes(2);
+
+    // Past the window it is tried again and can win.
+    now += 2_000;
+    limited.mockImplementation(async () => makeResult("youdao-web", "坦诚的"));
+    const third = await lookup.lookupTerm("candid", { force: true });
+    expect(third.provider).toBe("youdao-web");
+    expect(limited).toHaveBeenCalledTimes(2);
+  });
+
+  it("serves a cache hit without calling any adapter", async () => {
+    const fetchSpy = vi.fn(async () => makeResult("google", "坦率的"));
+    const lookup = makeLookup([fakeAdapter("google", fetchSpy)]);
+
+    await lookup.lookupTerm("candid");
+    const cached = await lookup.lookupTerm(" Candid ");
+    expect(cached.fromCache).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(lookup.cacheSize()).toBe(1);
+  });
+
+  it("expires a cache entry after the TTL on the injected clock", async () => {
+    let now = 0;
+    const clock: LookupClock = { now: () => now };
+    const fetchSpy = vi.fn(async () => makeResult("google", "坦率的"));
+    const lookup = makeLookup([fakeAdapter("google", fetchSpy)], clock);
+
+    await lookup.lookupTerm("candid");
+    now += 1000 * 60 * 60 * 24 * 30 + 1;
+    const again = await lookup.lookupTerm("candid");
+    expect(again.fromCache).toBe(false);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps cache and cooldown separate per instance", async () => {
+    const fetchSpy = vi.fn(async () => makeResult("google", "坦率的"));
+    const a = makeLookup([fakeAdapter("google", fetchSpy)]);
+    const b = makeLookup([fakeAdapter("google", fetchSpy)]);
+
+    await a.lookupTerm("candid");
+    expect(a.cacheSize()).toBe(1);
+    expect(b.cacheSize()).toBe(0);
+
+    a.clearCache();
+    expect(a.cacheSize()).toBe(0);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("module-level compatibility exports", () => {
+  it("still expose the settings-page cache helpers", () => {
+    expect(typeof lookupCacheSize()).toBe("number");
+    expect(() => clearLookupCache()).not.toThrow();
+    expect(() => resetProviderCooldown()).not.toThrow();
   });
 });

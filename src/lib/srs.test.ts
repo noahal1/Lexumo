@@ -10,7 +10,6 @@ import {
   applyGrade,
   formatInterval,
   freshSrs,
-  isDue,
   isNew,
   nextStatus,
   previewGrades,
@@ -408,15 +407,9 @@ describe("formatInterval", () => {
   });
 });
 
-describe("isDue / isNew", () => {
-  it("null 视为到期且是新卡", () => {
-    expect(isDue(null, NOW)).toBe(true);
+describe("isNew", () => {
+  it("null 视为新卡", () => {
     expect(isNew(null)).toBe(true);
-  });
-
-  it("dueAt 小于等于 now 视为到期", () => {
-    expect(isDue(reviewed(1, 2.5, { dueAt: NOW }), NOW)).toBe(true);
-    expect(isDue(reviewed(1, 2.5, { dueAt: NOW + 1 }), NOW)).toBe(false);
   });
 
   it("复习过的卡片不再是新卡", () => {

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { SessionResult } from "@/components/SessionResult";
 import {
+  ConfirmDialog,
   EmptyState,
   PageShell,
   ProgressBar,
@@ -11,9 +12,11 @@ import {
   StatTile,
   StatusChip,
   TagChip,
+  useToast,
 } from "@/components/ui";
 import { useRouter } from "@/app/router";
-import { useT } from "@/i18n";
+import { useT, type MessageKey } from "@/i18n";
+import { prefersReducedMotion } from "@/lib/motion";
 import {
   createSession,
   formatAccuracy,
@@ -32,6 +35,7 @@ import {
   useAppData,
 } from "@/lib/store";
 import { speak, speechSupported, stopSpeaking } from "@/lib/tts";
+import { SHORTCUTS, useShortcutScope, type ShortcutBinding } from "@/lib/shortcuts";
 import {
   STATUS_LABEL_KEY,
   type AppData,
@@ -45,7 +49,7 @@ import "@/styles/study.css";
 
 const GRADES: Grade[] = ["hard", "good", "easy"];
 
-const GRADE_LABEL_KEY: Record<Grade, string> = {
+const GRADE_LABEL_KEY: Record<Grade, MessageKey> = {
   hard: "flashcards.gradeHard",
   good: "flashcards.gradeGood",
   easy: "flashcards.gradeEasy",
@@ -135,13 +139,27 @@ export function FlashcardsPage() {
   const settings = data.settings;
   const t = useT();
   const router = useRouter();
+  const toast = useToast();
 
   const [deck, setDeck] = useState<DeckSource>("due");
+  const [confirmExit, setConfirmExit] = useState(false);
   const sessionRef = useRef<Session | null>(null);
   const [view, setView] = useState<SessionView | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [storeSteps, setStoreSteps] = useState<StoreStep[]>([]);
   const spokenRef = useRef<string | null>(null);
+
+  /* The card turn is two halves driven by timers (see `study.css`): rotate the
+     front to edge-on, swap the face while it is invisible, rotate the back in.
+     Splitting it that way is what keeps the back text from ever being seen
+     mirrored — CSS alone cannot swap the DOM at the right instant. */
+  const [turn, setTurn] = useState<"idle" | "out" | "in">("idle");
+  const turnTimers = useRef<number[]>([]);
+  const clearTurn = useCallback(() => {
+    turnTimers.current.forEach((id) => window.clearTimeout(id));
+    turnTimers.current = [];
+  }, []);
+  useEffect(() => clearTurn, [clearTurn]);
 
   /* Snapshot the mutable session into render state. Every mutation below writes
      through the ref and then calls this, so the page never reads stale counters
@@ -159,11 +177,44 @@ export function FlashcardsPage() {
     );
   }, []);
 
+  /* Reveal the answer. With reduced motion the face simply appears — no
+     timers, no rotation, no 125ms wait before the answer is readable. */
+  const reveal = useCallback(() => {
+    /* Ignore a second reveal while the card is already turning: restarting the
+       rotation mid-way would snap it back to face-on. */
+    if (flipped || turn !== "idle") return;
+    if (prefersReducedMotion()) {
+      setFlipped(true);
+      return;
+    }
+    clearTurn();
+    setTurn("out");
+    turnTimers.current.push(
+      window.setTimeout(() => {
+        setFlipped(true);
+        setTurn("in");
+        turnTimers.current.push(window.setTimeout(() => setTurn("idle"), 190));
+      }, 125),
+    );
+  }, [flipped, turn, clearTurn]);
+
+  /* Put the card back to its front face, cancelling a turn in flight. */
+  const resetFlip = useCallback(() => {
+    clearTurn();
+    setTurn("idle");
+    setFlipped(false);
+  }, [clearTurn]);
+
   const now = Date.now();
   const canSpeak = speechSupported();
   const due = dueWords(data, now);
   const dueReviewCount = due.filter((word) => !isNew(word.srs)).length;
   const freshLeft = newCardsLeft(data, now);
+  /* "Caught up" is the good state, not an error: nothing is due today. */
+  const caughtUp = due.length === 0;
+  const hasNewWords = data.words.some((candidate) => isNew(candidate.srs));
+  const capReached =
+    settings.newCardsPerDay > 0 && freshLeft === 0 && hasNewWords;
 
   /* Cheap per-deck sizes: no need to materialise four full sessions. */
   const counts: Record<DeckSource, number> = {
@@ -214,20 +265,40 @@ export function FlashcardsPage() {
 
   const startSession = useCallback(() => {
     const ids = buildSession(getData(), Date.now(), deck);
-    setFlipped(false);
+    resetFlip();
     setStoreSteps([]);
     spokenRef.current = null;
     sessionRef.current = ids.length > 0 ? createSession({ ids }) : null;
     sync();
-  }, [deck, sync]);
+  }, [deck, sync, resetFlip]);
 
   const exitSession = useCallback(() => {
     stopSpeaking();
     sessionRef.current = null;
     sync();
-    setFlipped(false);
+    resetFlip();
     setStoreSteps([]);
-  }, [sync]);
+    setConfirmExit(false);
+  }, [sync, resetFlip]);
+
+  /* Leaving mid-session loses your place, so ask first — but only once the
+     reader has actually graded something. */
+  const requestExit = useCallback(() => {
+    const current = sessionRef.current?.progress();
+    if (current && current.reviewed > 0 && !current.done) {
+      setConfirmExit(true);
+      return;
+    }
+    exitSession();
+  }, [exitSession]);
+
+  const confirmExitNow = useCallback(() => {
+    const reviewed = sessionRef.current?.progress().reviewed ?? 0;
+    exitSession();
+    if (reviewed > 0) {
+      toast(t("flashcards.exitSaved", { n: reviewed }), "ok");
+    }
+  }, [exitSession, toast, t]);
 
   const grade = useCallback(
     (value: Grade) => {
@@ -243,9 +314,9 @@ export function FlashcardsPage() {
       ]);
       session.record({ correct: gradeCountsAsCorrect(value) });
       sync();
-      setFlipped(false);
+      resetFlip();
     },
-    [word, sync],
+    [word, sync, resetFlip],
   );
 
   const skip = useCallback(() => {
@@ -253,8 +324,8 @@ export function FlashcardsPage() {
     if (!session) return;
     session.skip();
     sync();
-    setFlipped(false);
-  }, [sync]);
+    resetFlip();
+  }, [sync, resetFlip]);
 
   /* Roll back the last grade or skip. `undoReview` must run outside the state
      updater: StrictMode invokes updaters twice, which would double-undo. */
@@ -275,18 +346,27 @@ export function FlashcardsPage() {
         );
       }
       setStoreSteps((prev) => prev.slice(0, -1));
+      clearTurn();
+      setTurn("idle");
       setFlipped(true);
     } else {
       setFlipped(false);
     }
     sync();
-  }, [storeSteps, sync]);
+  }, [storeSteps, sync, clearTurn]);
 
-  /* Auto-pronounce the term once per card (token guards StrictMode double-run). */
+  /* Auto-pronounce the term once per card (token guards StrictMode double-run).
+     Normal mode speaks on reveal, matching the setting's wording; listening
+     mode (audioFirst) speaks while the term is still hidden. */
   useEffect(() => {
     if (!word || !inProgress) return;
-    if (!settings.autoPlayAudio || !speechSupported()) return;
-    const token = `${word.id}:${progress?.index ?? 0}`;
+    if (!speechSupported()) return;
+    const listening = settings.audioFirst;
+    const shouldSpeak = listening
+      ? !flipped
+      : flipped && settings.autoPlayAudio;
+    if (!shouldSpeak) return;
+    const token = `${word.id}:${progress?.index ?? 0}:${flipped ? "back" : "front"}`;
     if (spokenRef.current === token) return;
     spokenRef.current = token;
     speak(word.term, {
@@ -297,7 +377,9 @@ export function FlashcardsPage() {
   }, [
     word,
     inProgress,
+    flipped,
     progress?.index,
+    settings.audioFirst,
     settings.autoPlayAudio,
     settings.ttsRate,
     settings.ttsVoiceURI,
@@ -306,55 +388,44 @@ export function FlashcardsPage() {
   useEffect(() => () => stopSpeaking(), []);
 
   /* Space flips · 1/2/3 grade · ←/→ skip · Ctrl+Z undo */
-  useEffect(() => {
-    if (!inProgress) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
-
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        undo();
-        return;
-      }
-
-      if (event.code === "Space" || event.key === " ") {
+  const pageShortcuts = useMemo<ShortcutBinding[]>(() => {
+    if (!inProgress) return [];
+    return [
+      {
+        ...SHORTCUTS.undo,
+        match: (event) =>
+          (event.ctrlKey === true || event.metaKey === true) &&
+          event.key.toLowerCase() === "z",
+        run: () => undo(),
+      },
+      {
+        ...SHORTCUTS.flip,
+        match: (event) => event.code === "Space" || event.key === " ",
         /* A focused button owns Space; otherwise it would flip the card *and*
            activate the button. */
-        if (target && target.tagName === "BUTTON") return;
-        event.preventDefault();
-        setFlipped((value) => !value);
-        return;
-      }
-
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        event.preventDefault();
-        skip();
-        return;
-      }
-
-      if (!flipped) return;
-      if (event.key === "1") {
-        event.preventDefault();
-        grade("hard");
-      } else if (event.key === "2") {
-        event.preventDefault();
-        grade("good");
-      } else if (event.key === "3") {
-        event.preventDefault();
-        grade("easy");
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [inProgress, flipped, grade, skip, undo]);
+        when: (event) =>
+          (event.target as { tagName?: string } | null)?.tagName !== "BUTTON",
+        run: () => (flipped ? resetFlip() : reveal()),
+      },
+      {
+        ...SHORTCUTS.skip,
+        match: (event) => event.key === "ArrowLeft" || event.key === "ArrowRight",
+        run: () => skip(),
+      },
+      {
+        ...SHORTCUTS.grade,
+        when: () => flipped,
+        match: (event) =>
+          event.key === "1" || event.key === "2" || event.key === "3",
+        run: (event) => {
+          if (event.key === "1") grade("hard");
+          else if (event.key === "2") grade("good");
+          else grade("easy");
+        },
+      },
+    ];
+  }, [inProgress, flipped, grade, skip, undo, reveal, resetFlip]);
+  useShortcutScope("page", pageShortcuts);
 
   const sidePanel = (
     <aside className="study-side">
@@ -441,28 +512,69 @@ export function FlashcardsPage() {
                   </span>
                 </div>
 
-                {deckSize === 0 && (
+                {capReached && !caughtUp && (
                   <div className="notice">
                     <span className="notice-ico">
                       <Icon name="info" size={15} />
                     </span>
                     <span>
-                      {t("flashcards.emptyDeck")} {t("flashcards.emptyDeckHint")}
+                      {t("flashcards.newCapReached", {
+                        n: settings.newCardsPerDay,
+                      })}
                     </span>
                   </div>
                 )}
 
-                <div className="study-actions">
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-lg"
-                    onClick={startSession}
-                    disabled={deckSize === 0}
-                  >
-                    {t("flashcards.start")}
-                    <Icon name="arrow-right" size={17} />
-                  </button>
-                </div>
+                {deckSize === 0 ? (
+                  caughtUp && (deck === "due" || deck === "new") ? (
+                    <EmptyState
+                      icon="sparkles"
+                      title={t("flashcards.noCards")}
+                      text={t("flashcards.noCardsHint")}
+                      action={
+                        <div className="row-flex wrap">
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={() => router.navigate("quiz")}
+                          >
+                            <Icon name="quiz" size={16} />
+                            {t("flashcards.goQuiz")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-quiet"
+                            onClick={() => router.navigate("words")}
+                          >
+                            <Icon name="plus" size={16} />
+                            {t("words.addWord")}
+                          </button>
+                        </div>
+                      }
+                    />
+                  ) : (
+                    <div className="notice">
+                      <span className="notice-ico">
+                        <Icon name="info" size={15} />
+                      </span>
+                      <span>
+                        {t("flashcards.emptyDeck")}{" "}
+                        {t("flashcards.emptyDeckHint")}
+                      </span>
+                    </div>
+                  )
+                ) : (
+                  <div className="study-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-lg"
+                      onClick={startSession}
+                    >
+                      {t("flashcards.start")}
+                      <Icon name="arrow-right" size={17} />
+                    </button>
+                  </div>
+                )}
                 <p className="tiny muted">{t("flashcards.keyboardHint")}</p>
               </div>
             </div>
@@ -500,7 +612,7 @@ export function FlashcardsPage() {
                 <button
                   type="button"
                   className="btn btn-quiet btn-sm"
-                  onClick={exitSession}
+                  onClick={requestExit}
                 >
                   <Icon name="x" size={15} />
                   {t("flashcards.exit")}
@@ -526,19 +638,25 @@ export function FlashcardsPage() {
               <>
                 <div
                   key={word.id}
-                  className={cx("card", "fc-card", flipped && "is-flipped")}
+                  className={cx(
+                    "card",
+                    "fc-card",
+                    flipped && "is-flipped",
+                    turn === "out" && "is-turn-out",
+                    turn === "in" && "is-turn-in",
+                  )}
                   role={flipped ? undefined : "button"}
                   tabIndex={flipped ? -1 : 0}
                   aria-label={
                     flipped ? undefined : t("flashcards.showAnswer")
                   }
                   onClick={() => {
-                    if (!flipped) setFlipped(true);
+                    if (!flipped) reveal();
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !flipped) {
                       event.preventDefault();
-                      setFlipped(true);
+                      reveal();
                     }
                   }}
                 >
@@ -604,11 +722,37 @@ export function FlashcardsPage() {
                         </div>
                       )}
                     </div>
+                  ) : settings.audioFirst ? (
+                    <div className="fc-face fc-front rise">
+                      <div className="fc-listen">
+                        <Icon name="volume" size={34} />
+                        <p className="fc-listen-text">
+                          {t("flashcards.listenPrompt")}
+                        </p>
+                        {canSpeak && (
+                          <button
+                            type="button"
+                            className="btn btn-quiet btn-sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              play(word);
+                            }}
+                          >
+                            <Icon name="volume" size={15} />
+                            {t("flashcards.listenAgain")}
+                          </button>
+                        )}
+                      </div>
+                      <div className="fc-hint">
+                        <span className="kbd">{t("flashcards.spaceKey")}</span>
+                        <span>{t("flashcards.revealHint")}</span>
+                      </div>
+                    </div>
                   ) : (
                     <div className="fc-face fc-front rise">
                       <div className="fc-term">{word.term}</div>
                       <div className="fc-hint">
-                        <span className="kbd">空格</span>
+                        <span className="kbd">{t("flashcards.spaceKey")}</span>
                         <span>{t("flashcards.revealHint")}</span>
                       </div>
                     </div>
@@ -616,35 +760,43 @@ export function FlashcardsPage() {
                 </div>
 
                 {flipped ? (
-                  <div className="fc-grades">
-                    {GRADES.map((value, index) => (
-                      <button
-                        key={value}
-                        type="button"
-                        className={cx("btn", "fc-grade", value)}
-                        onClick={() => grade(value)}
-                      >
-                        <span className="fc-grade-top">
-                          <span className="kbd">{index + 1}</span>
-                          <span className="fc-grade-dot" />
-                          {t(GRADE_LABEL_KEY[value])}
-                        </span>
-                        <span className="fc-grade-int">
-                          {newCard ? `${t("flashcards.firstTime")} · ` : ""}
-                          {formatInterval(preview[value].intervalDays)}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <div className="fc-grades">
+                      {GRADES.map((value, index) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={cx("btn", "fc-grade", value)}
+                          onClick={() => grade(value)}
+                        >
+                          <span className="fc-grade-top">
+                            <span className="kbd">{index + 1}</span>
+                            <span className="fc-grade-dot" />
+                            {t(GRADE_LABEL_KEY[value])}
+                          </span>
+                          <span className="fc-grade-int">
+                            {newCard
+                              ? t("flashcards.firstTime")
+                              : formatInterval(preview[value].intervalDays)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {newCard && (
+                      <p className="tiny muted fc-grade-note">
+                        {t("flashcards.firstGradeHint")}
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <div className="study-actions">
                     <button
                       type="button"
                       className="btn btn-primary btn-lg"
-                      onClick={() => setFlipped(true)}
+                      onClick={reveal}
                     >
                       {t("flashcards.showAnswer")}
-                      <span className="kbd">空格</span>
+                      <span className="kbd">{t("flashcards.spaceKey")}</span>
                     </button>
                   </div>
                 )}
@@ -696,15 +848,25 @@ export function FlashcardsPage() {
               }
               actions={
                 <>
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-lg"
-                    onClick={startSession}
-                    disabled={deckSize === 0}
-                  >
-                    {t("flashcards.nextSession")}
-                    <Icon name="refresh" size={16} />
-                  </button>
+                  {deckSize > 0 ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-lg"
+                      onClick={startSession}
+                    >
+                      {t("flashcards.nextSession")}
+                      <Icon name="refresh" size={16} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-lg"
+                      onClick={() => router.navigate("quiz")}
+                    >
+                      <Icon name="quiz" size={16} />
+                      {t("flashcards.goQuiz")}
+                    </button>
+                  )}
                   {canUndo && (
                     <button type="button" className="btn btn-quiet" onClick={undo}>
                       <Icon name="undo" size={16} />
@@ -716,7 +878,7 @@ export function FlashcardsPage() {
                     className="btn btn-quiet"
                     onClick={exitSession}
                   >
-                    {t("flashcards.restart")}
+                    {t("common.back")}
                   </button>
                 </>
               }
@@ -730,6 +892,15 @@ export function FlashcardsPage() {
           {sidePanel}
         </div>
       )}
+      <ConfirmDialog
+        open={confirmExit}
+        title={t("flashcards.exit")}
+        body={t("flashcards.exitConfirm", { n: remaining })}
+        confirmLabel={t("flashcards.exit")}
+        cancelLabel={t("common.cancel")}
+        onConfirm={confirmExitNow}
+        onCancel={() => setConfirmExit(false)}
+      />
     </PageShell>
   );
 }
