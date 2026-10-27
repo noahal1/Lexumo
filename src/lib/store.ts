@@ -17,7 +17,7 @@
 import { useSyncExternalStore } from "react";
 import { loadSnapshot, saveSnapshot, clearSnapshot } from "./db";
 import { emitLocalChange } from "./localChanges";
-import { applyGrade, statusForInterval, freshSrs } from "./srs";
+import { freshSrs, reviewCard, undoGrade } from "./srs";
 import { seedData } from "./seed";
 import {
   applyRound as applyRoundToData,
@@ -30,7 +30,6 @@ import type {
   AppData,
   ChangeSet,
   Grade,
-  ReviewLog,
   Settings,
   SrsState,
   Tombstones,
@@ -179,13 +178,6 @@ function dedupeTags(tags: string[]): string[] {
   }
   return out.slice(0, 12);
 }
-
-const STATUS_RANK: Record<WordStatus, number> = {
-  new: 0,
-  reviewing: 1,
-  learning: 2,
-  mastered: 3,
-};
 
 function withDefaultList(d: AppData, now: number): AppData {
   return {
@@ -410,41 +402,46 @@ export function createStore(options: StoreOptions): Store {
     gradeWord(id, grade, now = clock()) {
       const word = data.words.find((w) => w.id === id);
       if (!word) return null;
-      const before = word.srs?.intervalDays ?? 0;
-      const next = applyGrade(word.srs, grade, now);
-      const status = statusForInterval(next.intervalDays);
-      const log: ReviewLog = {
-        id: uid("r"),
-        wordId: id,
+      // The whole decision (schedule, never-demote, log contents) is srs.ts's;
+      // this wrapper only persists it.
+      const { srs, status, log } = reviewCard(
+        { srs: word.srs, status: word.status },
         grade,
-        at: now,
-        intervalBefore: before,
-        intervalAfter: next.intervalDays,
-      };
+        now,
+        { wordId: id, logId: uid("r") },
+      );
       commit((d) => {
-        const w = d.words.find((x) => x.id === id);
-        if (!w) return;
-        // Never demote: keep the highest status the word has earned.
-        const promoted = STATUS_RANK[status] > STATUS_RANK[w.status] ? status : w.status;
-        patchWord(d, id, { srs: next, status: promoted, updatedAt: now });
+        if (!patchWord(d, id, { srs, status, updatedAt: now })) return;
         d.logs = [...d.logs, log];
         journal.touch(d, "word", id);
         journal.touch(d, "log", log.id);
       });
-      return { srs: next, status, logId: log.id };
+      // `status` is the promoted status that was stored, not the raw interval
+      // status — callers should see the same value the snapshot now holds.
+      return { srs, status, logId: log.id };
     },
 
     /**
      * Roll back a single grade: restore the schedule the word had before, put
      * the status back exactly as it was (including the "never demote"
      * behaviour, which a plain recompute would get wrong) and drop the log.
+     * The inverse lives in `srs.undoGrade`; this is the persistence half.
      */
     undoReview(id, prevSrs, prevStatus, logId, now = clock()) {
+      const restored = undoGrade({ srs: prevSrs, status: prevStatus }, { id: logId });
       commit((d) => {
-        if (!patchWord(d, id, { srs: prevSrs, status: prevStatus, updatedAt: now })) return;
+        if (
+          !patchWord(d, id, {
+            srs: restored.srs,
+            status: restored.status,
+            updatedAt: now,
+          })
+        ) {
+          return;
+        }
         journal.touch(d, "word", id);
-        d.logs = d.logs.filter((log) => log.id !== logId);
-        journal.bury(d, "log", logId, now);
+        d.logs = d.logs.filter((log) => log.id !== restored.removedLogId);
+        journal.bury(d, "log", restored.removedLogId, now);
       });
     },
 
@@ -559,43 +556,6 @@ export function dueWords(d: AppData, now = Date.now()): Word[] {
   });
 }
 
-export function tagPool(d: AppData): string[] {
-  const counts = new Map<string, number>();
-  for (const w of d.words) {
-    for (const t of w.tags) counts.set(t, (counts.get(t) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([t]) => t);
-}
-
-export function reviewsToday(d: AppData, now = Date.now()): number {
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const t0 = start.getTime();
-  return d.logs.filter((l) => l.at >= t0).length;
-}
-
-export function streakDays(d: AppData, now = Date.now()): number {
-  const days = new Set<string>();
-  for (const l of d.logs) {
-    const dt = new Date(l.at);
-    days.add(`${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`);
-  }
-  let streak = 0;
-  const cursor = new Date(now);
-  // Allow today to be empty without breaking yesterday's streak.
-  const todayKey = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`;
-  if (!days.has(todayKey)) cursor.setDate(cursor.getDate() - 1);
-  for (;;) {
-    const key = `${cursor.getFullYear()}-${cursor.getMonth()}-${cursor.getDate()}`;
-    if (!days.has(key)) break;
-    streak += 1;
-    cursor.setDate(cursor.getDate() - 1);
-  }
-  return streak;
-}
-
 export function findDuplicate(d: AppData, term: string, listId?: string): Word | undefined {
   const key = normalizeTerm(term);
   return d.words.find(
@@ -604,3 +564,6 @@ export function findDuplicate(d: AppData, term: string, listId?: string): Word |
 }
 
 export { freshSrs, pendingCount };
+/* Day activity lives in its own pure module (the word index needs it too);
+   re-exported here so the sidebar and study pages keep one import site. */
+export { reviewsToday, streakDays } from "./dayStats";

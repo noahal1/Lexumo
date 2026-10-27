@@ -2,10 +2,11 @@ import { useState, type ReactNode } from "react";
 import { EmptyState, PageShell, Ring, Segmented, StatTile } from "@/components/ui";
 import { useRouter } from "@/app/router";
 import { useLang, useT } from "@/i18n";
-import { dueWords, reviewsToday, streakDays, useAppData } from "@/lib/store";
+import { useAppData } from "@/lib/store";
 import { DAY_MS, formatInterval } from "@/lib/srs";
 import { STATUS_LABEL_KEY, STATUS_ORDER, type Grade, type WordStatus } from "@/lib/types";
 import { dayKey, startOfDay } from "@/lib/utils";
+import { summarize } from "@/lib/wordIndex";
 import "@/styles/insights.css";
 
 /* ------------------------------------------------------------------ */
@@ -123,50 +124,31 @@ export function StatsPage() {
   const days = range === "7" ? 7 : range === "30" ? 30 : 90;
   const zh = lang === "zh-CN";
 
-  const words = data.words;
-  const total = words.length;
+  /* Headline numbers -------------------------------------------------
+     One summarize() call owns the arithmetic. The activity series and the
+     grade mix below stay in the page: they depend on the selected range. */
+  const {
+    total,
+    statusCounts,
+    mastered,
+    today,
+    streak,
+    goal,
+    goalPct,
+    reached,
+    remaining,
+    masteryPct,
+    retention,
+    avgInterval,
+    overdue,
+    dueToday,
+    reviewSum,
+    correctSum,
+    reviewedWords,
+    scheduled,
+  } = summarize(data, now);
 
-  /* Headline numbers ------------------------------------------------- */
-  const statusCounts: Record<WordStatus, number> = {
-    new: 0,
-    reviewing: 0,
-    learning: 0,
-    mastered: 0,
-  };
-  let reviewSum = 0;
-  let correctSum = 0;
-  let reviewedWords = 0;
-  let intervalSum = 0;
-  let scheduled = 0;
-  let overdue = 0;
   const todayStart = startOfDay(now);
-  const dueToday = dueWords(data, now).length;
-
-  for (const w of words) {
-    statusCounts[w.status] += 1;
-    const srs = w.srs;
-    if (srs) {
-      if (w.status !== "mastered" && srs.dueAt < todayStart) overdue += 1;
-      if (srs.reviewCount > 0) {
-        reviewedWords += 1;
-        reviewSum += srs.reviewCount;
-        correctSum += srs.correctCount;
-        intervalSum += srs.intervalDays;
-        scheduled += 1;
-      }
-    }
-  }
-
-  const mastered = statusCounts.mastered;
-  const today = reviewsToday(data, now);
-  const streak = streakDays(data, now);
-  const goal = Math.max(1, data.settings.dailyGoal);
-  const goalPct = Math.min(1, today / goal);
-  const reached = today >= goal;
-  const remaining = Math.max(0, goal - today);
-  const masteryPct = total > 0 ? Math.round((mastered / total) * 100) : 0;
-  const retention = reviewSum > 0 ? Math.round((correctSum / reviewSum) * 100) : null;
-  const avgInterval = scheduled > 0 ? intervalSum / scheduled : 0;
 
   /* Activity series -------------------------------------------------- */
   const countByDay = new Map<string, number>();

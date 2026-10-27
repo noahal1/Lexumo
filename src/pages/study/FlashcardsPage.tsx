@@ -21,7 +21,7 @@ import {
   type Session,
   type SessionProgress,
 } from "@/lib/session";
-import { formatInterval, isNew, previewIntervals } from "@/lib/srs";
+import { formatInterval, isNew, previewGrades } from "@/lib/srs";
 import {
   bumpListen,
   dueWords,
@@ -184,7 +184,9 @@ export function FlashcardsPage() {
     ? data.words.find((candidate) => candidate.id === currentId) ?? null
     : null;
   const newCard = word ? isNew(word.srs) : false;
-  const preview = word ? previewIntervals(word.srs) : null;
+  const preview = word
+    ? previewGrades({ srs: word.srs, status: word.status })
+    : null;
   const remaining = progress ? Math.max(0, progress.total - progress.index) : 0;
 
   const deckOptions: Array<{ value: DeckSource; label: string; count: number }> = [
@@ -629,7 +631,7 @@ export function FlashcardsPage() {
                         </span>
                         <span className="fc-grade-int">
                           {newCard ? `${t("flashcards.firstTime")} · ` : ""}
-                          {formatInterval(preview[value])}
+                          {formatInterval(preview[value].intervalDays)}
                         </span>
                       </button>
                     ))}

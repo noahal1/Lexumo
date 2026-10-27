@@ -19,12 +19,10 @@ import {
   createList,
   deleteList,
   deleteWord,
-  dueWords,
   renameList,
   toggleFavorite,
   useAppData,
   useSettings,
-  wordsOfList,
 } from "@/lib/store";
 import { speak } from "@/lib/tts";
 import {
@@ -33,20 +31,26 @@ import {
   type AppData,
   type Word,
   type WordList,
-  type WordStatus,
 } from "@/lib/types";
 import { cx, relativeDay } from "@/lib/utils";
+import {
+  buildWordIndex,
+  queryWords,
+  type SortKey,
+  type StatusFilter,
+  type WordQuery,
+} from "@/lib/wordIndex";
 import { WordEditor } from "./WordEditor";
 
-type StatusFilter = "all" | WordStatus;
-type SortKey = "recent" | "alpha" | "due" | "status";
-
-const STATUS_RANK: Record<WordStatus, number> = {
+/** Fallbacks for a list id the index has no bucket for yet (no words / no lists). */
+const EMPTY_COUNTS: Record<StatusFilter, number> = {
+  all: 0,
   new: 0,
-  reviewing: 1,
-  learning: 2,
-  mastered: 3,
+  reviewing: 0,
+  learning: 0,
+  mastered: 0,
 };
+const NO_TAGS: string[] = [];
 
 /** Wraps every case-insensitive match of `q` in a <mark> so hits are scannable. */
 function highlight(text: string, q: string): ReactNode {
@@ -74,12 +78,12 @@ export function WordsPage() {
   const data = useAppData();
   const settings = useSettings();
 
-  const [listId, setListId] = useState<string>(data.lists[0]?.id ?? "");
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [tagFilter, setTagFilter] = useState("all");
-  const [sort, setSort] = useState<SortKey>("recent");
-  const [favOnly, setFavOnly] = useState(false);
+  // One filter atom for the whole toolbar; listId lives here too so switching
+  // lists and resetting filters share the same update path.
+  const [filters, setFilters] = useState<WordQuery>(() => ({
+    listId: data.lists[0]?.id ?? "",
+    sort: "recent",
+  }));
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Word | null>(null);
@@ -91,86 +95,53 @@ export function WordsPage() {
   // Keep the selection valid if the active list disappears.
   useEffect(() => {
     if (data.lists.length === 0) return;
-    if (!data.lists.some((l) => l.id === listId)) setListId(data.lists[0].id);
-  }, [data.lists, listId]);
+    setFilters((f) =>
+      data.lists.some((l) => l.id === f.listId)
+        ? f
+        : { ...f, listId: data.lists[0].id, tag: undefined },
+    );
+  }, [data.lists]);
 
-  const listWords = useMemo(() => wordsOfList(data, listId), [data, listId]);
+  // One index feeds the header counts, the status/tag controls and the list.
+  // Rebuilt only when the snapshot changes (like the old due-count memo), so a
+  // plain render cannot shift the due buckets under the user.
+  const index = useMemo(() => buildWordIndex(data), [data]);
+  const listId = filters.listId;
+  const listCount = index.byList.get(listId)?.length ?? 0;
+  const counts = index.countsByList.get(listId) ?? EMPTY_COUNTS;
+  const tags = index.tagsByList.get(listId) ?? NO_TAGS;
+  // List-scoped: the header must describe the list it sits above. The sidebar
+  // badge stays global (App.tsx owns that one).
+  const dueCount = index.dueByList.get(listId)?.length ?? 0;
 
-  const counts = useMemo(() => {
-    const base: Record<StatusFilter, number> = {
-      all: listWords.length,
-      new: 0,
-      reviewing: 0,
-      learning: 0,
-      mastered: 0,
-    };
-    for (const w of listWords) base[w.status] += 1;
-    return base;
-  }, [listWords]);
+  const trimmedQuery = (filters.query ?? "").trim();
 
-  const tags = useMemo(() => {
-    const set = new Map<string, number>();
-    for (const w of data.words) {
-      for (const tag of w.tags) set.set(tag, (set.get(tag) ?? 0) + 1);
-    }
-    return [...set.entries()].sort((a, b) => b[1] - a[1]).map(([tag]) => tag);
-  }, [data.words]);
+  // A tag can vanish from the active list (deleted/edited word). The dropdown
+  // only lists this list's tags, so derive the effective tag here: a stale one
+  // can never filter the list down to nothing.
+  const activeTag = filters.tag && tags.includes(filters.tag) ? filters.tag : undefined;
 
-  const trimmedQuery = query.trim();
-
-  const filtered = useMemo(() => {
-    const q = trimmedQuery.toLocaleLowerCase();
-    let out = listWords;
-    if (q) {
-      out = out.filter(
-        (w) =>
-          w.term.toLocaleLowerCase().includes(q) ||
-          w.definition.toLocaleLowerCase().includes(q) ||
-          w.definition2.toLocaleLowerCase().includes(q) ||
-          w.note.toLocaleLowerCase().includes(q) ||
-          w.tags.some((tag) => tag.toLocaleLowerCase().includes(q)),
-      );
-    }
-    if (statusFilter !== "all") out = out.filter((w) => w.status === statusFilter);
-    if (tagFilter !== "all") out = out.filter((w) => w.tags.includes(tagFilter));
-    if (favOnly) out = out.filter((w) => w.favorite);
-
-    const sorted = out.slice();
-    switch (sort) {
-      case "alpha":
-        sorted.sort((a, b) => a.term.localeCompare(b.term, lang));
-        break;
-      case "due":
-        sorted.sort((a, b) => {
-          const da = a.srs?.dueAt ?? 0;
-          const db = b.srs?.dueAt ?? 0;
-          return da - db || STATUS_RANK[a.status] - STATUS_RANK[b.status];
-        });
-        break;
-      case "status":
-        sorted.sort(
-          (a, b) =>
-            STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
-            a.term.localeCompare(b.term, lang),
-        );
-        break;
-      default:
-        sorted.sort((a, b) => b.createdAt - a.createdAt);
-        break;
-    }
-    return sorted;
-  }, [listWords, trimmedQuery, statusFilter, tagFilter, favOnly, sort, lang]);
-
-  const dueCount = useMemo(() => dueWords(data).length, [data]);
+  const filtered = useMemo(
+    () => queryWords(index, { ...filters, tag: activeTag, lang }),
+    [index, filters, activeTag, lang],
+  );
   const filtersActive =
-    Boolean(trimmedQuery) || statusFilter !== "all" || tagFilter !== "all" || favOnly;
+    Boolean(trimmedQuery) ||
+    (filters.status ?? "all") !== "all" ||
+    Boolean(activeTag) ||
+    Boolean(filters.favoriteOnly);
 
-  const resetFilters = () => {
-    setQuery("");
-    setStatusFilter("all");
-    setTagFilter("all");
-    setFavOnly(false);
-  };
+  const setQuery = (query: string) => setFilters((f) => ({ ...f, query }));
+  const setStatusFilter = (status: StatusFilter) => setFilters((f) => ({ ...f, status }));
+  const setTagFilter = (tag: string) =>
+    setFilters((f) => ({ ...f, tag: tag === "all" ? undefined : tag }));
+  const setSort = (sort: SortKey) => setFilters((f) => ({ ...f, sort }));
+  const resetFilters = () => setFilters((f) => ({ listId: f.listId, sort: f.sort }));
+
+  // Switching lists clears the tag: the dropdown only ever offers the active
+  // list's tags, so keeping a foreign tag would silently empty the list.
+  const selectList = (id: string) =>
+    setFilters((f) => ({ ...f, listId: id, tag: undefined }));
 
   const openCreate = () => {
     setEditing(null);
@@ -227,7 +198,7 @@ export function WordsPage() {
   return (
     <PageShell
       title={t("words.title")}
-      subtitle={`${listWords.length} ${t("common.words")} · ${t("words.dueToday")} ${dueCount}`}
+      subtitle={`${listCount} ${t("common.words")} · ${t("words.dueToday")} ${dueCount}`}
       actions={
         <>
           <button
@@ -253,12 +224,12 @@ export function WordsPage() {
             <button
               key={l.id}
               type="button"
-              onClick={() => setListId(l.id)}
+              onClick={() => selectList(l.id)}
               className={cx("list-tab", active && "active")}
               aria-pressed={active}
             >
               {l.name}
-              <span className="count">{wordsOfList(data, l.id).length}</span>
+              <span className="count">{index.byList.get(l.id)?.length ?? 0}</span>
             </button>
           );
         })}
@@ -282,18 +253,18 @@ export function WordsPage() {
           <input
             ref={searchRef}
             className="input"
-            value={query}
+            value={filters.query ?? ""}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("words.searchPlaceholder")}
             aria-label={t("common.search")}
             onKeyDown={(e) => {
-              if (e.key === "Escape" && query) {
+              if (e.key === "Escape" && filters.query) {
                 e.preventDefault();
                 setQuery("");
               }
             }}
           />
-          {query && (
+          {filters.query && (
             <button
               className="search-clear"
               type="button"
@@ -309,7 +280,7 @@ export function WordsPage() {
         </div>
 
         <Segmented
-          value={statusFilter}
+          value={filters.status ?? "all"}
           options={statusOptions}
           onChange={setStatusFilter}
           ariaLabel={t("words.filterStatus")}
@@ -317,7 +288,7 @@ export function WordsPage() {
 
         <select
           className="select"
-          value={tagFilter}
+          value={activeTag ?? "all"}
           onChange={(e) => setTagFilter(e.target.value)}
           aria-label={t("words.filterTag")}
           style={{ minWidth: 118 }}
@@ -332,7 +303,7 @@ export function WordsPage() {
 
         <select
           className="select"
-          value={sort}
+          value={filters.sort ?? "recent"}
           onChange={(e) => setSort(e.target.value as SortKey)}
           aria-label={t("common.sort")}
           style={{ minWidth: 128 }}
@@ -345,12 +316,12 @@ export function WordsPage() {
 
         <button
           type="button"
-          className={cx("btn btn-icon", favOnly && "btn-primary")}
-          onClick={() => setFavOnly((v) => !v)}
+          className={cx("btn btn-icon", filters.favoriteOnly && "btn-primary")}
+          onClick={() => setFilters((f) => ({ ...f, favoriteOnly: !f.favoriteOnly }))}
           title={t("words.filterFavorites")}
-          aria-pressed={favOnly}
+          aria-pressed={Boolean(filters.favoriteOnly)}
         >
-          <Icon name={favOnly ? "star-filled" : "star"} size={16} />
+          <Icon name={filters.favoriteOnly ? "star-filled" : "star"} size={16} />
         </button>
 
         {filtersActive && (
@@ -362,7 +333,7 @@ export function WordsPage() {
       </div>
 
       {/* Word list */}
-      {listWords.length === 0 ? (
+      {listCount === 0 ? (
         <EmptyState
           icon="words"
           title={t("words.noWords")}
@@ -485,8 +456,8 @@ export function WordsPage() {
       {filtered.length > 0 && (
         <div className="row-flex tiny muted" style={{ marginTop: "var(--sp-4)", gap: 6 }}>
           <span>
-            {t("common.total")} {filtered.length}
-            {filtered.length !== listWords.length ? ` / ${listWords.length}` : ""}
+            {t("common.total")} {filtered.length} {t("common.words")}
+            {filtered.length !== listCount ? ` / ${listCount}` : ""}
           </span>
           <span aria-hidden="true">·</span>
           <span>
@@ -531,7 +502,7 @@ export function WordsPage() {
         onClose={() => setListMgrOpen(false)}
         data={data}
         activeId={listId}
-        onSelect={setListId}
+        onSelect={selectList}
       />
     </PageShell>
   );

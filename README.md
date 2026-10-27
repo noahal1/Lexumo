@@ -118,8 +118,10 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   │   ├── db.ts               # IndexedDB + localStorage 持久化
 │   │   ├── store.ts            # createStore 工厂、可观察快照与全部数据变更
 │   │   ├── journal.ts          # 变更日志：pending / tombstones 的唯一写者
-│   │   ├── srs.ts              # 间隔重复调度（纯函数）
+│   │   ├── srs.ts              # 间隔重复：调度算术 + 「评分后是什么状态」的唯一决策点
 │   │   ├── session.ts          # 学习会话状态机（纯函数，闪卡与测验共用）
+│   │   ├── wordIndex.ts        # 词库索引：每库分桶、状态计数、标签池、筛选排序、统计头条
+│   │   ├── dayStats.ts         # 今日复习数 / 连续学习天数（纯函数）
 │   │   ├── quiz.ts             # 出题（纯函数）
 │   │   ├── transfer.ts         # 导入导出：JSON / CSV / Anki TXT
 │   │   ├── utils.ts            # id / 日期 / 文本等小工具
@@ -209,16 +211,18 @@ npm test
 
 | 文件 | 用例数 | 覆盖内容 |
 | --- | --- | --- |
-| `src/lib/srs.test.ts` | 50 | 三档评分调度、ease 上下限、间隔上限、状态边界、间隔文案、不可变性 |
+| `src/lib/srs.test.ts` | 66 | 三档评分调度、ease 上下限、间隔上限、状态边界、间隔文案、不可变性；`reviewCard` 的「永不降级」、复习日志字段、`undoGrade` 是评分的精确逆、`previewGrades` 与实际评分一致 |
 | `src/lib/utils.test.ts` | 20 | 文本归一化、clamp、shuffle、日期差值、dayKey、cx、uid、相对时间 |
 | `src/lib/translate.test.ts` | 24 | 有道词典 / 机器翻译 / MyMemory / Google 各源解析、释义格式化、缓存命中、429 降级与冷却 |
 | `src/lib/syncMerge.test.ts` | 23 | 待推改动收集、LWW 合并、墓碑删除、日志并集去重 |
 | `src/lib/syncRound.test.ts` | 13 | 一轮同步的结算与合并：发送后结算、在途编辑仍留 pending、远端合并但不算本地编辑、墓碑删除、旧记录 LWW 落败、回声不重复 |
 | `src/lib/journal.test.ts` | 22 | 用真实 store 实例验证：每次本地编辑都进 pending、删除必留墓碑、删词库级联词与日志、快照不可变、`applyRound` 真的结算、远端改动不算本地编辑 |
 | `src/lib/session.test.ts` | 19 | 学习会话状态机：全程进度、hard 算复习但不算答对、skip 语义、undo 双向精确还原、空列表、正确率不为 NaN |
+| `src/lib/wordIndex.test.ts` | 22 | 每库分桶与状态计数、标签池排序（含同次数 localeCompare 兜底）、到期判定、四种筛选与四种排序、统计头条各数字 |
+| `src/lib/dayStats.test.ts` | 9 | 今日复习数只算本地午夜之后、连续天数（今天空着不断档、缺一天即停、同一天多次只算一天、跨月不串） |
 | `src/__tests__/app.smoke.test.tsx` | 5 | 在 jsdom 中真实挂载整个应用：五个页面渲染、主题切换、弹窗开关、搜索过滤 |
 
-共 **176** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
+共 **223** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
 
 冒烟测试通过 `// @vitest-environment jsdom` 单独指定环境，其余用例仍跑在 Node 环境。
 
@@ -243,6 +247,8 @@ npm test
 - **同步记账**：`pending`（待推改动）与 `tombstones`（删除墓碑）只由 `src/lib/journal.ts` 写入，业务操作不再各自手写 `mark*Dirty`。这样「本地改动必须被推送」「本地删除必须留墓碑」两条不变量由模块保证，新增操作不会漏记账；删词、批量删词、删词库共用同一套级联（`journal.purgeWords`），不会留下孤儿复习日志。
 - **一轮同步的顺序**：推送成功后的「先结算已发送、再合并远端」不再写在 `sync.ts` 的调用点，而是由纯函数 `applyRound(data, { sent, received })` 一次完成，store 只暴露单个 `applyRound`。顺序之所以重要，是因为结算带版本守卫——只有当本地记录仍是推送出去的那个版本时才清 `pending`；请求在途期间用户又编辑过，这条记录就保持 pending 进入下一轮。合并属于「服务器在说话」，因此不触发本地变更事件，避免每次推送后再空跑一轮同步。
 - **学习会话**：闪卡页与测验页共用 `src/lib/session.ts` 的状态机（当前卡片、进度、正确率、撤销栈），「hard 算复习但不算答对」这条规则与正确率格式化各只有一处实现，两个页面只负责渲染、键盘与调用 `gradeWord` / `undoReview`。
+- **复习决策**：`src/lib/srs.ts` 不只算间隔，也拥有「评完这一档之后这张卡是什么状态」的完整决策——`reviewCard(card, grade, now, ids)` 返回 `{ srs, status, log }`，其中状态按「永不降级」规则提升、复习日志在模块内部铸造；`undoGrade(prev, log)` 是它的精确逆（**故意不重算**，否则一张刚失手的已掌握卡片会被降级回去），`previewGrades` 让评分按钮预览的正是将要执行的那条规则。`store.ts` 里只剩持久化与同步记账，因此这条不变量不会再因为出现第二个调用者而被绕开。
+- **词库派生**：状态计数、标签池、到期桶、筛选排序与统计头条全部由 `src/lib/wordIndex.ts` 一次遍历产出（`buildWordIndex` / `queryWords` / `summarize`），页面不再各自手写一份。今日复习数与连续天数归 `src/lib/dayStats.ts` 所有，侧栏与统计页读同一份实现。此前词库页表头的到期数是全局的、标签下拉却作用于单个词库，会出现「选了标签却是空列表」这类前后不一致；现在表头、标签下拉与列表都描述同一个词库，侧栏徽标仍保持全局。
 - **回退链**：IndexedDB 不可用或读写失败 → localStorage 键 `lexumo:data`（JSON 字符串）→ 再失败则仅保存在内存（刷新即丢失）。
 - **版本迁移**：启动时若快照 `version` 低于 `DATA_VERSION`，会就地补齐新字段（`updatedAt` / `tombstones` / `pending` / `settingsUpdatedAt`）并保留原有数据；只有 `version` 高于当前版本（降级运行）才会重新播种。
 - **隐私**：数据默认只在本机。只有在「设置 → 账号与同步」中显式登录后，词库、复习日志与设置才会推送到你填写的服务器地址；不登录则没有任何网络上传。

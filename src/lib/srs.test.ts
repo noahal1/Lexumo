@@ -12,13 +12,18 @@ import {
   freshSrs,
   isDue,
   isNew,
-  previewIntervals,
+  nextStatus,
+  previewGrades,
+  reviewCard,
   statusForInterval,
+  statusRank,
+  undoGrade,
 } from "./srs";
 import type { Grade, SrsState, WordStatus } from "./types";
 
 const NOW = new Date(2024, 5, 10, 12, 0, 0).getTime();
 const GRADES: Grade[] = ["easy", "good", "hard"];
+const CARD_IDS = { wordId: "w1", logId: "r1" };
 
 /** A card that has already been reviewed at least once. */
 function reviewed(
@@ -196,17 +201,175 @@ describe("applyGrade — 边界", () => {
   });
 });
 
-describe("previewIntervals", () => {
-  it("新卡三个评分都预览 1 天", () => {
-    expect(previewIntervals(null, NOW)).toEqual({ hard: 1, good: 1, easy: 1 });
+describe("statusRank / nextStatus", () => {
+  it("等级与 STATUS_ORDER 一致", () => {
+    expect(statusRank("new")).toBe(0);
+    expect(statusRank("reviewing")).toBe(1);
+    expect(statusRank("learning")).toBe(2);
+    expect(statusRank("mastered")).toBe(3);
+  });
+
+  it("nextStatus 提升到更高的等级", () => {
+    expect(nextStatus("learning", "reviewing")).toBe("learning");
+    expect(nextStatus("reviewing", "new")).toBe("reviewing");
+  });
+
+  it("nextStatus 永不降级：earned 更低时保留当前状态", () => {
+    expect(nextStatus("reviewing", "mastered")).toBe("mastered");
+    expect(nextStatus("new", "learning")).toBe("learning");
+    expect(nextStatus("learning", "mastered")).toBe("mastered");
+  });
+
+  it("nextStatus 同级时保持当前状态", () => {
+    expect(nextStatus("reviewing", "reviewing")).toBe("reviewing");
+    expect(nextStatus("mastered", "mastered")).toBe("mastered");
+  });
+});
+
+describe("reviewCard", () => {
+  it("新卡评分：间隔 1 天、复习次数 1、状态提升为 reviewing", () => {
+    const result = reviewCard({ srs: null, status: "new" }, "good", NOW, CARD_IDS);
+    expect(result.srs.intervalDays).toBe(1);
+    expect(result.srs.reviewCount).toBe(1);
+    expect(result.srs.lastReviewedAt).toBe(NOW);
+    expect(result.status).toBe("reviewing");
+  });
+
+  it("新卡的 intervalBefore 记为 0", () => {
+    const result = reviewCard({ srs: null, status: "new" }, "easy", NOW, CARD_IDS);
+    expect(result.log.intervalBefore).toBe(0);
+    expect(result.log.intervalAfter).toBe(1);
+  });
+
+  it("记录复习日志的每个字段", () => {
+    const result = reviewCard(
+      { srs: reviewed(5, 2.0), status: "reviewing" },
+      "good",
+      NOW,
+      CARD_IDS,
+    );
+    expect(result.srs.intervalDays).toBe(10);
+    expect(result.log).toEqual({
+      id: "r1",
+      wordId: "w1",
+      grade: "good",
+      at: NOW,
+      intervalBefore: 5,
+      intervalAfter: 10,
+    });
+  });
+
+  it("把状态提升到新间隔对应的等级", () => {
+    // 5 天 × 2.5 = 12 天 → learning
+    const result = reviewCard(
+      { srs: reviewed(5, 2.5), status: "reviewing" },
+      "good",
+      NOW,
+      CARD_IDS,
+    );
+    expect(result.srs.intervalDays).toBe(12);
+    expect(result.status).toBe("learning");
+  });
+
+  it("earned 状态更低时保留原状态（永不降级）", () => {
+    // 已掌握的卡片答 hard：间隔重置为 1 天，earned 状态只有 reviewing。
+    const result = reviewCard(
+      { srs: reviewed(30, 2.5), status: "mastered" },
+      "hard",
+      NOW,
+      CARD_IDS,
+    );
+    expect(result.srs.intervalDays).toBe(1);
+    expect(statusForInterval(result.srs.intervalDays)).toBe("reviewing");
+    // 返回的是提升后的最终状态，而不是 earned 状态。
+    expect(result.status).toBe("mastered");
+  });
+
+  it("不修改传入的卡片状态对象", () => {
+    const card = { srs: reviewed(4, 2.0), status: "reviewing" as WordStatus };
+    const srsSnapshot = { ...card.srs };
+    reviewCard(card, "easy", NOW, CARD_IDS);
+    expect(card.srs).toEqual(srsSnapshot);
+    expect(card.status).toBe("reviewing");
+  });
+});
+
+describe("undoGrade", () => {
+  it("恢复评分前的卡片并返回要删除的日志 id", () => {
+    const prev = { srs: reviewed(5, 2.0), status: "reviewing" as WordStatus };
+    const graded = reviewCard(prev, "good", NOW, CARD_IDS);
+    const undone = undoGrade(prev, graded.log);
+    expect(undone.srs).toBe(prev.srs);
+    expect(undone.status).toBe(prev.status);
+    expect(undone.removedLogId).toBe("r1");
+  });
+
+  it("srs 为 null 的卡片同样精确还原", () => {
+    const prev = { srs: null, status: "new" as WordStatus };
+    const graded = reviewCard(prev, "good", NOW, CARD_IDS);
+    const undone = undoGrade(prev, graded.log);
+    expect(undone.srs).toBeNull();
+    expect(undone.status).toBe("new");
+    expect(undone.removedLogId).toBe(graded.log.id);
+  });
+
+  it("是 reviewCard 的精确逆操作（遍历评分与状态）", () => {
+    const statuses: WordStatus[] = ["new", "reviewing", "learning", "mastered"];
+    for (const grade of GRADES) {
+      for (const status of statuses) {
+        const prev = { srs: reviewed(4, 2.0), status };
+        const graded = reviewCard(prev, grade, NOW, CARD_IDS);
+        expect(undoGrade(prev, graded.log)).toEqual({
+          srs: prev.srs,
+          status,
+          removedLogId: graded.log.id,
+        });
+      }
+    }
+  });
+
+  it("不重新计算调度：mastered 卡片 hard 后撤销仍恢复 mastered", () => {
+    const prev = { srs: reviewed(30, 2.5), status: "mastered" as WordStatus };
+    const graded = reviewCard(prev, "hard", NOW, CARD_IDS);
+    // 若撤销时按评分后的间隔重算，会得到 reviewing —— 这正是不能重算的原因。
+    expect(statusForInterval(graded.srs.intervalDays)).toBe("reviewing");
+    expect(undoGrade(prev, graded.log).status).toBe("mastered");
+  });
+});
+
+describe("previewGrades", () => {
+  it("新卡三个评分都预览 1 天，并预览提升后的状态", () => {
+    expect(previewGrades({ srs: null, status: "new" }, NOW)).toEqual({
+      hard: { intervalDays: 1, status: "reviewing" },
+      good: { intervalDays: 1, status: "reviewing" },
+      easy: { intervalDays: 1, status: "reviewing" },
+    });
   });
 
   it("已复习卡片按真实调度预览", () => {
-    expect(previewIntervals(reviewed(1, 2.5), NOW)).toEqual({
-      hard: 1,
-      good: 2,
-      easy: 3,
+    expect(previewGrades({ srs: reviewed(1, 2.5), status: "reviewing" }, NOW)).toEqual({
+      hard: { intervalDays: 1, status: "reviewing" },
+      good: { intervalDays: 2, status: "reviewing" },
+      easy: { intervalDays: 3, status: "reviewing" },
     });
+  });
+
+  it("预览的状态与 reviewCard 实际应用的状态一致", () => {
+    const card = { srs: reviewed(5, 2.0), status: "reviewing" as WordStatus };
+    const preview = previewGrades(card, NOW);
+    for (const grade of GRADES) {
+      const applied = reviewCard(card, grade, NOW, CARD_IDS);
+      expect(preview[grade]).toEqual({
+        intervalDays: applied.srs.intervalDays,
+        status: applied.status,
+      });
+    }
+  });
+
+  it("已掌握的卡片预览仍保持 mastered（永不降级）", () => {
+    expect(
+      previewGrades({ srs: reviewed(30, 2.5), status: "mastered" }, NOW).hard,
+    ).toEqual({ intervalDays: 1, status: "mastered" });
   });
 });
 
