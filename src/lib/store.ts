@@ -19,7 +19,12 @@ import { loadSnapshot, saveSnapshot, clearSnapshot } from "./db";
 import { emitLocalChange } from "./localChanges";
 import { applyGrade, statusForInterval, freshSrs } from "./srs";
 import { seedData } from "./seed";
-import { collectChanges, pendingCount, applyRemote } from "./syncMerge";
+import {
+  applyRound as applyRoundToData,
+  collectChanges,
+  pendingCount,
+  type SyncRound,
+} from "./syncMerge";
 import * as journal from "./journal";
 import type {
   AppData,
@@ -157,8 +162,8 @@ export interface Store {
 
   getChangesToPush(): ChangeSet;
   pendingChangeCount(): number;
-  markPushed(pushed: ChangeSet): void;
-  applyRemoteChanges(changes: ChangeSet): void;
+  /** Apply one finished round: settle what we sent, then merge the answer. */
+  applyRound(round: SyncRound): void;
 }
 
 function dedupeTags(tags: string[]): string[] {
@@ -483,15 +488,14 @@ export function createStore(options: StoreOptions): Store {
     getChangesToPush: () => collectChanges(data),
     pendingChangeCount: () => journal.pendingTotal(data),
 
-    markPushed(pushed) {
-      commit((d) => journal.settle(d, pushed));
-    },
-
-    /** Merge a server change set into the local snapshot. */
-    applyRemoteChanges(changes) {
-      // Deliberately no `emitLocalChange`: this is the server talking, not the
-      // user, and echoing it would schedule another sync round.
-      data = applyRemote(data, changes);
+    /**
+     * Apply one finished sync round. The settle-then-merge order lives in
+     * `applyRound`, so no caller can get it wrong.
+     */
+    applyRound(round) {
+      // Deliberately no `emitLocalChange`: a round is the server talking, not
+      // the user, and echoing it would schedule another 2.5s round every push.
+      data = applyRoundToData(data, round);
       notify();
       scheduleSave();
     },
@@ -528,8 +532,7 @@ export const updateSettings = store.updateSettings;
 export const wipeAll = store.wipeAll;
 export const getChangesToPush = store.getChangesToPush;
 export const pendingChangeCount = store.pendingChangeCount;
-export const markPushed = store.markPushed;
-export const applyRemoteChanges = store.applyRemoteChanges;
+export const applyRound = store.applyRound;
 
 /** Subscribe a component to the whole snapshot (cheap: shallow object identity). */
 export function useAppData(): AppData {

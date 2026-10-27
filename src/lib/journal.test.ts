@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { createStore, emptyData, type Persistence, type Store } from "./store";
 import { pendingTotal, settle } from "./journal";
+import { EMPTY_CHANGES } from "./syncMerge";
 import { onLocalChange } from "./localChanges";
 import { DEFAULT_LIST_ID, type AppData, type ChangeSet, type Word } from "./types";
 
@@ -53,10 +54,6 @@ async function freshStore(start = T0): Promise<Harness> {
 
 function pendingOf(store: Store) {
   return store.get().pending;
-}
-
-function emptyChanges(): ChangeSet {
-  return { words: [], lists: [], logs: [], settings: null };
 }
 
 function wordRecord(over: Partial<Word> = {}): Word {
@@ -107,7 +104,7 @@ describe("every local edit becomes pending", () => {
   it("grading a word marks the word and its review log pending", async () => {
     const { store, advance } = await freshStore();
     const word = store.addWord({ term: "a", listId: DEFAULT_LIST_ID });
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
     expect(pendingTotal(store.get())).toBe(0);
 
     advance();
@@ -135,7 +132,7 @@ describe("every local edit becomes pending", () => {
   it("renaming a list marks it pending and bumps updatedAt", async () => {
     const { store, advance } = await freshStore();
     const list = store.createList({ name: "Deck", sourceLang: "en", targetLang: "zh-CN" });
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
 
     advance();
     store.renameList(list.id, "Renamed");
@@ -149,14 +146,14 @@ describe("every local edit becomes pending", () => {
   it("toggling a favorite and counting a listen mark the word pending", async () => {
     const { store, advance } = await freshStore();
     const word = store.addWord({ term: "a", listId: DEFAULT_LIST_ID });
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
 
     advance();
     store.toggleFavorite(word.id);
     expect(store.get().words[0].favorite).toBe(true);
     expect(pendingOf(store).words).toContain(word.id);
 
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
     advance();
     store.bumpListen(word.id);
     expect(store.get().words[0].listenCount).toBe(1);
@@ -166,14 +163,14 @@ describe("every local edit becomes pending", () => {
   it("setting a status and resetting a schedule mark the word pending", async () => {
     const { store, advance } = await freshStore();
     const word = store.addWord({ term: "a", listId: DEFAULT_LIST_ID });
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
 
     advance();
     store.setWordStatus(word.id, "mastered");
     expect(store.get().words[0].status).toBe("mastered");
     expect(pendingOf(store).words).toContain(word.id);
 
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
     advance();
     store.resetSrs(word.id);
     expect(store.get().words[0].srs).toBeNull();
@@ -184,11 +181,11 @@ describe("every local edit becomes pending", () => {
   it("undoing a review marks the word and tombstones the dropped log", async () => {
     const { store, advance } = await freshStore();
     const word = store.addWord({ term: "a", listId: DEFAULT_LIST_ID });
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
 
     advance();
     const graded = store.gradeWord(word.id, "good")!;
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
     expect(pendingTotal(store.get())).toBe(0);
 
     advance();
@@ -206,7 +203,7 @@ describe("every local edit becomes pending", () => {
 });
 
 describe("a completed push settles the journal", () => {
-  it("markPushed reaches journal.settle and clears every pending flag", async () => {
+  it("applyRound reaches journal.settle and clears every pending flag", async () => {
     const { store, advance } = await freshStore();
     const list = store.createList({ name: "Deck", sourceLang: "en", targetLang: "zh-CN" });
     const word = store.addWord({ term: "a", listId: list.id });
@@ -217,9 +214,9 @@ describe("a completed push settles the journal", () => {
 
     expect(pendingTotal(store.get())).toBeGreaterThan(0);
 
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
 
-    // If markPushed were a no-op this would still be non-zero — which is
+    // If the round skipped settling, this would still be non-zero — which is
     // exactly why asserting it here matters.
     expect(pendingTotal(store.get())).toBe(0);
     expect(store.get().pending.words).toEqual([]);
@@ -236,7 +233,7 @@ describe("a completed push settles the journal", () => {
 
     advance();
     store.updateWord(word.id, { term: "edited mid-flight" });
-    store.markPushed(pushed);
+    store.applyRound({ sent: pushed, received: EMPTY_CHANGES });
 
     expect(pendingOf(store).words).toContain(word.id);
   });
@@ -248,7 +245,7 @@ describe("deletes leave tombstones", () => {
     const word = store.addWord({ term: "a", listId: DEFAULT_LIST_ID });
     advance();
     const result = store.gradeWord(word.id, "good")!;
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
 
     advance();
     store.deleteWord(word.id);
@@ -268,7 +265,7 @@ describe("deletes leave tombstones", () => {
     const word = store.addWord({ term: "a", listId: list.id });
     advance();
     const result = store.gradeWord(word.id, "good")!;
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
 
     advance();
     store.deleteList(list.id);
@@ -290,7 +287,7 @@ describe("deletes leave tombstones", () => {
     const b = store.addWord({ term: "b", listId: DEFAULT_LIST_ID });
     advance();
     const logA = store.gradeWord(a.id, "good")!;
-    store.markPushed(store.getChangesToPush());
+    store.applyRound({ sent: store.getChangesToPush(), received: EMPTY_CHANGES });
 
     advance();
     store.deleteWords([a.id, b.id]);
@@ -358,15 +355,18 @@ describe("snapshots are immutable across commits", () => {
   });
 });
 
-describe("applying a remote change set is not a local edit", () => {
+describe("applying a sync round is not a local edit", () => {
   it("does not emit a local change, so it cannot schedule another sync round", async () => {
     const { store } = await freshStore();
     const events: number[] = [];
     const off = onLocalChange(() => events.push(1));
     try {
-      store.applyRemoteChanges({
-        ...emptyChanges(),
-        words: [wordRecord({ id: "w_remote", term: "from server", updatedAt: T0 + 5_000 })],
+      store.applyRound({
+        sent: EMPTY_CHANGES,
+        received: {
+          ...EMPTY_CHANGES,
+          words: [wordRecord({ id: "w_remote", term: "from server", updatedAt: T0 + 5_000 })],
+        },
       });
       expect(events).toHaveLength(0);
       expect(store.get().words.some((w) => w.id === "w_remote")).toBe(true);
@@ -391,7 +391,7 @@ describe("settle is version-guarded", () => {
       words: [wordRecord({ id: "w1", updatedAt: 5 })],
       pending: { words: ["w1"], lists: [], logs: [], settings: false },
     });
-    const pushed: ChangeSet = { ...emptyChanges(), words: [d.words[0]] };
+    const pushed: ChangeSet = { ...EMPTY_CHANGES, words: [d.words[0]] };
 
     settle(d, pushed);
     expect(d.pending.words).toEqual([]);
@@ -404,7 +404,7 @@ describe("settle is version-guarded", () => {
     });
     // We pushed version 5; the local copy is already version 9.
     const pushed: ChangeSet = {
-      ...emptyChanges(),
+      ...EMPTY_CHANGES,
       words: [{ ...d.words[0], updatedAt: 5 }],
     };
 
@@ -418,7 +418,7 @@ describe("settle is version-guarded", () => {
       pending: { words: [], lists: [], logs: [], settings: true },
     });
     settle(d, {
-      ...emptyChanges(),
+      ...EMPTY_CHANGES,
       settings: { ...d.settings, updatedAt: 7 },
     });
     expect(d.pending.settings).toBe(false);

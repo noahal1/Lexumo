@@ -17,7 +17,16 @@ import type {
   Tombstone,
   WordRecord,
 } from "./types";
-import { pendingTotal } from "./journal";
+import { pendingTotal, settle } from "./journal";
+
+/** Nothing to send and nothing to merge — also what an idle round transmits. */
+export const EMPTY_CHANGES: ChangeSet = { words: [], lists: [], logs: [], settings: null };
+
+/** The two halves of one sync round: what we pushed, what the server answered. */
+export interface SyncRound {
+  sent: ChangeSet;
+  received: ChangeSet;
+}
 
 const tombstone = (id: string, updatedAt: number): Tombstone => ({ id, updatedAt, deleted: true });
 
@@ -223,4 +232,23 @@ export function applyRemote(data: AppData, changes: ChangeSet): AppData {
       settings: settingsPending,
     },
   };
+}
+
+/**
+ * Apply one completed round to a snapshot: settle what we sent, then merge
+ * what came back.
+ *
+ * The order is the point, and it is why both steps live in one place. `settle`
+ * is version-guarded — it clears a pending flag only when the local record
+ * still holds the exact version we pushed — so it has to run before
+ * `applyRemote` replaces those local copies with the server's. A record edited
+ * while the request was in flight therefore keeps its flag and goes out in the
+ * next round instead of being silently marked as synced.
+ */
+export function applyRound(data: AppData, round: SyncRound): AppData {
+  // `settle` rewrites `pending` in place, so hand it a copy of the bookkeeping
+  // — the input snapshot is what React may still be rendering.
+  const settled: AppData = { ...data, pending: { ...data.pending } };
+  settle(settled, round.sent);
+  return applyRemote(settled, round.received);
 }

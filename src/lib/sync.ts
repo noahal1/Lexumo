@@ -10,13 +10,12 @@
  * have seen.
  */
 import {
-  applyRemoteChanges,
+  applyRound,
   getChangesToPush,
   getData,
-  markPushed,
   pendingChangeCount,
 } from "./store";
-import { hasChanges } from "./syncMerge";
+import { EMPTY_CHANGES, hasChanges } from "./syncMerge";
 import { onLocalChange } from "./localChanges";
 import type { ChangeSet } from "./types";
 
@@ -272,8 +271,6 @@ interface SyncResponse {
   changes: ChangeSet;
 }
 
-const EMPTY_CHANGES: ChangeSet = { words: [], lists: [], logs: [], settings: null };
-
 let inFlight: Promise<boolean> | null = null;
 
 /**
@@ -295,17 +292,16 @@ async function runSync(): Promise<boolean> {
     return false;
   }
   publish({ state: "syncing", error: null }, config);
-  const pushed = getChangesToPush();
+  const sent = getChangesToPush();
   try {
     const res = await request<SyncResponse>(config.server, "/api/sync", {
       method: "POST",
       token: config.token,
-      body: { since: config.rev, changes: hasChanges(pushed) ? pushed : EMPTY_CHANGES },
+      body: { since: config.rev, changes: hasChanges(sent) ? sent : EMPTY_CHANGES },
     });
-    // Clear the pending flags *before* merging so that a record the user edits
-    // during the request is not silently marked as synced.
-    if (hasChanges(pushed)) markPushed(pushed);
-    applyRemoteChanges(res.changes ?? EMPTY_CHANGES);
+    // One round, one call: the round owns the settle-then-merge order, so the
+    // "clear before merge" rule can no longer be forgotten here.
+    applyRound({ sent, received: res.changes ?? EMPTY_CHANGES });
     const next: SyncConfig = {
       ...config,
       rev: res.rev,

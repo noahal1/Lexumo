@@ -109,6 +109,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   ├── app/router.tsx          # 极简 hash 路由
 │   ├── components/
 │   │   ├── Icon.tsx            # 内联 SVG 图标集
+│   │   ├── SessionResult.tsx   # 闪卡/测验共用的结算页（正确率只在这里格式化）
 │   │   └── ui.tsx              # 通用 UI：PageShell / Modal / Toast / ProgressBar 等
 │   ├── i18n/
 │   │   ├── index.tsx           # 翻译函数与 Provider
@@ -118,6 +119,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   │   ├── store.ts            # createStore 工厂、可观察快照与全部数据变更
 │   │   ├── journal.ts          # 变更日志：pending / tombstones 的唯一写者
 │   │   ├── srs.ts              # 间隔重复调度（纯函数）
+│   │   ├── session.ts          # 学习会话状态机（纯函数，闪卡与测验共用）
 │   │   ├── quiz.ts             # 出题（纯函数）
 │   │   ├── transfer.ts         # 导入导出：JSON / CSV / Anki TXT
 │   │   ├── utils.ts            # id / 日期 / 文本等小工具
@@ -126,7 +128,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   │   ├── languages.ts        # 语言元数据
 │   │   ├── translate.ts        # 查词/翻译：有道解析、多源降级、缓存
 │   │   ├── sync.ts             # 同步客户端：会话、增量推送/拉取、自动同步循环
-│   │   ├── syncMerge.ts        # 纯函数：收集待推改动、合并远端改动（LWW/墓碑）
+│   │   ├── syncMerge.ts        # 纯函数：收集待推改动、合并远端改动（LWW/墓碑）、一轮同步的结算与合并
 │   │   ├── localChanges.ts     # 无依赖的本地变更事件总线（避免 store ↔ sync 循环）
 │   │   └── tts.ts              # 语音合成封装
 │   ├── __tests__/
@@ -211,10 +213,12 @@ npm test
 | `src/lib/utils.test.ts` | 20 | 文本归一化、clamp、shuffle、日期差值、dayKey、cx、uid、相对时间 |
 | `src/lib/translate.test.ts` | 24 | 有道词典 / 机器翻译 / MyMemory / Google 各源解析、释义格式化、缓存命中、429 降级与冷却 |
 | `src/lib/syncMerge.test.ts` | 23 | 待推改动收集、LWW 合并、墓碑删除、日志并集去重 |
-| `src/lib/journal.test.ts` | 22 | 用真实 store 实例验证：每次本地编辑都进 pending、删除必留墓碑、删词库级联词与日志、快照不可变、`markPushed` 真的结算、远端改动不算本地编辑 |
+| `src/lib/syncRound.test.ts` | 13 | 一轮同步的结算与合并：发送后结算、在途编辑仍留 pending、远端合并但不算本地编辑、墓碑删除、旧记录 LWW 落败、回声不重复 |
+| `src/lib/journal.test.ts` | 22 | 用真实 store 实例验证：每次本地编辑都进 pending、删除必留墓碑、删词库级联词与日志、快照不可变、`applyRound` 真的结算、远端改动不算本地编辑 |
+| `src/lib/session.test.ts` | 19 | 学习会话状态机：全程进度、hard 算复习但不算答对、skip 语义、undo 双向精确还原、空列表、正确率不为 NaN |
 | `src/__tests__/app.smoke.test.tsx` | 5 | 在 jsdom 中真实挂载整个应用：五个页面渲染、主题切换、弹窗开关、搜索过滤 |
 
-共 **144** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
+共 **176** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
 
 冒烟测试通过 `// @vitest-environment jsdom` 单独指定环境，其余用例仍跑在 Node 环境。
 
@@ -237,6 +241,8 @@ npm test
 
 - **写入策略**：所有变更走 `store.ts` 的 `commit()`，先通知订阅者，再以 220ms 防抖写入快照。`commit` 只浅拷数组，因此记录一律**替换**而非就地修改（`patchWord` / `patchList`），旧快照不会被后续编辑污染。
 - **同步记账**：`pending`（待推改动）与 `tombstones`（删除墓碑）只由 `src/lib/journal.ts` 写入，业务操作不再各自手写 `mark*Dirty`。这样「本地改动必须被推送」「本地删除必须留墓碑」两条不变量由模块保证，新增操作不会漏记账；删词、批量删词、删词库共用同一套级联（`journal.purgeWords`），不会留下孤儿复习日志。
+- **一轮同步的顺序**：推送成功后的「先结算已发送、再合并远端」不再写在 `sync.ts` 的调用点，而是由纯函数 `applyRound(data, { sent, received })` 一次完成，store 只暴露单个 `applyRound`。顺序之所以重要，是因为结算带版本守卫——只有当本地记录仍是推送出去的那个版本时才清 `pending`；请求在途期间用户又编辑过，这条记录就保持 pending 进入下一轮。合并属于「服务器在说话」，因此不触发本地变更事件，避免每次推送后再空跑一轮同步。
+- **学习会话**：闪卡页与测验页共用 `src/lib/session.ts` 的状态机（当前卡片、进度、正确率、撤销栈），「hard 算复习但不算答对」这条规则与正确率格式化各只有一处实现，两个页面只负责渲染、键盘与调用 `gradeWord` / `undoReview`。
 - **回退链**：IndexedDB 不可用或读写失败 → localStorage 键 `lexumo:data`（JSON 字符串）→ 再失败则仅保存在内存（刷新即丢失）。
 - **版本迁移**：启动时若快照 `version` 低于 `DATA_VERSION`，会就地补齐新字段（`updatedAt` / `tombstones` / `pending` / `settingsUpdatedAt`）并保留原有数据；只有 `version` 高于当前版本（降级运行）才会重新播种。
 - **隐私**：数据默认只在本机。只有在「设置 → 账号与同步」中显式登录后，词库、复习日志与设置才会推送到你填写的服务器地址；不登录则没有任何网络上传。
@@ -318,7 +324,7 @@ npm start
 - **平台**：以 Windows 为主进行开发；macOS / Linux 打包未验证。macOS 打包还需要 `icon.icns`（当前仅生成 PNG 与 ICO）。
 - **安装包**：`cargo check` 与 `cargo build --release` 均已在 Windows 上通过，产物 `src-tauri/target/release/lexumo.exe`（约 12.7 MB）可正常启动并显示窗口。但 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
 - **自动翻译**：依赖有道词典 / MyMemory 等公开接口，需联网；接口可能限流或变更，届时查词会降级或提示失败，不影响手动录入。缓存 30 天，设置里可清除。
-- **视觉验证**：功能层有 jsdom 冒烟测试覆盖；界面另用 headless Edge + DevTools 协议做了实测——五个页面均渲染、无控制台异常与失败请求、无横向溢出，并核对了设计令牌的实际取值、深色主题配色反转、860px 窄窗口下侧栏折叠、以及词条行「悬停显形操作区」的透明度变化。未做跨平台像素级视觉回归。
+- **视觉验证**：功能层有 jsdom 冒烟测试覆盖；界面另用 headless Edge + DevTools 协议做了实测——五个页面均渲染、无控制台异常与失败请求、无横向溢出，并核对了设计令牌的实际取值、深色主题配色反转、860px 窄窗口下侧栏折叠、以及词条行「悬停显形操作区」的透明度变化。学习流程另外用真实键盘/鼠标事件跑过完整一轮：闪卡翻面、三档评分、撤销回到同一张卡、结算页「答对 / 已复习」与百分比互相吻合，测验四选一、即时反馈、Enter 推进到结算页。未做跨平台像素级视觉回归。
 - **TTS**：依赖系统语音合成引擎，可用音色与语言随平台而异；部分语言可能没有可用语音，此时听音功能静默降级。
 - **同步**：自带的后端是单进程、每用户一个 JSON 文件的实现，适合个人或小规模自建；不支持集群、无数据库、无备份策略。传输默认是明文 HTTP（本机或局域网内使用没问题，暴露到公网请自行在前面加 HTTPS 反向代理）。令牌存在 localStorage，有效期 30 天。改名前的旧本地数据不会自动迁移（存储键已随应用改名更换）。
 - **规模**：采用「全量快照 + 防抖写盘」，词条量很大（约 2 万以上）时每次写入会有可感知延迟。同步也是整条记录增量传输，单次最多 5000 条改动。

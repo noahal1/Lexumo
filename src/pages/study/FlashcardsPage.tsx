@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { SessionResult } from "@/components/SessionResult";
 import {
   EmptyState,
   PageShell,
   ProgressBar,
-  Ring,
   Segmented,
   ShortcutRow,
   StatTile,
@@ -14,6 +14,13 @@ import {
 } from "@/components/ui";
 import { useRouter } from "@/app/router";
 import { useT } from "@/i18n";
+import {
+  createSession,
+  formatAccuracy,
+  gradeCountsAsCorrect,
+  type Session,
+  type SessionProgress,
+} from "@/lib/session";
 import { formatInterval, isNew, previewIntervals } from "@/lib/srs";
 import {
   bumpListen,
@@ -47,25 +54,27 @@ const GRADE_LABEL_KEY: Record<Grade, string> = {
 /** Where the cards in a session come from. */
 type DeckSource = "due" | "new" | "all" | "favorites";
 
-interface SessionState {
-  ids: string[];
-  index: number;
-  reviewed: number;
-  correct: number;
-  skipped: number;
+/**
+ * What the page renders. The session itself is a mutable closure, so we take a
+ * snapshot after every step to give React a new object to re-render from.
+ */
+interface SessionView {
+  progress: SessionProgress;
+  current: string | null;
+  canUndo: boolean;
 }
 
-/** One reversible step, so a mis-tap never costs a card its schedule. */
-type Step =
-  | {
-      kind: "grade";
-      id: string;
-      prevSrs: SrsState | null;
-      prevStatus: WordStatus;
-      logId: string;
-      grade: Grade;
-    }
-  | { kind: "skip" };
+/**
+ * Store-side half of an undo: the schedule and log the last grade overwrote.
+ * The session owns the counters; this is everything else needed to put the card
+ * back exactly as it was.
+ */
+interface StoreStep {
+  id: string;
+  prevSrs: SrsState | null;
+  prevStatus: WordStatus;
+  logId: string;
+}
 
 /** How many brand-new cards the daily allowance still has room for. */
 function newCardsLeft(data: AppData, now: number): number {
@@ -128,10 +137,27 @@ export function FlashcardsPage() {
   const router = useRouter();
 
   const [deck, setDeck] = useState<DeckSource>("due");
-  const [session, setSession] = useState<SessionState | null>(null);
+  const sessionRef = useRef<Session | null>(null);
+  const [view, setView] = useState<SessionView | null>(null);
   const [flipped, setFlipped] = useState(false);
-  const [steps, setSteps] = useState<Step[]>([]);
+  const [storeSteps, setStoreSteps] = useState<StoreStep[]>([]);
   const spokenRef = useRef<string | null>(null);
+
+  /* Snapshot the mutable session into render state. Every mutation below writes
+     through the ref and then calls this, so the page never reads stale counters
+     and React always gets a fresh object to re-render from. */
+  const sync = useCallback(() => {
+    const session = sessionRef.current;
+    setView(
+      session
+        ? {
+            progress: session.progress(),
+            current: session.current(),
+            canUndo: session.canUndo(),
+          }
+        : null,
+    );
+  }, []);
 
   const now = Date.now();
   const canSpeak = speechSupported();
@@ -150,16 +176,16 @@ export function FlashcardsPage() {
   };
   const deckSize = counts[deck];
 
-  const inProgress = session !== null && session.index < session.ids.length;
-  const currentId = inProgress ? session.ids[session.index] : null;
+  const progress = view?.progress ?? null;
+  const inProgress = progress !== null && !progress.done;
+  const currentId = view?.current ?? null;
+  const canUndo = view?.canUndo ?? false;
   const word: Word | null = currentId
     ? data.words.find((candidate) => candidate.id === currentId) ?? null
     : null;
   const newCard = word ? isNew(word.srs) : false;
   const preview = word ? previewIntervals(word.srs) : null;
-  const accuracy =
-    session && session.reviewed > 0 ? session.correct / session.reviewed : 0;
-  const remaining = session ? Math.max(0, session.ids.length - session.index) : 0;
+  const remaining = progress ? Math.max(0, progress.total - progress.index) : 0;
 
   const deckOptions: Array<{ value: DeckSource; label: string; count: number }> = [
     { value: "due", label: t("flashcards.deckDue"), count: counts.due },
@@ -187,102 +213,78 @@ export function FlashcardsPage() {
   const startSession = useCallback(() => {
     const ids = buildSession(getData(), Date.now(), deck);
     setFlipped(false);
-    setSteps([]);
+    setStoreSteps([]);
     spokenRef.current = null;
-    setSession(
-      ids.length > 0
-        ? { ids, index: 0, reviewed: 0, correct: 0, skipped: 0 }
-        : null,
-    );
-  }, [deck]);
+    sessionRef.current = ids.length > 0 ? createSession({ ids }) : null;
+    sync();
+  }, [deck, sync]);
 
   const exitSession = useCallback(() => {
     stopSpeaking();
-    setSession(null);
+    sessionRef.current = null;
+    sync();
     setFlipped(false);
-    setSteps([]);
-  }, []);
+    setStoreSteps([]);
+  }, [sync]);
 
   const grade = useCallback(
     (value: Grade) => {
-      if (!word) return;
+      const session = sessionRef.current;
+      if (!word || !session) return;
       const prevSrs = word.srs;
       const prevStatus = word.status;
       const result = gradeWord(word.id, value);
       if (!result) return;
-      setSteps((prev) => [
+      setStoreSteps((prev) => [
         ...prev,
-        {
-          kind: "grade",
-          id: word.id,
-          prevSrs,
-          prevStatus,
-          logId: result.logId,
-          grade: value,
-        },
+        { id: word.id, prevSrs, prevStatus, logId: result.logId },
       ]);
+      session.record({ correct: gradeCountsAsCorrect(value) });
+      sync();
       setFlipped(false);
-      setSession((prev) =>
-        prev
-          ? {
-              ...prev,
-              index: prev.index + 1,
-              reviewed: prev.reviewed + 1,
-              correct: prev.correct + (value === "hard" ? 0 : 1),
-            }
-          : prev,
-      );
     },
-    [word],
+    [word, sync],
   );
 
   const skip = useCallback(() => {
-    setSteps((prev) => [...prev, { kind: "skip" }]);
+    const session = sessionRef.current;
+    if (!session) return;
+    session.skip();
+    sync();
     setFlipped(false);
-    setSession((prev) =>
-      prev ? { ...prev, index: prev.index + 1, skipped: prev.skipped + 1 } : prev,
-    );
-  }, []);
+  }, [sync]);
 
   /* Roll back the last grade or skip. `undoReview` must run outside the state
      updater: StrictMode invokes updaters twice, which would double-undo. */
   const undo = useCallback(() => {
-    const step = steps[steps.length - 1];
+    const session = sessionRef.current;
+    if (!session) return;
+    const step = session.undo();
     if (!step) return;
-    setSteps((prev) => prev.slice(0, -1));
 
-    if (step.kind === "grade") {
-      undoReview(step.id, step.prevSrs, step.prevStatus, step.logId);
+    if (step.kind === "record") {
+      const storeStep = storeSteps[storeSteps.length - 1];
+      if (storeStep) {
+        undoReview(
+          storeStep.id,
+          storeStep.prevSrs,
+          storeStep.prevStatus,
+          storeStep.logId,
+        );
+      }
+      setStoreSteps((prev) => prev.slice(0, -1));
       setFlipped(true);
-      setSession((prev) =>
-        prev
-          ? {
-              ...prev,
-              index: prev.index - 1,
-              reviewed: prev.reviewed - 1,
-              correct: prev.correct - (step.grade === "hard" ? 0 : 1),
-            }
-          : prev,
-      );
     } else {
       setFlipped(false);
-      setSession((prev) =>
-        prev
-          ? {
-              ...prev,
-              index: prev.index - 1,
-              skipped: prev.skipped - 1,
-            }
-          : prev,
-      );
     }
-  }, [steps]);
+    sync();
+  }, [storeSteps, sync]);
 
   /* Auto-pronounce the term once per card (token guards StrictMode double-run). */
   useEffect(() => {
     if (!word || !inProgress) return;
     if (!settings.autoPlayAudio || !speechSupported()) return;
-    const token = `${word.id}:${session?.index ?? 0}`;
+    const token = `${word.id}:${progress?.index ?? 0}`;
     if (spokenRef.current === token) return;
     spokenRef.current = token;
     speak(word.term, {
@@ -293,7 +295,7 @@ export function FlashcardsPage() {
   }, [
     word,
     inProgress,
-    session?.index,
+    progress?.index,
     settings.autoPlayAudio,
     settings.ttsRate,
     settings.ttsVoiceURI,
@@ -358,7 +360,7 @@ export function FlashcardsPage() {
         <StatTile
           label={t("flashcards.remaining")}
           value={remaining}
-          sub={t("flashcards.deckSize", { n: session?.ids.length ?? 0 })}
+          sub={t("flashcards.deckSize", { n: progress?.total ?? 0 })}
           icon="layers"
         />
       )}
@@ -384,7 +386,7 @@ export function FlashcardsPage() {
 
   return (
     <PageShell title={t("flashcards.title")} subtitle={t("flashcards.subtitle")}>
-      {!session ? (
+      {!progress ? (
         data.words.length === 0 ? (
           <div className="card">
             <EmptyState
@@ -472,8 +474,8 @@ export function FlashcardsPage() {
               <div className="study-bar-row">
                 <span className="study-bar-label mono">
                   {t("flashcards.cardOf", {
-                    i: session.index + 1,
-                    n: session.ids.length,
+                    i: progress.index + 1,
+                    n: progress.total,
                   })}
                 </span>
                 {word && (
@@ -489,7 +491,7 @@ export function FlashcardsPage() {
                   title={t("flashcards.undo")}
                   aria-label={t("flashcards.undo")}
                   onClick={undo}
-                  disabled={steps.length === 0}
+                  disabled={!canUndo}
                 >
                   <Icon name="undo" size={16} />
                 </button>
@@ -502,17 +504,17 @@ export function FlashcardsPage() {
                   {t("flashcards.exit")}
                 </button>
               </div>
-              <ProgressBar value={session.index} max={session.ids.length} thick />
+              <ProgressBar value={progress.index} max={progress.total} thick />
               <div className="study-bar-meta">
                 <span>
-                  {t("flashcards.reviewedCount")} {session.reviewed}
+                  {t("flashcards.reviewedCount")} {progress.reviewed}
                 </span>
-                {session.reviewed > 0 && (
-                  <span>· {Math.round(accuracy * 100)}%</span>
+                {progress.reviewed > 0 && (
+                  <span>· {formatAccuracy(progress.accuracy)}</span>
                 )}
-                {session.skipped > 0 && (
+                {progress.skipped > 0 && (
                   <span>
-                    · {t("flashcards.skippedCount", { n: session.skipped })}
+                    · {t("flashcards.skippedCount", { n: progress.skipped })}
                   </span>
                 )}
               </div>
@@ -665,70 +667,63 @@ export function FlashcardsPage() {
       ) : (
         <div className="study-split">
           <div className="study-main">
-            <div className="card fc-done rise">
-              <Ring
-                value={session.correct}
-                max={Math.max(session.reviewed, 1)}
-                size={136}
-                stroke={9}
-              >
-                <div className="fc-done-num">{Math.round(accuracy * 100)}%</div>
-                <div className="tiny muted">{t("flashcards.accuracy")}</div>
-              </Ring>
-              <div className="stack">
-                <h2 className="fc-intro-title">{t("flashcards.sessionDone")}</h2>
-                <p className="fc-intro-text">
-                  {t("flashcards.sessionDoneText", { n: session.reviewed })}
-                </p>
-              </div>
-              <div className="fc-stats">
+            <SessionResult
+              accuracy={progress.accuracy}
+              ringValue={progress.correct}
+              ringMax={Math.max(progress.reviewed, 1)}
+              accuracyLabel={t("flashcards.accuracy")}
+              accuracySub={`${progress.correct} / ${Math.max(progress.reviewed, 1)}`}
+              title={t("flashcards.sessionDone")}
+              text={t("flashcards.sessionDoneText", { n: progress.reviewed })}
+              leftStat={
                 <StatTile
                   label={t("flashcards.reviewedCount")}
-                  value={session.reviewed}
+                  value={progress.reviewed}
                   sub={
-                    session.skipped > 0
-                      ? t("flashcards.skippedCount", { n: session.skipped })
+                    progress.skipped > 0
+                      ? t("flashcards.skippedCount", { n: progress.skipped })
                       : undefined
                   }
                 />
-                <StatTile
-                  label={t("flashcards.accuracy")}
-                  value={`${Math.round(accuracy * 100)}%`}
-                  sub={`${session.correct} / ${Math.max(session.reviewed, 1)}`}
-                />
+              }
+              rightStat={
                 <StatTile
                   label={t("stats.reviewsToday")}
                   value={reviewsToday(data)}
                 />
-              </div>
-              <div className="study-actions">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-lg"
-                  onClick={startSession}
-                  disabled={deckSize === 0}
-                >
-                  {t("flashcards.nextSession")}
-                  <Icon name="refresh" size={16} />
-                </button>
-                {steps.length > 0 && (
-                  <button type="button" className="btn btn-quiet" onClick={undo}>
-                    <Icon name="undo" size={16} />
-                    {t("flashcards.undo")}
+              }
+              actions={
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-lg"
+                    onClick={startSession}
+                    disabled={deckSize === 0}
+                  >
+                    {t("flashcards.nextSession")}
+                    <Icon name="refresh" size={16} />
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="btn btn-quiet"
-                  onClick={exitSession}
-                >
-                  {t("flashcards.restart")}
-                </button>
-              </div>
-              {deckSize === 0 && (
-                <p className="tiny muted">{t("flashcards.noCardsHint")}</p>
-              )}
-            </div>
+                  {canUndo && (
+                    <button type="button" className="btn btn-quiet" onClick={undo}>
+                      <Icon name="undo" size={16} />
+                      {t("flashcards.undo")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    onClick={exitSession}
+                  >
+                    {t("flashcards.restart")}
+                  </button>
+                </>
+              }
+              footer={
+                deckSize === 0 ? (
+                  <p className="tiny muted">{t("flashcards.noCardsHint")}</p>
+                ) : undefined
+              }
+            />
           </div>
           {sidePanel}
         </div>

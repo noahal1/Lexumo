@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { SessionResult } from "@/components/SessionResult";
 import {
   EmptyState,
   PageShell,
   ProgressBar,
-  Ring,
   Segmented,
   ShortcutRow,
   StatTile,
@@ -21,6 +21,7 @@ import {
   type QuizDirection,
   type QuizQuestion,
 } from "@/lib/quiz";
+import { createSession, type Session, type SessionProgress } from "@/lib/session";
 import { getData, useAppData } from "@/lib/store";
 import { speak, speechSupported, stopSpeaking } from "@/lib/tts";
 import type { Word } from "@/lib/types";
@@ -59,31 +60,46 @@ export function QuizPage() {
   const [direction, setDirection] = useState<QuizDirection>("termToDef");
   const [phase, setPhase] = useState<Phase>("idle");
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
-  const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Array<number | null>>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const sessionRef = useRef<Session | null>(null);
+  const [progress, setProgress] = useState<SessionProgress | null>(null);
 
   const startedAtRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const eligible = quizEligibleWords(data.words);
   const enough = eligible.length >= QUIZ_CHOICES;
-  const current = phase === "active" ? questions[index] : undefined;
   const answered = selected !== null;
+
+  /* While the feedback for an answer is on screen the session has already moved
+     past that question, so step back one to keep showing the card it belonged
+     to. */
+  const currentIndex = progress ? progress.index - (answered ? 1 : 0) : -1;
+  const current =
+    phase === "active" && currentIndex >= 0 && currentIndex < questions.length
+      ? questions[currentIndex]
+      : undefined;
+  const total = progress?.total ?? 0;
+  const score = progress?.correct ?? 0;
+  const answeredCount = progress?.reviewed ?? 0;
+  /* A quiz is scored against the whole round, so finishing early still divides
+     by the question count — the same formula the page used before. */
+  const accuracy = total > 0 ? score / total : 0;
+  const questionLabel =
+    progress && progress.total > 0
+      ? t("quiz.question", {
+          i: Math.min(progress.index + (answered ? 0 : 1), progress.total),
+          n: progress.total,
+        })
+      : "";
 
   const wordById = useMemo(
     () => new Map<string, Word>(data.words.map((word) => [word.id, word])),
     [data.words],
   );
 
-  const score = questions.reduce(
-    (acc, question, questionIndex) =>
-      acc + (answers[questionIndex] === question.answerIndex ? 1 : 0),
-    0,
-  );
-  const answeredCount = answers.filter((answer) => answer !== null).length;
-  const accuracy = questions.length > 0 ? score / questions.length : 0;
   const mistakes = questions
     .map((question, questionIndex) => ({
       question,
@@ -123,13 +139,14 @@ export function QuizPage() {
 
   const goNext = useCallback(() => {
     clearTimer();
-    if (index + 1 >= questions.length) {
+    /* Ask the session rather than the rendered state: the 900ms feedback timer
+       fires after the last answer has already advanced the session. */
+    if (!sessionRef.current || sessionRef.current.progress().done) {
       finish();
       return;
     }
-    setIndex(index + 1);
     setSelected(null);
-  }, [clearTimer, finish, index, questions.length]);
+  }, [clearTimer, finish]);
 
   const start = useCallback(
     (dir: QuizDirection) => {
@@ -138,11 +155,15 @@ export function QuizPage() {
         toast("词语不足，暂时无法生成测验", "info");
         return;
       }
+      const session = createSession({
+        ids: built.map((question) => question.wordId),
+      });
+      sessionRef.current = session;
       setQuestions(built);
       setAnswers(new Array<number | null>(built.length).fill(null));
-      setIndex(0);
       setSelected(null);
       setElapsed(0);
+      setProgress(session.progress());
       startedAtRef.current = Date.now();
       setPhase("active");
     },
@@ -151,19 +172,25 @@ export function QuizPage() {
 
   const choose = useCallback(
     (option: number) => {
-      if (selected !== null) return;
+      const session = sessionRef.current;
+      if (selected !== null || !session) return;
+      const position = session.progress().index;
+      const question = questions[position];
+      if (!question) return;
       setSelected(option);
       setAnswers((prev) => {
         const next = prev.slice();
-        next[index] = option;
+        next[position] = option;
         return next;
       });
+      session.record({ correct: option === question.answerIndex });
+      setProgress(session.progress());
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
         goNext();
       }, 900);
     },
-    [selected, index, goNext],
+    [selected, questions, goNext],
   );
 
   useEffect(() => () => {
@@ -208,14 +235,7 @@ export function QuizPage() {
       <StatTile
         label={t("quiz.score")}
         value={`${score} / ${answeredCount}`}
-        sub={
-          questions.length > 0
-            ? t("quiz.question", {
-                i: Math.min(index + 1, questions.length),
-                n: questions.length,
-              })
-            : `${eligible.length} 个可用词语`
-        }
+        sub={questionLabel || `${eligible.length} 个可用词语`}
         icon="target"
       />
       <div className="card card-pad stack">
@@ -308,25 +328,19 @@ export function QuizPage() {
           </div>
           {sidePanel}
         </div>
-      ) : phase === "active" && current ? (
+      ) : phase === "active" && current && progress ? (
         <div className="study-split">
           <div className="study-main">
             <div className="study-bar">
               <div className="study-bar-row">
-                <span className="study-bar-label mono">
-                  {t("quiz.question", { i: index + 1, n: questions.length })}
-                </span>
+                <span className="study-bar-label mono">{questionLabel}</span>
                 <span className="chip chip-tag">{directionLabel}</span>
                 <span className="spacer" />
                 <span className="chip chip-mastered mono">
                   {t("quiz.score")} {score}
                 </span>
               </div>
-              <ProgressBar
-                value={index + (answered ? 1 : 0)}
-                max={questions.length}
-                thick
-              />
+              <ProgressBar value={progress.index} max={total} thick />
             </div>
 
             <div className="card quiz-prompt rise">
@@ -426,9 +440,7 @@ export function QuizPage() {
                     className="btn btn-primary"
                     onClick={goNext}
                   >
-                    {index + 1 >= questions.length
-                      ? t("quiz.finish")
-                      : t("quiz.next")}
+                    {progress.done ? t("quiz.finish") : t("quiz.next")}
                     <span className="kbd">Enter</span>
                   </button>
                 </>
@@ -446,62 +458,57 @@ export function QuizPage() {
       ) : (
         <div className="study-split">
           <div className="study-main">
-            <div className="card fc-done rise">
-              <Ring
-                value={score}
-                max={Math.max(questions.length, 1)}
-                size={140}
-                stroke={9}
-              >
-                <div className="fc-done-num">{Math.round(accuracy * 100)}%</div>
-                <div className="tiny muted">{t("quiz.accuracy")}</div>
-              </Ring>
-              <div className="stack">
-                <h2 className="fc-intro-title">
-                  {score === questions.length && questions.length > 0
-                    ? t("quiz.perfect")
-                    : t("quiz.keepGoing")}
-                </h2>
-                <p className="fc-intro-text">{t("quiz.result")}</p>
-              </div>
-              <div className="fc-stats">
+            <SessionResult
+              accuracy={accuracy}
+              ringValue={score}
+              ringMax={Math.max(questions.length, 1)}
+              ringSize={140}
+              accuracyLabel={t("quiz.accuracy")}
+              title={
+                score === questions.length && questions.length > 0
+                  ? t("quiz.perfect")
+                  : t("quiz.keepGoing")
+              }
+              text={t("quiz.result")}
+              leftStat={
                 <StatTile
                   label={t("quiz.score")}
                   value={`${score} / ${questions.length}`}
                 />
-                <StatTile
-                  label={t("quiz.accuracy")}
-                  value={`${Math.round(accuracy * 100)}%`}
-                />
+              }
+              rightStat={
                 <StatTile
                   label={t("quiz.timeSpent")}
                   value={formatDuration(elapsed)}
                 />
-              </div>
-              <div className="study-actions">
-                <button
-                  type="button"
-                  className="btn btn-primary btn-lg"
-                  onClick={() => start(direction)}
-                >
-                  {t("quiz.again")}
-                  <Icon name="refresh" size={16} />
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-quiet"
-                  onClick={() => {
-                    setPhase("idle");
-                    setQuestions([]);
-                    setAnswers([]);
-                    setIndex(0);
-                    setSelected(null);
-                  }}
-                >
-                  {t("quiz.exit")}
-                </button>
-              </div>
-            </div>
+              }
+              actions={
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-lg"
+                    onClick={() => start(direction)}
+                  >
+                    {t("quiz.again")}
+                    <Icon name="refresh" size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    onClick={() => {
+                      sessionRef.current = null;
+                      setPhase("idle");
+                      setQuestions([]);
+                      setAnswers([]);
+                      setSelected(null);
+                      setProgress(null);
+                    }}
+                  >
+                    {t("quiz.exit")}
+                  </button>
+                </>
+              }
+            />
 
             {mistakes.length > 0 && (
               <div className="card card-flush">
