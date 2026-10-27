@@ -25,7 +25,7 @@
 
 .study-side {
   position: sticky;
-  top: 0;
+  top: var(--sp-4);
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -45,7 +45,7 @@
 .study-bar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .study-bar-row {
@@ -59,7 +59,6 @@
 .study-bar-label {
   font-size: var(--fs-xs);
   color: var(--ink-3);
-  letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -131,21 +130,17 @@
   padding: var(--sp-6) var(--sp-7) var(--sp-5);
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--dur-2) var(--ease), box-shadow var(--dur-2) var(--ease);
+  /* Border only: the focus ring below is an outline, so it must not fade in. */
+  transition: border-color var(--dur-2) var(--ease);
 }
 
 .fc-card:hover {
   border-color: var(--line-strong);
 }
 
-.fc-card:active {
-  transform: translateY(0.5px);
-}
-
 .fc-card:focus-visible {
-  outline: none;
-  border-color: var(--jade);
-  box-shadow: var(--ring);
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .fc-card.is-flipped {
@@ -159,10 +154,9 @@
   min-height: 28px;
 }
 
+/* Which side you are looking at. A label, so it is set like one. */
 .fc-face-label {
   font-size: var(--fs-xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--ink-3);
 }
 
@@ -187,7 +181,8 @@
 
 .fc-term {
   font-family: var(--font-display);
-  font-size: clamp(32px, 4.6vw, 52px);
+  font-size: clamp(30px, 4vw, 46px);
+  font-weight: 600;
   line-height: 1.15;
   letter-spacing: -0.02em;
   text-wrap: balance;
@@ -212,27 +207,39 @@
 
 .fc-def {
   font-family: var(--font-display);
-  font-size: var(--fs-xl);
-  line-height: 1.45;
+  font-size: var(--fs-lg);
+  line-height: var(--lh-snug);
   letter-spacing: -0.01em;
   text-wrap: pretty;
 }
 
 .fc-def2 {
   font-size: var(--fs-base);
-  line-height: 1.65;
+  line-height: var(--lh-body);
   color: var(--ink-2);
   text-wrap: pretty;
 }
 
 .fc-example {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   border-left: 2px solid var(--line-strong);
   padding-left: var(--sp-3);
   font-size: var(--fs-base);
   line-height: 1.7;
-  font-style: italic;
   color: var(--ink-2);
   text-wrap: pretty;
+}
+
+.fc-example-en {
+  font-style: italic;
+}
+
+.fc-example-zh {
+  font-size: var(--fs-sm);
+  color: var(--ink-3, var(--ink-2));
+  opacity: 0.85;
 }
 
 .fc-note {
@@ -259,7 +266,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--sp-2);
   font-size: var(--fs-xs);
   color: var(--ink-3);
 }
@@ -275,25 +282,17 @@
 .fc-grade {
   height: auto;
   min-height: 60px;
-  padding: 8px 12px;
+  padding: var(--sp-2) var(--sp-3);
   flex-direction: column;
-  gap: 3px;
+  gap: var(--sp-1);
 }
 
 .fc-grade-top {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1);
   font-size: var(--fs-md);
-  font-weight: 560;
-}
-
-.fc-grade-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--grade-accent, var(--jade));
-  flex: 0 0 auto;
+  font-weight: 500;
 }
 
 .fc-grade-int {
@@ -302,20 +301,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-.fc-grade.hard {
-  --grade-accent: var(--amber);
-}
-.fc-grade.good {
-  --grade-accent: var(--jade);
-}
-.fc-grade.easy {
-  --grade-accent: var(--sky);
-}
-
 .fc-grade:focus-visible {
-  outline: none;
-  border-color: var(--jade);
-  box-shadow: var(--ring);
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 @media (max-width: 620px) {
@@ -349,14 +337,12 @@
   padding: var(--sp-7);
 }
 
+/* No coin behind the mark: the icon sits in the margin, and the heading does
+   the announcing. */
 .fc-intro-ico {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--jade-soft);
-  color: var(--jade-ink);
+  color: var(--ink-4);
 }
 
 /* Deck-source picker on the intro card. */
@@ -438,11 +424,11 @@
 }
 
 .quiz-prompt-text.is-term {
-  font-size: clamp(28px, 4vw, 42px);
+  font-size: clamp(26px, 3.6vw, 38px);
 }
 
 .quiz-prompt-text.is-def {
-  font-size: clamp(19px, 2.6vw, 25px);
+  font-size: clamp(19px, 2.4vw, 24px);
 }
 
 .quiz-options {
@@ -457,15 +443,15 @@
   gap: var(--sp-3);
   width: 100%;
   height: auto;
-  min-height: 56px;
-  padding: 10px var(--sp-4);
+  min-height: 48px;
+  padding: var(--sp-2) var(--sp-4);
   text-align: left;
   white-space: normal;
-  font-weight: 480;
+  font-weight: 400;
 }
 
 .quiz-option:hover:not(:disabled) {
-  border-color: var(--jade);
+  border-color: var(--accent);
 }
 
 .quiz-option:active:not(:disabled) {
@@ -473,23 +459,25 @@
 }
 
 .quiz-option:focus-visible {
-  outline: none;
-  border-color: var(--jade);
-  box-shadow: var(--ring);
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .quiz-option:disabled {
-  cursor: default;
-  opacity: 1;
+  cursor: not-allowed;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  border-color: var(--line);
 }
 
+/* The key that answers it. A keycap, so it is set in the mono face. */
 .quiz-key {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-xs);
   border: 1px solid var(--line-strong);
   background: var(--surface-2);
   font-family: var(--font-mono);
@@ -512,27 +500,27 @@
 }
 
 .quiz-option.is-correct {
-  background: var(--jade-soft);
-  border-color: var(--jade);
-  color: var(--jade-ink);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .quiz-option.is-correct .quiz-key {
-  background: var(--jade);
-  border-color: var(--jade);
-  color: var(--on-brand);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
 .quiz-option.is-wrong {
-  background: var(--rose-soft);
-  border-color: var(--rose);
-  color: var(--rose);
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .quiz-option.is-wrong .quiz-key {
-  background: var(--rose);
-  border-color: var(--rose);
-  color: var(--on-rose);
+  background: var(--danger);
+  border-color: var(--danger);
+  color: var(--on-danger);
 }
 
 .quiz-option.is-dim {
@@ -606,27 +594,6 @@
   flex: 1 1 260px;
 }
 
-/* Feedback tone variants on top of .notice */
-.notice.is-ok {
-  border-left-color: var(--jade);
-}
-
-.notice.is-bad {
-  border-left-color: var(--rose);
-}
-
-.notice.is-bad .notice-ico {
-  color: var(--rose);
-}
-
-.notice.is-warn {
-  border-left-color: var(--amber);
-}
-
-.notice.is-warn .notice-ico {
-  color: var(--amber);
-}
-
 /* Mistake review rows */
 .quiz-mistakes {
   display: flex;
@@ -650,12 +617,13 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: var(--sp-1);
 }
 
 .quiz-mistake-term {
   font-family: var(--font-display);
   font-size: var(--fs-md);
+  font-weight: 600;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
@@ -663,25 +631,25 @@
 .quiz-mistake-ans {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-2);
   flex-wrap: wrap;
   font-size: var(--fs-sm);
   color: var(--ink-3);
 }
 
 .quiz-mistake-ans b {
-  font-weight: 560;
+  font-weight: 600;
 }
 
 /* Small tone helpers */
-.t-rose {
-  color: var(--rose);
+.t-bad {
+  color: var(--danger);
 }
 
-.t-jade {
-  color: var(--jade-ink);
+.t-ok {
+  color: var(--accent-ink);
 }
 
-.t-amber {
-  color: var(--amber);
+.t-warn {
+  color: var(--warn);
 }

@@ -20,6 +20,7 @@ const CSV_COLUMNS = [
   "definition",
   "definition2",
   "example",
+  "exampleTranslation",
   "note",
   "tags",
   "status",
@@ -72,6 +73,7 @@ export function exportCsv(words: Word[]): string {
         csvCell(word.definition),
         csvCell(word.definition2),
         csvCell(word.example),
+        csvCell(word.exampleZh ?? ""),
         csvCell(word.note),
         csvCell(word.tags.join(";")),
         csvCell(word.status),
@@ -131,6 +133,7 @@ function parseJsonImport(text: string, listId: string): ImportResult | null {
       definition: asString(rec?.definition),
       definition2: asString(rec?.definition2),
       example: asString(rec?.example),
+      exampleZh: asString(rec?.exampleZh) || undefined,
       note: asString(rec?.note),
       tags: asTags(rec?.tags),
       status: asStatus(rec?.status),
@@ -153,6 +156,13 @@ function parseCsvImport(text: string, listId: string): ImportResult {
   const defIdx = find("definition", "meaning", "释义", "意思");
   const def2Idx = find("definition2", "definition_2", "second definition", "补充释义");
   const exampleIdx = find("example", "sentence", "例句");
+  const exampleZhIdx = find(
+    "exampletranslation",
+    "example_zh",
+    "examplezh",
+    "例句翻译",
+    "例句译文",
+  );
   const noteIdx = find("note", "notes", "备注", "笔记");
   const tagsIdx = find("tags", "tag", "标签");
   const statusIdx = find("status", "状态");
@@ -172,6 +182,7 @@ function parseCsvImport(text: string, listId: string): ImportResult {
       definition: cellAt(row, defIdx),
       definition2: cellAt(row, def2Idx),
       example: cellAt(row, exampleIdx),
+      exampleZh: cellAt(row, exampleZhIdx) || undefined,
       note: cellAt(row, noteIdx),
       tags: splitTags(cellAt(row, tagsIdx)),
       status: asStatus(cellAt(row, statusIdx)),

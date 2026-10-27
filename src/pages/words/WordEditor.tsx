@@ -34,6 +34,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   const [definition, setDefinition] = useState("");
   const [definition2, setDefinition2] = useState("");
   const [example, setExample] = useState("");
+  const [exampleZh, setExampleZh] = useState("");
   const [note, setNote] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [listId, setListId] = useState(defaultListId);
@@ -62,6 +63,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       setDefinition(word.definition);
       setDefinition2(word.definition2);
       setExample(word.example);
+      setExampleZh(word.exampleZh ?? "");
       setNote(word.note);
       setTags(word.tags);
       setListId(word.listId);
@@ -72,6 +74,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       setDefinition("");
       setDefinition2("");
       setExample("");
+      setExampleZh("");
       setNote("");
       setTags([]);
       setListId(defaultListId);
@@ -100,6 +103,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
     definition !== (word?.definition ?? "") ||
     definition2 !== (word?.definition2 ?? "") ||
     example !== (word?.example ?? "") ||
+    exampleZh !== (word?.exampleZh ?? "") ||
     note !== (word?.note ?? "") ||
     tags.join("\u0000") !== (word?.tags ?? []).join("\u0000") ||
     listId !== (word?.listId ?? defaultListId) ||
@@ -156,9 +160,21 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         if (secondary) {
           setDefinition2((prev) => (force || !prev.trim() ? secondary : prev));
         }
-        const firstExample = result.examples[0]?.en;
-        if (firstExample) {
-          setExample((prev) => (force || !prev.trim() ? firstExample : prev));
+        // The dictionary payload carries the example both ways when the target
+        // language is Chinese. Both halves go in: the sentence is what you read
+        // in the deck, the translation is what makes an unknown word usable.
+        //
+        // The translation is only acceptable alongside the sentence it came
+        // with. A hand-typed example keeps its own (empty) translation — pasting
+        // the dictionary's Chinese sentence under the user's own English one
+        // would put two unrelated sentences on the same card.
+        const sampleEn = result.examples[0]?.en ?? "";
+        const sampleZh = result.examples[0]?.zh ?? "";
+        const takesExample = force || !example.trim();
+        const keepsSample = example.trim() === sampleEn;
+        if (sampleEn && takesExample) setExample(sampleEn);
+        if (sampleZh && (takesExample || keepsSample) && (force || !exampleZh.trim())) {
+          setExampleZh(sampleZh);
         }
         setPhonetic(result.phonetic);
         setLookupState("idle");
@@ -169,7 +185,11 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         setLookupError(e instanceof LookupError ? e.reason : "offline");
       }
     },
-    [term, fromLang, toLang, t, toast],
+    // `example` and `exampleZh` are read (not just written) to decide whether
+    // the fetched sentence may replace what is already there, so they belong in
+    // the dependency list — a stale closure here would compare against an old
+    // draft and overwrite a sentence the user had already typed.
+    [term, example, exampleZh, fromLang, toLang, t, toast],
   );
 
   const translateLabel =
@@ -201,6 +221,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         definition: definition.trim(),
         definition2: definition2.trim(),
         example: example.trim(),
+        exampleZh: exampleZh.trim(),
         note: note.trim(),
         tags,
         listId,
@@ -215,6 +236,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         definition,
         definition2,
         example,
+        exampleZh,
         note,
         tags,
         listId,
@@ -321,8 +343,17 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
               setPhonetic("");
             }}
             onBlur={() => {
-              // Automatic pass: only in create mode, only into blank fields.
-              if (!word && data.settings.autoTranslate && trimmed && !definition.trim()) {
+              // Automatic pass, in both modes, but only when there is a blank
+              // the lookup could fill. An empty example is as good a reason as
+              // an empty definition — the dictionary hands back both at once,
+              // and typing a sentence by hand is the slowest part of adding a
+              // word. Nothing that is already typed is ever overwritten; the
+              // "翻译" button remains the explicit overwrite.
+              const couldFill =
+                !definition.trim() ||
+                !example.trim() ||
+                (example.trim() !== "" && !exampleZh.trim());
+              if (data.settings.autoTranslate && trimmed && couldFill) {
                 void runLookup(false);
               }
             }}
@@ -350,7 +381,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
             </span>
           )}
           {error && (
-            <span className="hint" style={{ color: "var(--rose)" }}>
+            <span className="hint" style={{ color: "var(--danger)" }}>
               {error}
             </span>
           )}
@@ -381,7 +412,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
               placeholder={t("words.definitionPlaceholder")}
             />
             {lookupState === "error" && (
-              <span className="hint" style={{ color: "var(--amber)" }}>
+              <span className="hint" style={{ color: "var(--warn)" }}>
                 {errorText}
               </span>
             )}
@@ -428,6 +459,21 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
             onChange={(e) => setExample(e.target.value)}
             placeholder={t("words.examplePlaceholder")}
           />
+          {/*
+            Only offered once there is a sentence to translate. Keyed off the
+            typed value rather than the stored one so pasting a sentence
+            immediately reveals the field.
+          */}
+          {example.trim() !== "" && (
+            <input
+              id="word-example-zh"
+              className="input"
+              style={{ marginTop: "var(--sp-2)" }}
+              value={exampleZh}
+              onChange={(e) => setExampleZh(e.target.value)}
+              placeholder={t("words.exampleZhPlaceholder")}
+            />
+          )}
         </div>
 
         <div className="field">
@@ -495,9 +541,9 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         </div>
 
         <div className="tiny muted">
-          <span className="kbd">Enter</span> {t("words.enterNext")} ·{" "}
+          <span className="kbd">Enter</span> {t("words.enterNext")}，
           <span className="kbd">Ctrl</span>+<span className="kbd">Enter</span>{" "}
-          {t("words.saveAnywhere")} · <span className="kbd">Esc</span> {t("common.cancel")}
+          {t("words.saveAnywhere")}，<span className="kbd">Esc</span> {t("common.cancel")}
         </div>
       </div>
     </Modal>

@@ -704,7 +704,12 @@ export function FlashcardsPage() {
                         <div className="fc-def2">{word.definition2}</div>
                       )}
                       {word.example && (
-                        <div className="fc-example">{word.example}</div>
+                        <div className="fc-example">
+                          <span className="fc-example-en">{word.example}</span>
+                          {word.exampleZh && (
+                            <span className="fc-example-zh">{word.exampleZh}</span>
+                          )}
+                        </div>
                       )}
                       {word.note && (
                         <div className="fc-note">
@@ -771,7 +776,6 @@ export function FlashcardsPage() {
                         >
                           <span className="fc-grade-top">
                             <span className="kbd">{index + 1}</span>
-                            <span className="fc-grade-dot" />
                             {t(GRADE_LABEL_KEY[value])}
                           </span>
                           <span className="fc-grade-int">

@@ -396,7 +396,7 @@ export function WordsPage() {
       }
     >
       {/* List tabs */}
-      <div className="list-tabs" style={{ marginBottom: "var(--sp-4)" }}>
+      <div className="list-tabs">
         {data.lists.map((l) => {
           const active = l.id === listId;
           return (
@@ -424,7 +424,7 @@ export function WordsPage() {
       </div>
 
       {/* Toolbar */}
-      <div className="toolbar" style={{ marginBottom: "var(--sp-4)" }}>
+      <div className="toolbar">
         <div className="search">
           <span className="search-icon">
             <Icon name="search" size={15} />
@@ -588,7 +588,7 @@ export function WordsPage() {
                     {picked && <Icon name="check" size={12} />}
                   </span>
                 )}
-                <div className="row-flex" style={{ minWidth: 0, gap: 7 }}>
+                <div className="row-flex" style={{ minWidth: 0, gap: "var(--sp-2)" }}>
                   {w.favorite && (
                     <span className="row-fav" aria-hidden="true">
                       <Icon name="star-filled" size={13} />
@@ -721,7 +721,7 @@ export function WordsPage() {
       )}
 
       {filtered.length > 0 && !selectMode && (
-        <div className="row-flex tiny muted" style={{ marginTop: "var(--sp-4)", gap: 6 }}>
+        <div className="row-flex tiny muted" style={{ marginTop: "var(--sp-4)", gap: "var(--sp-2)" }}>
           <span>
             {t("common.total")} {filtered.length} {t("common.words")}
             {filtered.length !== listCount ? ` / ${listCount}` : ""}
@@ -876,7 +876,7 @@ function ListManagerModal({
       onClose={onClose}
       width={560}
       title={t("common.list")}
-      subtitle={`${data.lists.length} 个词库`}
+      subtitle={t("words.listsSubtitle", { n: data.lists.length })}
       footer={
         <>
           <button className="btn" type="button" onClick={onClose}>
@@ -998,7 +998,7 @@ function ListManagerModal({
                         className="row-term"
                         style={{
                           fontSize: "var(--fs-md)",
-                          color: active ? "var(--jade-ink)" : undefined,
+                          color: active ? "var(--accent-ink)" : undefined,
                         }}
                       >
                         {l.name}
@@ -1045,7 +1045,10 @@ function ListManagerModal({
         title={t("common.delete")}
         body={
           pendingDelete
-            ? `删除词库「${pendingDelete.name}」及其中的 ${data.words.filter((w) => w.listId === pendingDelete.id).length} 个词语？此操作无法撤销。`
+            ? t("words.deleteListConfirm", {
+                name: pendingDelete.name,
+                n: data.words.filter((w) => w.listId === pendingDelete.id).length,
+              })
             : undefined
         }
         confirmLabel={t("common.delete")}

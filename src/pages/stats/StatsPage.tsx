@@ -21,17 +21,24 @@ const RANGE_OPTIONS = [
 
 type Range = (typeof RANGE_OPTIONS)[number]["value"];
 
+/* Status and grade both read as one progress ramp in azurite. This screen's job
+   is to show how far words have come, not to run a six-hue legend, and cinnabar
+   stays reserved for destruction so it never appears in a chart. */
 const STATUS_COLOR: Record<WordStatus, string> = {
   new: "var(--ink-4)",
-  reviewing: "var(--sky)",
-  learning: "var(--amber)",
-  mastered: "var(--jade)",
+  reviewing: "color-mix(in srgb, var(--accent) 34%, var(--surface))",
+  learning: "color-mix(in srgb, var(--accent) 64%, var(--surface))",
+  mastered: "var(--accent)",
 };
 
 const GRADES: Array<{ grade: Grade; labelKey: MessageKey; color: string }> = [
-  { grade: "hard", labelKey: "flashcards.gradeHard", color: "var(--rose)" },
-  { grade: "good", labelKey: "flashcards.gradeGood", color: "var(--sky)" },
-  { grade: "easy", labelKey: "flashcards.gradeEasy", color: "var(--jade)" },
+  { grade: "hard", labelKey: "flashcards.gradeHard", color: "var(--ink-3)" },
+  {
+    grade: "good",
+    labelKey: "flashcards.gradeGood",
+    color: "color-mix(in srgb, var(--accent) 55%, var(--surface))",
+  },
+  { grade: "easy", labelKey: "flashcards.gradeEasy", color: "var(--accent)" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -72,10 +79,9 @@ function DistRow({
   return (
     <div className="dist-item">
       <div className="dist-head">
-        <span className="dist-swatch" style={{ background: color }} aria-hidden="true" />
         <span className="dist-name">{name}</span>
         <span className="dist-num">
-          {count} · {pct}%
+          {count}（{pct}%）
         </span>
       </div>
       <div
@@ -86,7 +92,10 @@ function DistRow({
         aria-valuemax={100}
         aria-label={name}
       >
-        <div className="progress-fill" style={{ width: `${pct}%`, background: color }} />
+        <div
+          className="progress-fill"
+          style={{ transform: `scaleX(${pct / 100})`, background: color }}
+        />
       </div>
     </div>
   );
@@ -239,20 +248,16 @@ export function StatsPage() {
         {/* Headline metrics ------------------------------------------- */}
         <div className="dash-tiles">
           <StatTile
-            icon="words"
             label={t("stats.totalWords")}
             value={total}
             sub={t("stats.listsCount", { n: data.lists.length })}
           />
           <StatTile
-            icon="check"
             label={t("stats.mastered")}
             value={mastered}
-            accent="var(--jade)"
             sub={t("stats.masteryShare", { n: masteryPct })}
           />
           <StatTile
-            icon="cards"
             label={t("stats.reviewsToday")}
             value={today}
             sub={
@@ -262,10 +267,8 @@ export function StatsPage() {
             }
           />
           <StatTile
-            icon="flame"
             label={t("stats.streak")}
             value={streak}
-            accent={streak > 0 ? "var(--amber)" : undefined}
             sub={t("stats.streakUnit")}
           />
         </div>
@@ -366,30 +369,30 @@ export function StatsPage() {
                     })
                   }
                 >
-                  {series.map((day) => (
-                    <div
-                      className="chart-col"
-                      key={day.key}
-                      title={`${day.label} · ${t("stats.reviewCount", { n: day.count })}`}
-                    >
+                  {series.map((day) => {
+                    const barPct =
+                      day.count === 0
+                        ? 2
+                        : Math.max(6, Math.round((day.count / seriesMax) * 100));
+                    return (
                       <div
-                        className={
-                          day.count === 0
-                            ? "chart-bar is-zero"
-                            : day.isToday
-                              ? "chart-bar is-today"
-                              : "chart-bar"
-                        }
-                        style={{
-                          height: `${
+                        className="chart-col"
+                        key={day.key}
+                        title={`${day.label} ${t("stats.reviewCount", { n: day.count })}`}
+                      >
+                        <div
+                          className={
                             day.count === 0
-                              ? 2
-                              : Math.max(6, Math.round((day.count / seriesMax) * 100))
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  ))}
+                              ? "chart-bar is-zero"
+                              : day.isToday
+                                ? "chart-bar is-today"
+                                : "chart-bar"
+                          }
+                          style={{ transform: `scaleY(${barPct / 100})` }}
+                        />
+                      </div>
+                    );
+                  })}
                   <div
                     className="chart-avg"
                     style={{ bottom: `${Math.min(100, (seriesAvg / seriesMax) * 100)}%` }}

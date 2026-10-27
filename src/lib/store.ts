@@ -116,6 +116,8 @@ export interface NewWordInput {
   definition?: string;
   definition2?: string;
   example?: string;
+  /** Translation of `example`; same optionality as `phonetic`. */
+  exampleZh?: string;
   note?: string;
   tags?: string[];
   listId: string;
@@ -344,6 +346,7 @@ export function createStore(options: StoreOptions): Store {
         definition: (input.definition ?? "").trim(),
         definition2: (input.definition2 ?? "").trim(),
         example: (input.example ?? "").trim(),
+        exampleZh: (input.exampleZh ?? "").trim() || undefined,
         note: (input.note ?? "").trim(),
         status: input.status ?? "new",
         favorite: input.favorite ?? false,

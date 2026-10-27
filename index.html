@@ -4,36 +4,44 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#f4f1e9" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#10120f" media="(prefers-color-scheme: dark)" />
-    <title>Lexumo · 词砚</title>
+    <meta name="theme-color" content="#f9f7f3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#121614" media="(prefers-color-scheme: dark)" />
+    <title>Lexumo 词砚</title>
     <meta
       name="description"
-      content="Lexumo 词砚 — 本地优先的间隔重复词汇学习桌面应用"
+      content="Lexumo 词砚，本地优先的间隔重复词汇学习桌面应用"
     />
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230f6b5b'/%3E%3Ctext x='32' y='46' font-family='Georgia,serif' font-size='38' font-weight='600' fill='%23f7fffc' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='4' fill='%23175b72'/%3E%3Ctext x='32' y='47' font-family='Songti SC,SimSun,serif' font-size='40' font-weight='600' fill='%23f9fcfe' text-anchor='middle'%3E%E8%AF%8D%3C/text%3E%3C/svg%3E"
     />
     <style>
       /* Paint the right canvas and a matching skeleton before the bundle
-         loads, so the first frame is never a blank white rectangle. */
+         loads, so the first frame is never a blank white rectangle. These
+         literals mirror tokens.css by hand: the token sheet has not loaded
+         yet at this point, so there is nothing to reference. */
       :root {
-        --b-bg: #f4f1e9;
-        --b-deep: #ebe7dc;
-        --b-surface: #fffdf8;
-        --b-line: #e2dccd;
-        --b-skel: #eee8db;
-        --b-jade: #0f6b5b;
+        --b-bg: #f9f7f3;
+        --b-surface: #fefdfa;
+        --b-line: #e0ded7;
+        --b-skel: #eeece5;
+        --b-frame: #252c28;
+        --b-frame-2: #1c221f;
+        --b-frame-line: #3f4743;
+        --b-frame-ink: #e7ebe7;
+        --b-accent: #175b72;
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --b-bg: #10120f;
-          --b-deep: #0b0d0a;
-          --b-surface: #171a15;
-          --b-line: #2a2f27;
-          --b-skel: #22261f;
-          --b-jade: #58cfb2;
+          --b-bg: #121614;
+          --b-surface: #1c201e;
+          --b-line: #2f3633;
+          --b-skel: #232826;
+          --b-frame: #070b09;
+          --b-frame-2: #040605;
+          --b-frame-line: #1f2623;
+          --b-frame-ink: #dddfda;
+          --b-accent: #70c8cd;
         }
       }
       html,
@@ -41,7 +49,7 @@
         margin: 0;
         height: 100%;
         background: var(--b-bg);
-        overflow: hidden;
+        overflow: clip;
       }
       #root {
         height: 100%;
@@ -49,13 +57,14 @@
       .boot {
         display: flex;
         height: 100%;
-        font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        font-family: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Microsoft YaHei",
+          system-ui, sans-serif;
       }
       .boot-side {
-        width: 236px;
-        flex: 0 0 236px;
-        border-right: 1px solid var(--b-line);
-        background: var(--b-deep);
+        width: 232px;
+        flex: 0 0 232px;
+        border-right: 1px solid var(--b-frame-line);
+        background: var(--b-frame);
         padding: 20px 12px;
         box-sizing: border-box;
       }
@@ -63,19 +72,21 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 2px 6px 20px;
+        padding: 2px 8px 22px;
       }
       .boot-mark {
-        width: 34px;
-        height: 34px;
-        flex: 0 0 34px;
-        border-radius: 10px;
-        background: var(--b-jade);
-        color: #f7fffc;
+        width: 32px;
+        height: 32px;
+        flex: 0 0 32px;
+        border-radius: 2px;
+        background: var(--b-accent);
+        color: #f9fcfe;
         display: grid;
         place-items: center;
+        font-family: "IBM Plex Serif", "Songti SC", SimSun, serif;
         font-size: 19px;
         font-weight: 600;
+        line-height: 1;
       }
       .boot-brandtext {
         display: flex;
@@ -102,7 +113,7 @@
       }
       .boot-card {
         border: 1px solid var(--b-line);
-        border-radius: 16px;
+        border-radius: 6px;
         background: var(--b-surface);
         padding: 8px 0;
         overflow: hidden;
@@ -120,12 +131,12 @@
       .sk {
         display: block;
         height: 11px;
-        border-radius: 6px;
+        border-radius: 2px;
         background: var(--b-skel);
         animation: boot-pulse 1.5s ease-in-out infinite;
       }
       .sk.h1 {
-        height: 17px;
+        height: 20px;
         width: 150px;
       }
       .sk.h2 {
@@ -133,7 +144,7 @@
         width: 220px;
       }
       .sk.nav {
-        height: 32px;
+        height: 36px;
         width: 100%;
       }
       .sk.term {
@@ -147,7 +158,7 @@
       .sk.pill {
         height: 20px;
         width: 62px;
-        border-radius: 999px;
+        border-radius: 3px;
         margin-left: auto;
       }
       @keyframes boot-pulse {
@@ -171,7 +182,7 @@
       <div class="boot" aria-hidden="true">
         <div class="boot-side">
           <div class="boot-brand">
-            <div class="boot-mark">L</div>
+            <div class="boot-mark">词</div>
             <div class="boot-brandtext">
               <span class="sk" style="width: 74px"></span>
               <span class="sk" style="width: 40px"></span>

@@ -222,7 +222,7 @@ export function App() {
 
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">L</div>
+          <div className="brand-mark" aria-hidden="true">词</div>
           <div className="brand-text">
             <div className="brand-name">{t("common.appName")}</div>
             <div className="brand-sub">{t("shell.brandSub")}</div>
@@ -254,9 +254,9 @@ export function App() {
               type="button"
               className="sync-chip"
               onClick={openSync}
-              title={syncStatus.email ? `${syncLabel} · ${syncStatus.email}` : syncLabel}
+              title={syncStatus.email ? `${syncLabel}，${syncStatus.email}` : syncLabel}
             >
-              <span className={`sync-dot sync-dot-${syncTone}`} />
+              <span className={`sync-dot sync-dot-${syncTone}`} aria-hidden="true" />
               <span className="sync-chip-text">{syncLabel}</span>
             </button>
           )}
@@ -267,12 +267,10 @@ export function App() {
             <div style={{ minWidth: 0 }}>
               <div className="streak-num">
                 {streak}
-                <span style={{ fontSize: 12, marginLeft: 3, color: "var(--ink-3)" }}>
-                  {t("stats.streakUnit")}
-                </span>
+                <span className="streak-unit">{t("stats.streakUnit")}</span>
               </div>
               <div className="streak-label">
-                {t("stats.reviewsToday")} · {today}
+                {t("stats.reviewsToday")} {today}
               </div>
             </div>
           </div>

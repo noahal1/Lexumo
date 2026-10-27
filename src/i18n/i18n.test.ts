@@ -52,7 +52,7 @@ describe("dictionary", () => {
     expect(translate("zh-CN", "stats.reviewWithCount", { n: 7 })).toContain("7");
     expect(translate("en", "stats.reviewWithCount", { n: 7 })).toContain("7");
     expect(translate("en", "settings.dataNote", { words: 12, logs: 40 })).toBe(
-      "12 words · 40 records",
+      "12 words, 40 records",
     );
   });
 

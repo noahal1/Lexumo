@@ -136,7 +136,7 @@ export function ProgressBar({
       aria-valuemax={100}
       aria-label={label}
     >
-      <div className="progress-fill" style={{ width: `${pct}%` }} />
+      <div className="progress-fill" style={{ transform: `scaleX(${pct / 100})` }} />
     </div>
   );
 }
@@ -159,7 +159,7 @@ export function Ring({
   const pct = max <= 0 ? 0 : Math.max(0, Math.min(1, value / max));
   return (
     <div className="ring" style={{ width: size, height: size }}>
-      <svg width={size} height={size}>
+      <svg width={size} height={size} aria-hidden="true" focusable="false">
         <circle
           className="ring-track"
           cx={size / 2}
@@ -189,12 +189,7 @@ export function Ring({
 /* Chips                                                               */
 /* ------------------------------------------------------------------ */
 export function StatusChip({ status, label }: { status: string; label: string }) {
-  return (
-    <span className={cx("chip", `chip-${status}`)}>
-      <span className="dot" />
-      {label}
-    </span>
-  );
+  return <span className={cx("chip", `chip-${status}`)}>{label}</span>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -215,7 +210,7 @@ export function StatTile({
 }) {
   return (
     <div className="stat-tile">
-      <div className="row-flex" style={{ gap: 6 }}>
+      <div className="row-flex" style={{ gap: "var(--sp-2)" }}>
         {icon && (
           <span style={{ color: accent ?? "var(--ink-3)", display: "grid", placeItems: "center" }}>
             <Icon name={icon} size={14} />

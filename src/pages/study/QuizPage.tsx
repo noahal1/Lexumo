@@ -410,12 +410,12 @@ export function QuizPage() {
                     <span className="quiz-key">{LETTERS[optionIndex]}</span>
                     <span className="quiz-opt-text">{option}</span>
                     {answered && isAnswer && (
-                      <span className="quiz-opt-ico t-jade">
+                      <span className="quiz-opt-ico t-ok">
                         <Icon name="check" size={16} />
                       </span>
                     )}
                     {answered && isPicked && !isAnswer && (
-                      <span className="quiz-opt-ico t-rose">
+                      <span className="quiz-opt-ico t-bad">
                         <Icon name="x" size={16} />
                       </span>
                     )}
@@ -458,8 +458,10 @@ export function QuizPage() {
                 </>
               ) : (
                 <p className="tiny muted">
-                  <span className="kbd">A</span>–<span className="kbd">D</span> /{" "}
-                  <span className="kbd">1</span>–<span className="kbd">4</span>{" "}
+                  <span className="kbd">A</span> <span className="kbd">B</span>{" "}
+                  <span className="kbd">C</span> <span className="kbd">D</span> /{" "}
+                  <span className="kbd">1</span> <span className="kbd">2</span>{" "}
+                  <span className="kbd">3</span> <span className="kbd">4</span>{" "}
                   {t("quiz.chooseHintSuffix")}
                 </p>
               )}
@@ -552,7 +554,7 @@ export function QuizPage() {
                               {t("quiz.yourAnswer")}：
                               <b
                                 className={
-                                  item.answer === null ? undefined : "t-rose"
+                                  item.answer === null ? undefined : "t-bad"
                                 }
                               >
                                 {item.answer === null
@@ -563,7 +565,7 @@ export function QuizPage() {
                             <span>·</span>
                             <span>
                               {t("quiz.correctAnswer")}：
-                              <b className="t-jade">
+                              <b className="t-ok">
                                 {item.question.options[item.question.answerIndex]}
                               </b>
                             </span>

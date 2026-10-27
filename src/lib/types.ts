@@ -30,10 +30,16 @@ export interface Word {
   phonetic?: string;
   /** Primary meaning in the target language. */
   definition: string;
-  /** Secondary definition / nuance / example translation. */
+  /** Secondary definition / nuance. */
   definition2: string;
   /** Example sentence using the term. */
   example: string;
+  /**
+   * Translation of `example` into the target language. Optional for the same
+   * reason `phonetic` is: records written before it existed have none, and a
+   * hand-typed example usually has no translation at all.
+   */
+  exampleZh?: string;
   note: string;
   status: WordStatus;
   favorite: boolean;

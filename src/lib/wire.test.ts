@@ -139,6 +139,53 @@ describe("decodeChangeSet strips server bookkeeping", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* decode: optional text fields survive the boundary                   */
+/* ------------------------------------------------------------------ */
+
+describe("optional text fields", () => {
+  it("keeps phonetic and exampleZh through decode", () => {
+    const decoded = decodeChangeSet({
+      words: [
+        {
+          id: "w1",
+          term: "candid",
+          phonetic: "ˈkændɪd",
+          example: "She is very candid.",
+          exampleZh: "她为人很坦诚。",
+          updatedAt: 10,
+        },
+      ],
+    });
+
+    expect(decoded.words[0] as Word).toMatchObject({
+      phonetic: "ˈkændɪd",
+      exampleZh: "她为人很坦诚。",
+    });
+  });
+
+  it("keeps them through encode, so a backup is not lossy", () => {
+    const d = data({
+      words: [word("w1", 5, { phonetic: "ˈkændɪd", exampleZh: "她为人很坦诚。" })],
+    });
+
+    const clean = encodeAppData(d);
+
+    expect(clean.words[0].phonetic).toBe("ˈkændɪd");
+    expect(clean.words[0].exampleZh).toBe("她为人很坦诚。");
+  });
+
+  it("collapses an empty optional field to undefined rather than an empty string", () => {
+    const decoded = decodeChangeSet({
+      words: [{ id: "w1", term: "hola", phonetic: "", exampleZh: "", updatedAt: 10 }],
+    });
+
+    expect((decoded.words[0] as Word).phonetic).toBeUndefined();
+    expect((decoded.words[0] as Word).exampleZh).toBeUndefined();
+    expect(JSON.stringify(decoded.words[0])).not.toContain('"phonetic"');
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* decode: malformed records are dropped, not merged                   */
 /* ------------------------------------------------------------------ */
 

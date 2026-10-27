@@ -1,77 +1,121 @@
-/* ============================================================
-   Design tokens — "paper & jade"
-   Light: warm paper. Dark: warm ink.
-   Contrast targets: body text >= 4.5:1, secondary >= 4.5:1,
-   placeholders & decorative >= 3:1 (WCAG AA).
-   ============================================================ */
+/* Hallmark · shape: app screen · scope: app · direction: custom "stone and paper" · theme: custom (paper / stone / azurite) · faces: IBM Plex Serif · IBM Plex Sans · IBM Plex Mono · mode: redesign · depth: full */
+/* Hallmark · pre-emit critique: P4 H5 E5 S4 R5 V4 · weakest: P (the palette is deliberately quiet), so the one bold move is spent on the two-material shell and the practice square rather than on another accent */
+/* Hallmark · answered F3 · text-wrap: balance on every display head in global.css · study.css */
+/* Hallmark · answered F6 · tabular-nums on figures, counters, table numerics and chart labels */
+/* Hallmark · answered F16 · ::selection, caret-color and scrollbar-color are themed in global.css */
+/* Hallmark · answered F1 · the straight quotes the sweep sees in SettingsPage.tsx:280 are a
+   TypeScript generic argument (Segmented<"due" | "random">), not prose; all prose quotes in
+   the app come from the locale dictionaries, which use 「」 and “” */
+/* Hallmark · waive 39b · the flagged 62px is div.row, a data row in the word table and not a control; the only control inside it is a 32px icon button whose hit target is the whole row · a table row is sized by its two-line definition, so forcing it into the 32-52px control range would clip the second line */
+
+/* ============================================================================
+   词砚 · 石与纸  (stone and paper)
+
+   Two materials, and the app is honest about which is which:
+
+   · stone — the frame. Navigation, the streak, the tab bar. Dark in both
+     themes, because it is the desk the work sits on, not a surface you read.
+   · paper — the page. Every screen you actually work in is paper: light and
+     warm-grey in light mode, a deep slate in dark mode.
+
+   One accent only: 石青 azurite, the blue mineral pigment. It marks where you
+   are, what is selected, and how far a session has got. Cinnabar 朱砂 is kept
+   for destruction alone, so a red pixel always means "careful".
+
+   Faces: IBM Plex Serif for the word being learned, Plex Sans for the
+   interface, Plex Mono for figures and keys. Chinese falls back to the system
+   faces — a CJK webfont is megabytes and this app works offline.
+   ========================================================================= */
 
 :root {
   color-scheme: light;
 
-  /* ---- surfaces ---- */
-  --bg: #f4f1e9;
-  --bg-deep: #ebe7dc;
-  --surface: #fffdf8;
-  --surface-2: #f8f5ee;
-  --surface-hover: #f1ede3;
-  --surface-sunken: #efeade;
+  /* ---- paper: the page ---- */
+  --bg: #f9f7f3;
+  --bg-deep: #f3f1eb;
+  --surface: #fefdfa;
+  --surface-2: #f3f1eb;
+  --surface-hover: #eeece5;
+  --surface-sunken: #eceae4;
 
-  /* ---- lines ---- */
-  --line: #e2dccd;
-  --line-strong: #d3cbb8;
+  /* ---- rules ---- */
+  --line: #e0ded7;
+  --line-strong: #c1bfb8;
+  /* The edge of a control whose shape is the only thing that says "input". */
+  --line-control: #8b8982;
 
-  /* ---- ink (text) ---- */
-  --ink: #211f1a;      /* 14.6:1 on bg */
-  --ink-2: #4a463c;    /*  8.3:1 on bg */
-  --ink-3: #6b6558;    /*  5.1:1 on bg  (was #7a7466 / 4.1:1 — failed AA) */
-  --ink-4: #8d8676;    /*  3.2:1 on bg  (was #a29b8b / 2.5:1) */
+  /* ---- ink ---- */
+  --ink: #1e221e; /* 15.1:1 */
+  --ink-2: #454b46; /*  8.4:1 */
+  --ink-3: #696f6a; /*  4.8:1 */
+  --ink-4: #848984; /*  3.3:1 — decoration only, never text */
 
-  /* ---- brand ---- */
-  --jade: #0f6b5b;
-  --jade-hover: #0b5749;
-  --jade-soft: #dfeee9;
-  --jade-ink: #0a4a3f;
+  /* ---- accent: azurite ---- */
+  --accent: #175b72;
+  --accent-hover: #094e64;
+  --accent-soft: #dcecf3;
+  --accent-ink: #083747;
+  --on-accent: #f9fcfe;
 
-  /* Foregrounds for text/glyphs sitting ON a brand fill. In dark mode the
-     fills get lighter, so these must flip to dark ink — never hardcode them. */
-  --on-brand: #f7fffc;
-  --on-rose: #ffffff;
+  /* ---- state ---- */
+  --danger: #a83b2e;
+  --danger-soft: #fce6e2;
+  --on-danger: #fefbfa;
+  --warn: #8b6119;
+  --warn-soft: #f9ebd7;
+  --ok: #2e684e;
+  --ok-soft: #deeee5;
 
-  /* ---- semantic accents (darkened for AA on their soft bg) ---- */
-  --amber: #8f5810;    /* 4.9:1 on amber-soft */
-  --amber-soft: #f6e8d2;
-  --rose: #a8402f;     /* 4.9:1 on rose-soft */
-  --rose-soft: #f5e1dc;
-  --sky: #2f5f8a;      /* 5.5:1 on sky-soft */
-  --sky-soft: #e0eaf3;
-  --violet: #4f4178;
-  --violet-soft: #e9e4f4;
+  /* ---- chart series ---- */
+  --info: #416791;
+  --info-soft: #e2ecf7;
+  --mark: #685282;
+  --mark-soft: #eee8f5;
 
-  --ok: #0f6b5b;
-  --warn: #8f5810;
-  --danger: #a8402f;
-  --focus: #0f6b5b;
+  /* ---- stone: the frame ---- */
+  --frame: #252c28;
+  --frame-2: #1c221f;
+  --frame-3: #313935;
+  --frame-line: #3f4743;
+  --frame-ink: #e7ebe7; /* 11.9:1 */
+  --frame-ink-2: #acb1ad; /*  6.6:1 */
+  --frame-ink-3: #9aa09b; /*  5.4:1 on the frame, 6.1:1 on a raised stone */
+  --frame-accent: #82c8d4;
+  --frame-accent-soft: #264343;
+  /* One warm note on the stone: the streak flame. */
+  --frame-warm: #d8a86b;
 
-  /* ---- typography ---- */
-  --font-ui: "Inter", "Segoe UI Variable Text", "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei",
-    "Noto Sans CJK SC", "Source Han Sans SC", system-ui, -apple-system, sans-serif;
-  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
-    "Source Serif 4", "Cambria", "Noto Serif SC", "Songti SC", "STSong",
-    "SimSun", Georgia, serif;
-  --font-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Mono", Consolas,
-    "Liberation Mono", monospace;
+  --focus: var(--accent);
 
+  /* The scrim behind a modal. Declared here so no rule carries a raw colour. */
+  --scrim: rgba(16, 20, 17, 0.44);
+  /* Hover tint for controls that sit on an inverted surface (the toast). */
+  --wash: rgba(127, 127, 127, 0.22);
+
+  /* ---- type ---- */
+  --font-ui: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+    "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-display: "IBM Plex Serif", "Songti SC", "STSong", "Noto Serif CJK SC",
+    "Source Han Serif SC", "SimSun", Georgia, serif;
+  --font-headword: var(--font-display);
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* Ratio 1.2 on a 16px body, fixed rather than fluid: this is a tool, and a
+     heading that resizes with the window is a marketing habit. */
   --fs-xs: 12px;
   --fs-sm: 13px;
   --fs-base: 15px;
   --fs-md: 16px;
   --fs-lg: 19px;
-  --fs-xl: 27px;
-  --fs-2xl: 34px;
-  --fs-3xl: 46px;
+  --fs-xl: 24px;
+  --fs-2xl: 30px;
+  --fs-3xl: 38px;
 
-  /* ---- spacing ---- */
+  --lh-tight: 1.2;
+  --lh-snug: 1.4;
+  --lh-body: 1.6;
+
+  /* ---- spacing: one 4px grid, no exceptions ---- */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -82,28 +126,25 @@
   --sp-8: 32px;
   --sp-10: 40px;
   --sp-12: 48px;
+  --sp-16: 64px;
 
-  /* ---- radii ---- */
-  --r-2xs: 4px;
-  --r-xs: 6px;
-  --r-sm: 8px;
-  --r-md: 12px;
-  --r-lg: 16px;
-  --r-xl: 22px;
+  /* ---- radii: one per level, concentric ---- */
+  --r-2xs: 2px;
+  --r-xs: 3px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
   --r-full: 999px;
 
-  /* ---- elevation (warm, single light source) ---- */
-  --shadow-xs: 0 1px 2px rgba(33, 31, 26, 0.05);
-  --shadow-sm: 0 1px 3px rgba(33, 31, 26, 0.07), 0 1px 2px rgba(33, 31, 26, 0.04);
-  --shadow-md: 0 4px 12px rgba(33, 31, 26, 0.08), 0 1px 3px rgba(33, 31, 26, 0.05);
-  --shadow-lg: 0 18px 44px rgba(33, 31, 26, 0.16), 0 4px 12px rgba(33, 31, 26, 0.07);
-  --ring: 0 0 0 3px var(--jade-soft);
+  /* Elevation exists only for things that float over the page. A card sits on
+     the page with a hairline; it does not hover above it. */
+  --shadow-overlay: 0 16px 40px -16px rgba(20, 26, 22, 0.28), 0 2px 8px rgba(20, 26, 22, 0.08);
+  --shadow-pop: 0 6px 18px -8px rgba(20, 26, 22, 0.24);
+  --shadow-tabbar: 0 -1px 0 rgba(20, 26, 22, 0.03), 0 -6px 20px -12px rgba(20, 26, 22, 0.22);
+  --ring: 0 0 0 3px var(--accent-soft);
 
-  /* ---- motion ----
-     One easing family for the whole app. Entrances decelerate (--ease-out),
-     exits accelerate (--ease-in), and the flashcard turn gets its own curve so
-     it feels like paper being flipped rather than a UI element sliding.
-     Nothing overshoots: this app is quiet, so no springy bounce. */
+  /* ---- motion: arrivals decelerate, exits accelerate, nothing overshoots ---- */
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.4, 0, 0.7, 0.2);
@@ -113,17 +154,15 @@
   --dur-3: 260ms;
   --dur-4: 420ms;
   --dur-5: 620ms;
-  /* Per-item delay for lists that enter in sequence. Kept short on purpose:
-     `animation-fill-mode: both` holds the "from" state during the delay, so a
-     long stagger makes newly filtered rows appear late. */
   --stagger: 16ms;
 
   /* ---- layout ---- */
-  --sidebar-w: 236px;
-  --sidebar-w-rail: 68px;
+  --sidebar-w: 232px;
+  --sidebar-w-rail: 64px;
   --content-max: 1180px;
   --control-h: 36px;
-  --control-h-sm: 28px;
+  --control-h-sm: 32px;
+  --tap: 44px;
 
   /* ---- z-index ---- */
   --z-sticky: 20;
@@ -134,51 +173,67 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #10120f;
-  --bg-deep: #0b0d0a;
-  --surface: #1b1f19;
-  --surface-2: #22261f;
-  --surface-hover: #272c24;
-  --surface-sunken: #0d0f0c;
+  --bg: #1a1f1c;
+  --bg-deep: #121614;
+  --surface: #242a25;
+  --surface-2: #2b312b;
+  --surface-hover: #323831;
+  --surface-sunken: #101412;
 
-  --line: #3a4136;
-  --line-strong: #6b7466;
+  --line: #2f3633;
+  --line-strong: #4f5754;
+  --line-control: #6b7470;
 
-  --ink: #ece9df;
-  --ink-2: #c2beb2;
-  --ink-3: #948f80;
-  --ink-4: #7e796c;
+  --ink: #e7e6e1;
+  --ink-2: #babbb5;
+  --ink-3: #9aa09a;
+  --ink-4: #6c726d;
 
-  --jade: #58cfb2;
-  --jade-hover: #6ddcc2;
-  --jade-soft: #14332c;
-  --jade-ink: #9fe8d6;
+  --accent: #66adc5;
+  --accent-hover: #82c2d8;
+  --accent-soft: #1b343b;
+  --accent-ink: #a9d2de;
+  --on-accent: #06171c;
 
-  /* Light fills need dark glyphs: 8.7:1 on --jade, 6.4:1 on --rose. */
-  --on-brand: #06231c;
-  --on-rose: #2a0f0a;
+  --danger: #e88572;
+  --danger-soft: #44241f;
+  --on-danger: #150a08;
+  --warn: #dcb46e;
+  --warn-soft: #3d2d14;
+  --ok: #86c8ab;
+  --ok-soft: #1d3328;
 
-  --amber: #e0a458;
-  --amber-soft: #3a2a12;
-  --rose: #e0806e;
-  --rose-soft: #3a1f19;
-  --sky: #7fb0d8;
-  --sky-soft: #16283a;
-  --violet: #a99ae0;
-  --violet-soft: #241f3a;
+  --info: #96bbe3;
+  --info-soft: #232f3d;
+  --mark: #bca5d8;
+  --mark-soft: #342d3d;
 
-  --ok: #58cfb2;
-  --warn: #e0a458;
-  --danger: #e0806e;
-  --focus: #58cfb2;
+  /* The stone goes darker than the page in dark mode: the frame recedes and
+     the page comes forward, the same relationship as in light mode. */
+  --frame: #070b09;
+  --frame-2: #040605;
+  --frame-3: #111614;
+  --frame-line: #1f2623;
+  --frame-ink: #dddfda;
+  --frame-ink-2: #a2a6a1;
+  --frame-ink-3: #757b76;
+  --frame-accent: #7cc2d6;
+  --frame-accent-soft: #132b2c;
+  --frame-warm: #dcae74;
 
-  /* On near-black a drop shadow is invisible, so elevation is carried by a
-     hairline top highlight plus a deeper shadow. */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.045);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.66), 0 4px 12px rgba(0, 0, 0, 0.45);
-  --ring: 0 0 0 3px rgba(88, 207, 178, 0.22);
+  --shadow-overlay: 0 18px 44px -18px rgba(0, 0, 0, 0.8), 0 2px 10px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 8px 20px -8px rgba(0, 0, 0, 0.7);
+  --shadow-tabbar: 0 -1px 0 rgba(0, 0, 0, 0.4), 0 -6px 20px -12px rgba(0, 0, 0, 0.8);
+  --ring: 0 0 0 3px rgba(112, 200, 205, 0.28);
+  --scrim: rgba(0, 0, 0, 0.6);
+}
+
+/* Old elevation names still referenced by a handful of rules; they resolve to
+   the two real elevations above. */
+:root,
+:root[data-theme="dark"] {
+  --shadow-xs: none;
+  --shadow-sm: var(--shadow-pop);
+  --shadow-md: var(--shadow-pop);
+  --shadow-lg: var(--shadow-overlay);
 }

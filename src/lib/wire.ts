@@ -47,6 +47,13 @@ function asRecord(value: unknown): Raw | null {
 /* ------------------------------------------------------------------ */
 
 const str = (value: unknown): string => (typeof value === "string" ? value : "");
+/**
+ * Optional text. Absent, non-string and empty all collapse to `undefined` so a
+ * decoded record compares equal to one that never had the field, and so
+ * `JSON.stringify` drops the key instead of writing `""`.
+ */
+const optStr = (value: unknown): string | undefined =>
+  typeof value === "string" && value.length > 0 ? value : undefined;
 const num = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 const bool = (value: unknown): boolean => value === true;
@@ -96,9 +103,11 @@ function cleanWord(value: unknown): Word {
   return {
     id: str(raw.id),
     term: str(raw.term),
+    phonetic: optStr(raw.phonetic),
     definition: str(raw.definition),
     definition2: str(raw.definition2),
     example: str(raw.example),
+    exampleZh: optStr(raw.exampleZh),
     note: str(raw.note),
     status: asStatus(raw.status),
     favorite: bool(raw.favorite),

@@ -463,18 +463,18 @@ export function SettingsPage() {
           <div className="card-head">
             <div>
               <div className="card-title">{t("settings.about")}</div>
-              <div className="card-sub">Lexumo · 词砚</div>
+              <div className="card-sub">Lexumo 词砚</div>
             </div>
           </div>
           <div className="card-pad about-body">
             <div className="about-meta">
               <span className="chip chip-tag">{t("settings.version")} 0.1.0</span>
-              <span className="tiny muted">Tauri 2 · React 19 · TypeScript</span>
+              <span className="tiny muted">Tauri 2、React 19、TypeScript</span>
             </div>
             <p className="about-desc">{t("settings.madeWith")}</p>
             {/* AGPL-3.0 §7(b) additional term: this attribution must stay visible. */}
             <div className="about-credit">
-              <span className="about-credit-name">Lingueez — created by Yurii Lysak</span>
+              <span className="about-credit-name">Lingueez, created by Yurii Lysak</span>
               <span className="tiny muted">{t("settings.licenseNote")}</span>
             </div>
             <hr className="divider" />
