@@ -152,3 +152,25 @@
 - 深色两种材质仍靠 1px 石线区分，只是把纸面提亮了一档。
 
 复核结果：`tsc --noEmit` 0；`vitest` 14 文件 / 300 用例；`vite build` 通过；`sloplint --scope app --render` 0 FAIL / 0 WARN / 1 WAIVED / 3 ANSWERED；结构探针 18/18；`verify-round` 17/17、`verify-mobile` 8/8、`verify-chart` 18/18、`verify-motion` 16/16、`verify-contrast` 0 低对比、`tabbar-check` 6/6、`rail-check` 7/7。
+
+## 十、交接后补正（另一进程的功能落地之后）
+
+另一个进程的功能（音标 + 例句翻译）与这次重做一起提交（`c76fa61`）。它新增的界面没有走过设计系统，补正如下：
+
+- `.fc-example` 的 `line-height: 1.7` 改走 `--lh-body`，`gap: 2px` 改 `var(--sp-1)`，并删掉 `color: var(--ink-3, var(--ink-2))` 里永远不会生效的兜底。
+- `.fc-example-zh` 原本有 `opacity: 0.85`，把 13px 的 `--ink-3` 压到约 3.9:1；去掉后实测 4.81:1。
+- 编辑器里 `/音标/ · 音标` 的中间点属于 Floor 级禁用项（正则因为夹在 JSX 表达式之间漏掉了），改为空格。
+- 三处 `marginLeft: 6` 与 `minWidth: 118` 归到 4px 网格。
+- **音标原本只采集、不显示**：词表和闪卡都看不到。已在闪卡正面词头下方加 `/音标/`，Plex Mono、`--ink-3`、16px、不加粗——它是注释，不是第二个标题。
+
+复核：`tsc` 0；`vitest` 15 文件 / 317 用例；`vite build` 通过；`sloplint --scope app --render` 0 FAIL / 0 WARN / 1 WAIVED / 3 ANSWERED；结构探针 18/18；新增 `.shots/hm/check-phonetic.mjs` 5/5（音标字体与字号、例句译文 4.81:1）；`verify-round` 17/17、`verify-mobile` 8/8、`verify-chart` 18/18、`verify-motion` 16/16、`verify-contrast` 0 低对比、`tabbar-check` 6/6、`rail-check` 7/7。
+
+## 十二、收尾：三个遗留问题
+
+评审留了三条没做的，这一轮一起收掉。
+
+- **根级 ErrorBoundary 与写入失败上报**。渲染崩溃以前会白屏——对一个本地优先的应用来说这是最坏的结果，数据明明还在，用户却只能判断成丢失。现在 `src/components/ErrorBoundary.tsx` 挂在 `I18nProvider` 之内、其余一切之外，接住渲染错误后换成一张卡片：发生了什么、词条都还在本机、以及「重新载入」这一个动作。持久化那一侧，`db.ts` 的 `saveSnapshot` 原本连 IndexedDB 和 localStorage 都写失败时只是静默留在内存里；现在它通过 `src/lib/errors.ts` 上报，外壳订阅后用一条错误提示条说明后果与下一步（「改动没能存到本机，可能是空间不足，请先导出备份」）。用监听器集合而不是 context，是为了让 `db.ts` 以后换成 SQLite 时不必把 React 拖进来。
+- **行高全部走 token**。新增 `--lh-none / --lh-display / --lh-title / --lh-loose`，与原有的 `tight / snug / body` 合成一条 7 级阶梯，三个样式表里 27 处字面行高全部映射过去。只留三处 `px`：`.seg-count`、`.tab-badge` 和图表 x 轴标签——在固定高度的徽标上，那个值是盒子尺寸而不是行距，所以它属于尺寸。
+- **深色两种材质不再只差一条 1px 线**。两块都接近纯黑，靠明度差拉不开，于是改用「边」来交代：石面压到 `#050706`，纸面抬到 `#1d231f`，接缝由一条会反光的线（`--frame-line #39443e`）加纸面内侧 2px 的 `--edge` 共同承担。浅色主题里 `--edge` 是透明的，因为那边两块本来就离得远。
+
+复核：`tsc` 0；`vitest` 16 文件 / 320 用例（新增 `src/__tests__/error-paths.test.tsx` 3 条）；`vite build` 通过；`sloplint --scope app --render` 0 FAIL / 0 WARN / 1 WAIVED / 3 ANSWERED；结构探针 19/19（新增深色接缝断言）；新增 `.shots/hm/check-errors.mjs` 5/5——把 IndexedDB 与 localStorage 同时写坏后点一个设置开关，确实弹出 `role="alert"` 的提示条、文案含后果与下一步、五个导航项仍在、没有未捕获异常；`verify-round` 17/17、`verify-mobile` 8/8、`verify-chart` 18/18、`verify-motion` 16/16、`verify-contrast` 0 低对比、`tabbar-check` 6/6、`rail-check` 7/7、`check-phonetic` 5/5。

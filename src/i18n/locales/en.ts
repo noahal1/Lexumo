@@ -327,6 +327,14 @@ export const en: Dictionary = {
     retentionDetail: "{reviews} reviews, {correct} correct",
     overdueWords: "Overdue words",
   },
+  errors: {
+    crashTitle: "This screen ran into a problem",
+    crashBody:
+      "Your words are still on this device and were not lost. Reload to pick up where you left off.",
+    reload: "Reload",
+    storeWrite:
+      "This change could not be saved on this device. Check free space, then export a backup.",
+  },
   shortcuts: {
     pageSwitch: "Switch page",
     help: "Open this sheet",

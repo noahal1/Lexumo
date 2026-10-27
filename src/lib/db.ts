@@ -6,6 +6,7 @@
  * swapped for SQLite via a Tauri plugin without touching app code.
  */
 import type { AppData } from "./types";
+import { reportError } from "./errors";
 
 const DB_NAME = "lexumo";
 const STORE = "kv";
@@ -69,8 +70,9 @@ export async function saveSnapshot(data: AppData): Promise<void> {
   }
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(data));
-  } catch {
-    /* last resort: memory only */
+  } catch (error) {
+    /* Memory only: this edit survives the session and nothing else. */
+    reportError("store-write", error);
   }
 }
 

@@ -95,3 +95,23 @@ receipt for an action — a row arriving, a bar filling, a toast leaving.
 - The row headword is `font-weight: 500` in a real self-hosted Plex Serif 500.
 - Dark `--accent` is `#66adc5`: the same azurite hue as light, lifted only in
   lightness, so one accent stays one colour in both themes.
+
+## Closing the last three gaps
+
+- **One leading scale.** `--lh-none 1`, `--lh-display 1.05`, `--lh-title 1.15`,
+  `--lh-tight 1.2`, `--lh-snug 1.4`, `--lh-body 1.6`, `--lh-loose 1.7`. Every
+  `line-height` in the sheet is one of these. The three remaining `px` values
+  (`.seg-count`, `.tab-badge`, the chart x-label) size a fixed-height box, so
+  they belong with the size rather than with the scale.
+- **Dark separates the materials with an edge, not with luminance.** Both
+  surfaces are near-black, so the stone drops to `#050706`, the paper lifts to
+  `#1d231f`, and the seam is carried by a lit line (`--frame-line #39443e`)
+  plus a 2px inset edge on the paper (`--edge`, dark only). In light theme
+  `--edge` is transparent, because there the two materials are already far
+  apart.
+- **Failure is a state, so it has a surface.** A render crash is caught at the
+  root and replaced by the `.crash` card: what happened, that the words are
+  still on the device, and one action. A snapshot that cannot be persisted
+  (IndexedDB and localStorage both refusing) surfaces as an error toast naming
+  the next step instead of failing silently. Both publish through
+  `src/lib/errors.ts`, which keeps the persistence adapter free of React.

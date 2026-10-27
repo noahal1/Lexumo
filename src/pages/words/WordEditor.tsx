@@ -377,7 +377,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
           />
           {phonetic && (
             <span className="hint mono">
-              /{phonetic}/ · {t("words.phonetic")}
+              /{phonetic}/ {t("words.phonetic")}
             </span>
           )}
           {error && (
@@ -421,7 +421,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
           <div className="field">
             <label className="label" htmlFor="word-def2">
               {t("common.definition2")}
-              <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>
+              <span className="muted tiny" style={{ marginLeft: "var(--sp-2)", fontWeight: 400 }}>
                 {t("common.optional")}
               </span>
             </label>
@@ -447,7 +447,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         <div className="field">
           <label className="label" htmlFor="word-example">
             {t("common.example")}
-            <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>
+            <span className="muted tiny" style={{ marginLeft: "var(--sp-2)", fontWeight: 400 }}>
               {t("common.optional")}
             </span>
           </label>
@@ -479,7 +479,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         <div className="field">
           <label className="label" htmlFor="word-note">
             {t("common.notes")}
-            <span className="muted tiny" style={{ marginLeft: 6, fontWeight: 400 }}>
+            <span className="muted tiny" style={{ marginLeft: "var(--sp-2)", fontWeight: 400 }}>
               {t("common.optional")}
             </span>
           </label>

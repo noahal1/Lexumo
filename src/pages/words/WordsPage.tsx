@@ -470,7 +470,7 @@ export function WordsPage() {
           value={activeTag ?? "all"}
           onChange={(e) => setTagFilter(e.target.value)}
           aria-label={t("words.filterTag")}
-          style={{ minWidth: 118 }}
+          style={{ minWidth: 120 }}
         >
           <option value="all">{t("common.all")}</option>
           {tags.map((tag) => (

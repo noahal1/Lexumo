@@ -89,6 +89,8 @@
 
   /* The scrim behind a modal. Declared here so no rule carries a raw colour. */
   --scrim: rgba(16, 20, 17, 0.44);
+  /* The paper's edge catching light. Unused in light theme. */
+  --edge: transparent;
   /* Hover tint for controls that sit on an inverted surface (the toast). */
   --wash: rgba(127, 127, 127, 0.22);
 
@@ -111,9 +113,18 @@
   --fs-2xl: 30px;
   --fs-3xl: 38px;
 
+  /* One leading scale for the whole app. Entries above 1.2 are for reading;
+     below it is for display type, where the line box should hug the glyphs. */
+  --lh-none: 1;
+  --lh-display: 1.05;
+  --lh-title: 1.15;
   --lh-tight: 1.2;
   --lh-snug: 1.4;
   --lh-body: 1.6;
+  --lh-loose: 1.7;
+  /* Three places keep a px line-height — .seg-count, .tab-badge and the chart
+     x-label. On a fixed-height badge that value is a box dimension, not
+     leading, so it belongs with the size, not with this scale. */
 
   /* ---- spacing: one 4px grid, no exceptions ---- */
   --sp-1: 4px;
@@ -173,12 +184,12 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #1a1f1c;
+  --bg: #1d231f;
   --bg-deep: #121614;
-  --surface: #242a25;
-  --surface-2: #2b312b;
-  --surface-hover: #323831;
-  --surface-sunken: #101412;
+  --surface: #262c27;
+  --surface-2: #2d342e;
+  --surface-hover: #343b34;
+  --surface-sunken: #121613;
 
   --line: #2f3633;
   --line-strong: #4f5754;
@@ -210,10 +221,10 @@
 
   /* The stone goes darker than the page in dark mode: the frame recedes and
      the page comes forward, the same relationship as in light mode. */
-  --frame: #070b09;
-  --frame-2: #040605;
-  --frame-3: #111614;
-  --frame-line: #1f2623;
+  --frame: #050706;
+  --frame-2: #030504;
+  --frame-3: #0f1412;
+  --frame-line: #39443e;
   --frame-ink: #dddfda;
   --frame-ink-2: #a2a6a1;
   --frame-ink-3: #757b76;
@@ -226,6 +237,7 @@
   --shadow-tabbar: 0 -1px 0 rgba(0, 0, 0, 0.4), 0 -6px 20px -12px rgba(0, 0, 0, 0.8);
   --ring: 0 0 0 3px rgba(112, 200, 205, 0.28);
   --scrim: rgba(0, 0, 0, 0.6);
+  --edge: rgba(255, 255, 255, 0.055);
 }
 
 /* Old elevation names still referenced by a handful of rules; they resolve to

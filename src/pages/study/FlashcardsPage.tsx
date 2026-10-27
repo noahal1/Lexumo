@@ -756,6 +756,9 @@ export function FlashcardsPage() {
                   ) : (
                     <div className="fc-face fc-front rise">
                       <div className="fc-term">{word.term}</div>
+                      {word.phonetic && (
+                        <div className="fc-phonetic">/{word.phonetic}/</div>
+                      )}
                       <div className="fc-hint">
                         <span className="kbd">{t("flashcards.spaceKey")}</span>
                         <span>{t("flashcards.revealHint")}</span>

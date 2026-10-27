@@ -183,7 +183,7 @@
   font-family: var(--font-display);
   font-size: clamp(30px, 4vw, 46px);
   font-weight: 600;
-  line-height: 1.15;
+  line-height: var(--lh-title);
   letter-spacing: -0.02em;
   text-wrap: balance;
   overflow-wrap: anywhere;
@@ -193,7 +193,7 @@
 .fc-term-sm {
   font-family: var(--font-display);
   font-size: var(--fs-lg);
-  line-height: 1.25;
+  line-height: var(--lh-tight);
   letter-spacing: -0.01em;
   color: var(--ink-2);
   overflow-wrap: anywhere;
@@ -220,14 +220,22 @@
   text-wrap: pretty;
 }
 
+.fc-phonetic {
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  color: var(--ink-3);
+  margin-top: var(--sp-1);
+  text-align: center;
+}
+
 .fc-example {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-1);
   border-left: 2px solid var(--line-strong);
   padding-left: var(--sp-3);
   font-size: var(--fs-base);
-  line-height: 1.7;
+  line-height: var(--lh-body);
   color: var(--ink-2);
   text-wrap: pretty;
 }
@@ -236,10 +244,11 @@
   font-style: italic;
 }
 
+/* No opacity: 0.85 here — it multiplies the ink down to about 3.9:1 at 13px,
+   which fails AA. --ink-3 already reads as secondary. */
 .fc-example-zh {
   font-size: var(--fs-sm);
-  color: var(--ink-3, var(--ink-2));
-  opacity: 0.85;
+  color: var(--ink-3);
 }
 
 .fc-note {
@@ -249,7 +258,7 @@
   border-radius: var(--r-sm);
   background: var(--surface-2);
   font-size: var(--fs-sm);
-  line-height: 1.6;
+  line-height: var(--lh-body);
   color: var(--ink-2);
   text-wrap: pretty;
 }
@@ -361,7 +370,7 @@
 .fc-intro-title {
   font-family: var(--font-display);
   font-size: var(--fs-2xl);
-  line-height: 1.15;
+  line-height: var(--lh-title);
   letter-spacing: -0.02em;
   text-wrap: balance;
 }
@@ -369,7 +378,7 @@
 .fc-intro-text {
   max-width: 46ch;
   font-size: var(--fs-base);
-  line-height: 1.65;
+  line-height: var(--lh-loose);
   color: var(--ink-2);
   text-wrap: pretty;
 }
@@ -386,7 +395,7 @@
 .fc-done-num {
   font-family: var(--font-display);
   font-size: var(--fs-xl);
-  line-height: 1.05;
+  line-height: var(--lh-display);
   font-variant-numeric: tabular-nums;
 }
 
@@ -417,7 +426,7 @@
 
 .quiz-prompt-text {
   font-family: var(--font-display);
-  line-height: 1.35;
+  line-height: var(--lh-snug);
   letter-spacing: -0.015em;
   text-wrap: balance;
   overflow-wrap: anywhere;
@@ -489,7 +498,7 @@
   flex: 1 1 auto;
   min-width: 0;
   font-size: var(--fs-md);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   text-wrap: pretty;
 }
 
@@ -624,7 +633,7 @@
   font-family: var(--font-display);
   font-size: var(--fs-md);
   font-weight: 600;
-  line-height: 1.35;
+  line-height: var(--lh-snug);
   overflow-wrap: anywhere;
 }
 

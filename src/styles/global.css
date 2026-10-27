@@ -173,7 +173,7 @@ a:hover {
   font-family: var(--font-display);
   font-size: 19px;
   font-weight: 600;
-  line-height: 1;
+  line-height: var(--lh-none);
   padding-bottom: 1px;
 }
 
@@ -186,13 +186,13 @@ a:hover {
   font-size: 17px;
   font-weight: 600;
   letter-spacing: 0;
-  line-height: 1.2;
+  line-height: var(--lh-tight);
   color: var(--frame-ink);
 }
 .brand-sub {
   font-size: var(--fs-xs);
   color: var(--frame-ink-3);
-  line-height: 1.4;
+  line-height: var(--lh-snug);
   margin-top: 1px;
 }
 
@@ -303,7 +303,7 @@ a:hover {
   font-size: var(--fs-lg);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: var(--lh-title);
   letter-spacing: -0.01em;
   color: var(--frame-ink);
 }
@@ -315,14 +315,14 @@ a:hover {
 .streak-label {
   font-size: var(--fs-xs);
   color: var(--frame-ink-3);
-  line-height: 1.35;
+  line-height: var(--lh-snug);
 }
 
 .sidebar-tagline {
   padding: 0 var(--sp-2);
   font-size: var(--fs-xs);
   color: var(--frame-ink-3);
-  line-height: 1.5;
+  line-height: var(--lh-body);
 }
 
 /* Collapsed rail */
@@ -1318,7 +1318,7 @@ a:hover {
 .stat-value {
   font-family: var(--font-display);
   font-size: var(--fs-2xl);
-  line-height: 1.05;
+  line-height: var(--lh-display);
   font-weight: 600;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -1481,7 +1481,7 @@ a:hover {
   display: inline-block;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
-  line-height: 1.5;
+  line-height: var(--lh-body);
   padding: 0 var(--sp-1);
   border: 1px solid var(--line-strong);
   border-bottom-width: 2px;
@@ -1617,6 +1617,42 @@ mark {
     opacity: 1;
     transform: none;
   }
+}
+
+/* Crash fallback
+   Rendered instead of the whole tree, so it owns its own centring and must
+   read on a window with no shell around it. */
+.crash {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-8);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.crash-card {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-3);
+  max-width: 46ch;
+  padding: var(--sp-8);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.crash-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+
+.crash-body {
+  color: var(--ink-2);
+  line-height: var(--lh-body);
 }
 
 /* ============================================================
@@ -1785,7 +1821,7 @@ mark {
   font-family: inherit;
   font-size: var(--fs-xs);
   font-weight: 500;
-  line-height: 1.1;
+  line-height: var(--lh-title);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition:
@@ -2004,7 +2040,7 @@ mark {
   background: transparent;
   color: var(--frame-ink-2);
   font-size: var(--fs-xs);
-  line-height: 1.3;
+  line-height: var(--lh-snug);
   text-align: left;
   cursor: pointer;
   transition:
@@ -2066,4 +2102,12 @@ mark {
   .row-words.selecting > .row-flex {
     grid-area: term;
   }
+}
+
+/* Dark theme: both materials are near-black, so the boundary between the
+   stone frame and the paper is carried by a lit edge on the paper rather than
+   by a luminance step. Light theme needs nothing — there the two are already
+   far apart. */
+:root[data-theme="dark"] .app:not(.mobile) .main {
+  box-shadow: inset 2px 0 0 var(--edge);
 }

@@ -26,6 +26,7 @@ import {
 import { getSyncStatus, subscribeSyncStatus, type SyncError } from "@/lib/sync";
 import { useRouter, type PageId } from "@/app/router";
 import { cx } from "@/lib/utils";
+import { onError } from "@/lib/errors";
 import { WordsPage } from "@/pages/words/WordsPage";
 import { FlashcardsPage } from "@/pages/study/FlashcardsPage";
 import { QuizPage } from "@/pages/study/QuizPage";
@@ -128,6 +129,17 @@ export function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const toast = useToast();
   useTheme();
+
+  // A snapshot that fell through both IndexedDB and localStorage is alive in
+  // memory only. Nothing on screen can show that by itself, so the adapter
+  // reports it and the shell says one sentence with the next step in it.
+  useEffect(
+    () =>
+      onError((kind) => {
+        if (kind === "store-write") toast(t("errors.storeWrite"), "err");
+      }),
+    [toast, t],
+  );
 
   const pendingAnchor = useRef<string | null>(null);
 

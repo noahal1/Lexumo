@@ -323,6 +323,12 @@ const zhCNraw = {
     retentionDetail: "{reviews} 次复习，{correct} 次答对",
     overdueWords: "逾期词语",
   },
+  errors: {
+    crashTitle: "这个页面出了点问题",
+    crashBody: "词条都还在本机，没有丢。重新载入就能接着用。",
+    reload: "重新载入",
+    storeWrite: "改动没能存到本机，可能是空间不足，请先导出备份",
+  },
   shortcuts: {
     pageSwitch: "切换页面",
     help: "打开这张表",

@@ -5,6 +5,7 @@ import { App } from "./App";
 import { RouterProvider } from "./app/router";
 import { I18nProvider } from "./i18n";
 import { ToastProvider } from "./components/ui";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { initStore } from "./lib/store";
 import { initSync } from "./lib/sync";
 
@@ -16,11 +17,13 @@ async function boot() {
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
       <I18nProvider>
-        <ToastProvider>
-          <RouterProvider>
-            <App />
-          </RouterProvider>
-        </ToastProvider>
+        <ErrorBoundary>
+          <ToastProvider>
+            <RouterProvider>
+              <App />
+            </RouterProvider>
+          </ToastProvider>
+        </ErrorBoundary>
       </I18nProvider>
     </StrictMode>,
   );
