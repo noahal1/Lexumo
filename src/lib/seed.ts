@@ -15,7 +15,6 @@ interface SeedWord {
   example?: string;
   /** Translation of `example`; the demo deck shows both faces of the card. */
   exampleZh?: string;
-  tags: string[];
   status: WordStatus;
   favorite?: boolean;
   /** [ease, intervalDays, daysUntilDue, reviewCount, correctCount] */
@@ -30,7 +29,6 @@ const SEED: SeedWord[] = [
     definition2: "机缘巧合；不期而遇的惊喜",
     example: "Finding that little bookshop was pure serendipity.",
     exampleZh: "发现那家小书店纯属机缘巧合。",
-    tags: ["抽象", "文学"],
     status: "learning",
     favorite: true,
     srs: [2.35, 9, 2, 5, 4],
@@ -42,7 +40,6 @@ const SEED: SeedWord[] = [
     definition2: "形容人或材料受挫后仍能复原",
     example: "Children are remarkably resilient.",
     exampleZh: "孩子的恢复力强得惊人。",
-    tags: ["形容词", "性格"],
     status: "reviewing",
     srs: [2.5, 4, 0, 2, 2],
   },
@@ -52,7 +49,6 @@ const SEED: SeedWord[] = [
     definition: "无处不在的；普遍存在的",
     example: "Smartphones have become ubiquitous.",
     exampleZh: "智能手机已经无处不在。",
-    tags: ["形容词", "学术"],
     status: "mastered",
     srs: [2.5, 34, 12, 8, 8],
   },
@@ -63,7 +59,6 @@ const SEED: SeedWord[] = [
     definition2: "对细节近乎挑剔的认真",
     example: "She kept meticulous notes.",
     exampleZh: "她的笔记做得一丝不苟。",
-    tags: ["形容词", "工作"],
     status: "learning",
     srs: [2.2, 11, 1, 4, 3],
   },
@@ -73,7 +68,6 @@ const SEED: SeedWord[] = [
     definition: "短暂的；转瞬即逝的",
     example: "Fame can be ephemeral.",
     exampleZh: "名声可能是短暂的。",
-    tags: ["形容词", "文学"],
     status: "new",
   },
   {
@@ -83,7 +77,6 @@ const SEED: SeedWord[] = [
     definition2: "不加修饰地说出真实想法",
     example: "Thank you for your candid feedback.",
     exampleZh: "谢谢你坦率的反馈。",
-    tags: ["形容词", "沟通"],
     status: "reviewing",
     srs: [2.5, 2, 0, 1, 1],
   },
@@ -93,7 +86,6 @@ const SEED: SeedWord[] = [
     definition: "细微差别；微妙之处",
     example: "The translation misses the nuance.",
     exampleZh: "这个翻译丢掉了原文的细微差别。",
-    tags: ["名词", "语言"],
     status: "learning",
     srs: [2.3, 8, 3, 3, 3],
   },
@@ -103,7 +95,6 @@ const SEED: SeedWord[] = [
     definition: "务实的；讲求实际的",
     example: "We need a pragmatic solution.",
     exampleZh: "我们需要一个务实的方案。",
-    tags: ["形容词", "工作"],
     status: "mastered",
     srs: [2.5, 26, 20, 6, 6],
   },
@@ -113,7 +104,6 @@ const SEED: SeedWord[] = [
     definition: "模棱两可的；含糊不清的",
     example: "His answer was deliberately ambiguous.",
     exampleZh: "他的回答是故意含糊的。",
-    tags: ["形容词", "学术"],
     status: "new",
   },
   {
@@ -122,7 +112,6 @@ const SEED: SeedWord[] = [
     definition: "勤勉的；用功的",
     example: "A diligent student reviews every day.",
     exampleZh: "勤勉的学生每天都会复习。",
-    tags: ["形容词", "性格"],
     status: "reviewing",
     srs: [2.5, 3, 0, 2, 1],
   },
@@ -133,7 +122,6 @@ const SEED: SeedWord[] = [
     definition2: "理解他人感受的能力",
     example: "Good design starts with empathy.",
     exampleZh: "好的设计始于共情。",
-    tags: ["名词", "心理"],
     status: "learning",
     srs: [2.1, 7, 0, 3, 2],
   },
@@ -143,7 +131,6 @@ const SEED: SeedWord[] = [
     definition: "顽强的；坚持不懈的",
     example: "A tenacious researcher rarely gives up.",
     exampleZh: "顽强的研究者很少放弃。",
-    tags: ["形容词", "性格"],
     status: "new",
     favorite: true,
   },
@@ -153,7 +140,6 @@ const SEED: SeedWord[] = [
     definition: "简洁的；简明的",
     example: "Keep the summary concise.",
     exampleZh: "摘要保持简洁。",
-    tags: ["形容词", "写作"],
     status: "mastered",
     srs: [2.5, 40, 25, 9, 9],
   },
@@ -163,7 +149,6 @@ const SEED: SeedWord[] = [
     definition: "不可避免的；必然发生的",
     example: "Change is inevitable.",
     exampleZh: "变化是不可避免的。",
-    tags: ["形容词", "哲学"],
     status: "reviewing",
     srs: [2.5, 5, 4, 2, 2],
   },
@@ -234,7 +219,6 @@ export function seedData(now = Date.now()): AppData {
     note: "",
     status: s.status,
     favorite: s.favorite ?? false,
-    tags: s.tags,
     listId: DEFAULT_LIST_ID,
     sourceLang: "en",
     targetLang: "zh-CN",

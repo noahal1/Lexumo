@@ -59,7 +59,6 @@ function wordRecord(over: Partial<Word> = {}): Word {
     note: "",
     status: "new",
     favorite: false,
-    tags: [],
     listId: DEFAULT_LIST_ID,
     sourceLang: "en",
     targetLang: "zh-CN",

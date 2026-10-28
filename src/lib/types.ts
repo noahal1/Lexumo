@@ -53,7 +53,6 @@ export interface Word {
   note: string;
   status: WordStatus;
   favorite: boolean;
-  tags: string[];
   listId: string;
   sourceLang: string;
   targetLang: string;
@@ -131,7 +130,11 @@ export interface AppData {
   pending: PendingChanges;
 }
 
-export const DATA_VERSION = 2;
+/**
+ * 3 — `Word.tags` removed. The bump is what makes an old snapshot's leftover
+ * `tags` arrays get dropped on load instead of being carried forever.
+ */
+export const DATA_VERSION = 3;
 
 export const EMPTY_TOMBSTONES: Tombstones = { words: {}, lists: {}, logs: {} };
 

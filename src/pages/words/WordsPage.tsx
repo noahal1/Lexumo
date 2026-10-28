@@ -10,7 +10,6 @@ import {
   PageShell,
   Segmented,
   StatusChip,
-  TagInput,
   useToast,
 } from "@/components/ui";
 import { useLang, useT } from "@/i18n";
@@ -55,7 +54,6 @@ const EMPTY_COUNTS: Record<StatusFilter, number> = {
   learning: 0,
   mastered: 0,
 };
-const NO_TAGS: string[] = [];
 
 /** Wraps every case-insensitive match of `q` in a <mark> so hits are scannable. */
 function highlight(text: string, q: string): ReactNode {
@@ -151,8 +149,6 @@ export function WordsPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [tagDialogOpen, setTagDialogOpen] = useState(false);
-  const [bulkTags, setBulkTags] = useState<string[]>([]);
 
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -180,50 +176,38 @@ export function WordsPage() {
     setFilters((f) =>
       data.lists.some((l) => l.id === f.listId)
         ? f
-        : { ...f, listId: data.lists[0].id, tag: undefined },
+        : { ...f, listId: data.lists[0].id },
     );
   }, [data.lists]);
 
-  // One index feeds the header counts, the status/tag controls and the list.
+  // One index feeds the header counts, the status control and the list.
   // Rebuilt only when the snapshot changes (like the old due-count memo), so a
   // plain render cannot shift the due buckets under the user.
   const index = useMemo(() => buildWordIndex(data), [data]);
   const listId = filters.listId;
   const listCount = index.byList.get(listId)?.length ?? 0;
   const counts = index.countsByList.get(listId) ?? EMPTY_COUNTS;
-  const tags = index.tagsByList.get(listId) ?? NO_TAGS;
   // List-scoped: the header must describe the list it sits above. The sidebar
   // badge stays global (App.tsx owns that one).
   const dueCount = index.dueByList.get(listId)?.length ?? 0;
 
   const trimmedQuery = (filters.query ?? "").trim();
 
-  // A tag can vanish from the active list (deleted/edited word). The dropdown
-  // only lists this list's tags, so derive the effective tag here: a stale one
-  // can never filter the list down to nothing.
-  const activeTag = filters.tag && tags.includes(filters.tag) ? filters.tag : undefined;
-
   const filtered = useMemo(
-    () => queryWords(index, { ...filters, tag: activeTag, lang }),
-    [index, filters, activeTag, lang],
+    () => queryWords(index, { ...filters, lang }),
+    [index, filters, lang],
   );
   const filtersActive =
     Boolean(trimmedQuery) ||
     (filters.status ?? "all") !== "all" ||
-    Boolean(activeTag) ||
     Boolean(filters.favoriteOnly);
 
   const setQuery = (query: string) => setFilters((f) => ({ ...f, query }));
   const setStatusFilter = (status: StatusFilter) => setFilters((f) => ({ ...f, status }));
-  const setTagFilter = (tag: string) =>
-    setFilters((f) => ({ ...f, tag: tag === "all" ? undefined : tag }));
   const setSort = (sort: SortKey) => setFilters((f) => ({ ...f, sort }));
   const resetFilters = () => setFilters((f) => ({ listId: f.listId, sort: f.sort }));
 
-  // Switching lists clears the tag: the dropdown only ever offers the active
-  // list's tags, so keeping a foreign tag would silently empty the list.
-  const selectList = (id: string) =>
-    setFilters((f) => ({ ...f, listId: id, tag: undefined }));
+  const selectList = (id: string) => setFilters((f) => ({ ...f, listId: id }));
 
   const openCreate = useCallback(() => {
     setEditing(null);
@@ -252,7 +236,7 @@ export function WordsPage() {
   // may sit in a field, and both are suspended while one of its dialogs is up.
   const pageShortcuts = useMemo<ShortcutBinding[]>(() => {
     if (selectMode) {
-      if (tagDialogOpen || bulkDeleteOpen) return [];
+      if (bulkDeleteOpen) return [];
       return [
         {
           id: "words.exitSelect",
@@ -298,7 +282,6 @@ export function WordsPage() {
     listMgrOpen,
     pendingDelete,
     selectMode,
-    tagDialogOpen,
     bulkDeleteOpen,
     filtered,
     openCreate,
@@ -351,14 +334,6 @@ export function WordsPage() {
       if (!w.favorite) updateWord(w.id, { favorite: true });
     });
     toast(t("words.favoritedCount", { n: selectedWords.length }), "ok");
-  };
-
-  const applyBulkTags = () => {
-    if (bulkTags.length === 0) return;
-    selectedWords.forEach((w) => updateWord(w.id, { tags: [...w.tags, ...bulkTags] }));
-    setBulkTags([]);
-    setTagDialogOpen(false);
-    toast(t("words.tagsAdded", { n: selectedWords.length }), "ok");
   };
 
   // Select mode is not a dialog, so it owns its two keys (Esc leaves, Ctrl/⌘+A
@@ -464,21 +439,6 @@ export function WordsPage() {
           onChange={setStatusFilter}
           ariaLabel={t("words.filterStatus")}
         />
-
-        <select
-          className="select"
-          value={activeTag ?? "all"}
-          onChange={(e) => setTagFilter(e.target.value)}
-          aria-label={t("words.filterTag")}
-          style={{ minWidth: 120 }}
-        >
-          <option value="all">{t("common.all")}</option>
-          {tags.map((tag) => (
-            <option key={tag} value={tag}>
-              #{tag}
-            </option>
-          ))}
-        </select>
 
         <select
           className="select"
@@ -608,11 +568,6 @@ export function WordsPage() {
                       ? highlight(w.definition, trimmedQuery)
                       : t("words.noDefinition")}
                   </div>
-                  {w.tags.length > 0 && (
-                    <div className="row-tags">
-                      {w.tags.map((tag) => `#${tag}`).join("  ")}
-                    </div>
-                  )}
                 </div>
 
                 <div className="row-col-status">
@@ -697,15 +652,6 @@ export function WordsPage() {
           </button>
           <button
             type="button"
-            className="btn btn-quiet btn-sm"
-            onClick={() => setTagDialogOpen(true)}
-            disabled={selected.size === 0}
-          >
-            <Icon name="tag" size={14} />
-            {t("words.tagSelected")}
-          </button>
-          <button
-            type="button"
             className="btn btn-quiet btn-sm bulk-danger"
             onClick={() => setBulkDeleteOpen(true)}
             disabled={selected.size === 0}
@@ -786,39 +732,6 @@ export function WordsPage() {
         onCancel={() => setBulkDeleteOpen(false)}
         onConfirm={confirmBulkDelete}
       />
-
-      <Modal
-        open={tagDialogOpen}
-        onClose={() => setTagDialogOpen(false)}
-        title={t("words.tagSelected")}
-        width={420}
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={() => setTagDialogOpen(false)}
-            >
-              {t("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={applyBulkTags}
-              disabled={bulkTags.length === 0}
-            >
-              {t("common.save")}
-            </button>
-          </>
-        }
-      >
-        <TagInput
-          value={bulkTags}
-          onChange={setBulkTags}
-          placeholder={t("words.tagsPlaceholder")}
-          hint={t("words.bulkTagsHint", { n: selected.size })}
-        />
-      </Modal>
 
       <ListManagerModal
         open={listMgrOpen}

@@ -36,8 +36,8 @@ records the decisions those values encode.
   edge (3.3:1 — the only edge that must clear 3:1).
 - Accent — `--accent` 7.1:1 on paper, `--accent-soft` wash, `--accent-ink` text
   on the wash, `--on-accent` text on the fill. `--danger` is cinnabar and means
-  destruction only; `--warn` ochre, `--ok` pine, `--info` slate-blue, `--mark`
-  a muted violet used for nothing but the tag accent.
+  destruction only; `--warn` ochre, `--ok` pine, `--info` slate-blue (chart
+  series only).
 - Faces — `--font-display` IBM Plex Serif (headword, page title, figures),
   `--font-ui` IBM Plex Sans (everything else), `--font-mono` IBM Plex Mono
   (keycaps, measurements). Three weights in use: 400, 500, 600. CJK falls back

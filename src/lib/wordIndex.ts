@@ -24,10 +24,6 @@ export interface WordIndex {
   byList: Map<string, Word[]>;
   /** Status tallies per list, including the "all" bucket. */
   countsByList: Map<string, Record<StatusFilter, number>>;
-  /** Tag pool of one list: most used first, localeCompare tie-break. */
-  tagsByList: Map<string, string[]>;
-  /** Global tag pool, same ordering rule as the old store.tagPool. */
-  tags: string[];
   /** Global due bucket (same predicate as store.dueWords). */
   due: Word[];
   /** Due bucket per list, so a page can show a list-scoped count. */
@@ -38,7 +34,6 @@ export interface WordQuery {
   listId: string;
   query?: string;
   status?: StatusFilter;
-  tag?: string;
   favoriteOnly?: boolean;
   sort?: SortKey;
   /** Locale for term collation; the UI passes the active UI language. */
@@ -76,13 +71,6 @@ function isDue(word: Word, now: number): boolean {
   return word.srs.dueAt <= now;
 }
 
-/** Count desc, then localeCompare so equal-count tags keep a stable order. */
-function orderTags(counts: Map<string, number>): string[] {
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([tag]) => tag);
-}
-
 function emptyCounts(): Record<StatusFilter, number> {
   return { all: 0, new: 0, reviewing: 0, learning: 0, mastered: 0 };
 }
@@ -90,8 +78,6 @@ function emptyCounts(): Record<StatusFilter, number> {
 export function buildWordIndex(data: AppData, now = Date.now()): WordIndex {
   const byList = new Map<string, Word[]>();
   const countsByList = new Map<string, Record<StatusFilter, number>>();
-  const listTagCounts = new Map<string, Map<string, number>>();
-  const tagCounts = new Map<string, number>();
   const due: Word[] = [];
   const dueByList = new Map<string, Word[]>();
 
@@ -99,7 +85,6 @@ export function buildWordIndex(data: AppData, now = Date.now()): WordIndex {
   for (const list of data.lists) {
     byList.set(list.id, []);
     countsByList.set(list.id, emptyCounts());
-    listTagCounts.set(list.id, new Map());
   }
 
   // One pass over the words fills every bucket at once.
@@ -119,16 +104,6 @@ export function buildWordIndex(data: AppData, now = Date.now()): WordIndex {
     counts.all += 1;
     counts[word.status] += 1;
 
-    let listTags = listTagCounts.get(word.listId);
-    if (!listTags) {
-      listTags = new Map();
-      listTagCounts.set(word.listId, listTags);
-    }
-    for (const tag of word.tags) {
-      tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
-      listTags.set(tag, (listTags.get(tag) ?? 0) + 1);
-    }
-
     if (isDue(word, now)) {
       due.push(word);
       const bucket = dueByList.get(word.listId);
@@ -137,12 +112,7 @@ export function buildWordIndex(data: AppData, now = Date.now()): WordIndex {
     }
   }
 
-  const tagsByList = new Map<string, string[]>();
-  for (const [listId, counts] of listTagCounts) {
-    tagsByList.set(listId, orderTags(counts));
-  }
-
-  return { byList, countsByList, tagsByList, tags: orderTags(tagCounts), due, dueByList };
+  return { byList, countsByList, due, dueByList };
 }
 
 export function queryWords(index: WordIndex, filter: WordQuery): Word[] {
@@ -156,14 +126,11 @@ export function queryWords(index: WordIndex, filter: WordQuery): Word[] {
         w.term.toLocaleLowerCase().includes(needle) ||
         w.definition.toLocaleLowerCase().includes(needle) ||
         w.definition2.toLocaleLowerCase().includes(needle) ||
-        w.note.toLocaleLowerCase().includes(needle) ||
-        w.tags.some((tag) => tag.toLocaleLowerCase().includes(needle)),
+        w.note.toLocaleLowerCase().includes(needle),
     );
   }
   const status = filter.status;
   if (status && status !== "all") out = out.filter((w) => w.status === status);
-  const tag = filter.tag;
-  if (tag) out = out.filter((w) => w.tags.includes(tag));
   if (filter.favoriteOnly) out = out.filter((w) => w.favorite);
 
   const lang = filter.lang;

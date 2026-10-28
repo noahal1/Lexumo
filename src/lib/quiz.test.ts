@@ -24,7 +24,6 @@ function word(id: string, term: string, definition: string): Word {
     note: "",
     status: "new",
     favorite: false,
-    tags: [],
     listId: "list_default",
     sourceLang: "en",
     targetLang: "zh-CN",

@@ -11,7 +11,6 @@ import {
   ShortcutRow,
   StatTile,
   StatusChip,
-  TagChip,
   useToast,
 } from "@/components/ui";
 import { useRouter } from "@/app/router";
@@ -507,7 +506,7 @@ export function FlashcardsPage() {
                   <span className="chip chip-new">
                     {t("flashcards.newCount", { n: counts.new })}
                   </span>
-                  <span className="chip chip-tag">
+                  <span className="chip chip-meta">
                     {t("flashcards.deckSize", { n: deckSize })}
                   </span>
                 </div>
@@ -721,13 +720,6 @@ export function FlashcardsPage() {
                             <Icon name="info" size={14} />
                           </span>
                           <span>{word.note}</span>
-                        </div>
-                      )}
-                      {word.tags.length > 0 && (
-                        <div className="tag-row">
-                          {word.tags.map((tag) => (
-                            <TagChip key={tag} tag={tag} />
-                          ))}
                         </div>
                       )}
                     </div>

@@ -1,7 +1,7 @@
 /** Add / edit a single word. Owns its draft state; commits through the store. */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { Modal, TagInput, useToast } from "@/components/ui";
+import { Modal, useToast } from "@/components/ui";
 import { useT } from "@/i18n";
 import { addWord, findDuplicate, updateWord, useAppData } from "@/lib/store";
 import {
@@ -38,7 +38,6 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   const [example, setExample] = useState("");
   const [exampleZh, setExampleZh] = useState("");
   const [note, setNote] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
   const [listId, setListId] = useState(defaultListId);
   const [status, setStatus] = useState<WordStatus>("new");
   const [favorite, setFavorite] = useState(false);
@@ -68,7 +67,6 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       setExample(word.example);
       setExampleZh(word.exampleZh ?? "");
       setNote(word.note);
-      setTags(word.tags);
       setListId(word.listId);
       setStatus(word.status);
       setFavorite(word.favorite);
@@ -80,7 +78,6 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       setExample("");
       setExampleZh("");
       setNote("");
-      setTags([]);
       setListId(defaultListId);
       setStatus("new");
       setFavorite(false);
@@ -110,7 +107,6 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
     example !== (word?.example ?? "") ||
     exampleZh !== (word?.exampleZh ?? "") ||
     note !== (word?.note ?? "") ||
-    tags.join("\u0000") !== (word?.tags ?? []).join("\u0000") ||
     listId !== (word?.listId ?? defaultListId) ||
     status !== (word?.status ?? "new") ||
     favorite !== (word?.favorite ?? false);
@@ -236,7 +232,6 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         example: example.trim(),
         exampleZh: exampleZh.trim(),
         note: note.trim(),
-        tags,
         listId,
         status,
         favorite,
@@ -252,7 +247,6 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         example,
         exampleZh,
         note,
-        tags,
         listId,
         status,
       });
@@ -523,16 +517,6 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder={t("words.notePlaceholder")}
-          />
-        </div>
-
-        <div className="field">
-          <span className="label">{t("common.tags")}</span>
-          <TagInput
-            value={tags}
-            onChange={setTags}
-            placeholder={t("words.tagsPlaceholder")}
-            hint={t("words.tagsHint")}
           />
         </div>
 

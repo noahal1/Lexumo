@@ -26,7 +26,6 @@ function word(id: string, updatedAt: number, patch: Partial<Word> = {}): Word {
     note: "",
     status: "new",
     favorite: false,
-    tags: [],
     listId: "list_default",
     sourceLang: "en",
     targetLang: "zh-CN",

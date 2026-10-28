@@ -24,7 +24,6 @@ function makeWord(overrides: Partial<Word> = {}): Word {
     note: "",
     status: "reviewing",
     favorite: false,
-    tags: ["抽象", "名词"],
     listId: LIST_ID,
     sourceLang: "en",
     targetLang: "zh-CN",
@@ -69,7 +68,7 @@ describe("CSV export", () => {
     const csv = exportCsv([makeWord()]);
     const header = csv.replace(/^\uFEFF/, "").split(/\r\n/)[0];
     expect(header).toBe(
-      "term,pos,definition,definition2,example,exampleTranslation,note,tags,status",
+      "term,pos,definition,definition2,example,exampleTranslation,note,status",
     );
   });
 
@@ -83,8 +82,11 @@ describe("CSV export", () => {
     expect(csv).toContain("a serendipitous meeting,一次机缘巧合的相遇,");
   });
 
-  it("joins tags with semicolons", () => {
-    expect(exportCsv([makeWord()])).toContain("抽象;名词");
+  it("has no tags column: the removed field never reaches the file", () => {
+    const csv = exportCsv([makeWord()]);
+    expect(csv).not.toContain("抽象");
+    const header = csv.replace(/^\uFEFF/, "").split(/\r\n/)[0];
+    expect(header).not.toContain("tag");
   });
 
   it("quotes commas, quotes and newlines per RFC 4180", () => {
@@ -111,7 +113,6 @@ describe("CSV import", () => {
       definition: "意外发现美好事物的能力",
       example: "a serendipitous meeting",
       exampleZh: "一次机缘巧合的相遇",
-      tags: ["抽象", "名词"],
       status: "reviewing",
       listId: LIST_ID,
     });
@@ -196,7 +197,6 @@ describe("Anki import", () => {
       term: "candid",
       definition: "坦率 an opinion",
       example: "",
-      tags: [],
     });
   });
 

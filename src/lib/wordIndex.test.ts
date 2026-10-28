@@ -34,7 +34,6 @@ function word(id: string, over: Partial<Word> = {}): Word {
     note: "",
     status: "new",
     favorite: false,
-    tags: [],
     listId: "a",
     sourceLang: "en",
     targetLang: "zh-CN",
@@ -133,22 +132,17 @@ describe("buildWordIndex — 分库计数", () => {
   });
 });
 
-describe("buildWordIndex — 标签池顺序", () => {
-  it("按使用次数降序；次数相同用 localeCompare 兜底（不靠插入顺序）", () => {
-    // "zeta" is inserted before "alpha" and both have count 2: only the
-    // localeCompare tie-break can put "alpha" first. Without it the stable
-    // sort keeps insertion order and this assertion fails.
+describe("buildWordIndex — 分桶不依赖标签", () => {
+  it("同一个词库的多个词各自入桶；跨库互不干扰", () => {
     const words = [
-      word("w1", { listId: "a", tags: ["zeta", "alpha"] }),
-      word("w2", { listId: "a", tags: ["zeta", "alpha"] }),
-      word("w3", { listId: "b", tags: ["beta"] }),
+      word("w1", { listId: "a" }),
+      word("w2", { listId: "a" }),
+      word("w3", { listId: "b" }),
     ];
     const index = buildWordIndex(appData(words), NOW);
 
-    expect(index.tagsByList.get("a")).toEqual(["alpha", "zeta"]);
-    expect(index.tagsByList.get("b")).toEqual(["beta"]);
-    // Global pool: alpha/zeta (2 each, alpha first by tie-break) then beta (1).
-    expect(index.tags).toEqual(["alpha", "zeta", "beta"]);
+    expect(index.byList.get("a")!.map((w) => w.id)).toEqual(["w1", "w2"]);
+    expect(index.byList.get("b")!.map((w) => w.id)).toEqual(["w3"]);
   });
 });
 
@@ -197,14 +191,13 @@ function queryFixture(): Word[] {
       term: "boat",
       note: "sails on water",
       status: "reviewing",
-      tags: ["vehicle"],
       createdAt: 300,
     }),
     word("cat", {
       term: "cat",
       definition: "small animal",
+      pos: "n.",
       status: "mastered",
-      tags: ["animal"],
       createdAt: 200,
     }),
   ];
@@ -224,8 +217,10 @@ describe("queryWords — 搜索", () => {
     expect(ids("sails")).toEqual(["boat"]);
   });
 
-  it("匹配 tags", () => {
-    expect(ids("animal")).toEqual(["cat"]);
+  it("只搜 term / definition / definition2 / note —— 词性与音标不进搜索", () => {
+    // `cat` carries pos "n.", `zebra` nothing extra: searching the tag must not
+    // light up every noun, because the tag is a label the user did not type.
+    expect(ids("n.")).toEqual([]);
   });
 
   it("忽略首尾空白；无匹配返回空", () => {
@@ -246,12 +241,6 @@ describe("queryWords — 筛选", () => {
       queryWords(index, { listId: "a", status: "mastered" }).map((w) => w.id),
     ).toEqual(["cat"]);
     expect(queryWords(index, { listId: "a", status: "all" })).toHaveLength(4);
-  });
-
-  it("按标签筛选", () => {
-    expect(queryWords(index, { listId: "a", tag: "animal" }).map((w) => w.id)).toEqual([
-      "cat",
-    ]);
   });
 
   it("只看收藏", () => {

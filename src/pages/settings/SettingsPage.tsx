@@ -468,7 +468,7 @@ export function SettingsPage() {
           </div>
           <div className="card-pad about-body">
             <div className="about-meta">
-              <span className="chip chip-tag">{t("settings.version")} 0.1.0</span>
+              <span className="chip chip-meta">{t("settings.version")} 0.1.0</span>
               <span className="tiny muted">Tauri 2、React 19、TypeScript</span>
             </div>
             <p className="about-desc">{t("settings.madeWith")}</p>
@@ -526,13 +526,13 @@ export function SettingsPage() {
       >
         {preview && (
           <div className="stack">
-            <div className="tag-row">
-              <span className="chip chip-tag">{formatLabel(preview.result.format)}</span>
-              <span className="chip chip-tag">
+            <div className="chip-row">
+              <span className="chip chip-meta">{formatLabel(preview.result.format)}</span>
+              <span className="chip chip-meta">
                 {t("settings.importWordsCount", { n: preview.result.words.length })}
               </span>
               {preview.result.skipped > 0 && (
-                <span className="chip chip-tag">
+                <span className="chip chip-meta">
                   {t("settings.importRowsSkipped", { n: preview.result.skipped })}
                 </span>
               )}

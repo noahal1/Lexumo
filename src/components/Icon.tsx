@@ -22,7 +22,6 @@ export type IconName =
   | "chevron-down"
   | "flame"
   | "clock"
-  | "tag"
   | "more"
   | "upload"
   | "download"
@@ -64,7 +63,6 @@ const PATHS: Record<IconName, string> = {
   "chevron-down": "m5 9.5 7 7 7-7",
   flame: "M12 21c3.9 0 6.5-2.4 6.5-6 0-3.4-2.6-5.6-3.8-8.4-.5 2-1.7 3-3.1 3.4.4-3-1.4-5.4-2.6-7-1.6 3.6-3.5 6.6-3.5 11 0 4.1 2.6 7 6.5 7Z",
   clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M12 7.5V12l3 2",
-  tag: "M3 11.5V4h7.5L21 14.5 14.5 21 3 11.5Z M7.2 7.2h.01",
   more: "M5 12h.01 M12 12h.01 M19 12h.01",
   upload: "M12 16V4 M7 9l5-5 5 5 M4 20h16",
   download: "M12 4v12 M7 11l5 5 5-5 M4 20h16",

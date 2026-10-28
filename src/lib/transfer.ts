@@ -23,7 +23,6 @@ const CSV_COLUMNS = [
   "example",
   "exampleTranslation",
   "note",
-  "tags",
   "status",
 ] as const;
 
@@ -64,7 +63,7 @@ function csvCell(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-/** CSV with a stable header row; tags are joined with semicolons. */
+/** CSV with a stable header row. */
 export function exportCsv(words: Word[]): string {
   const rows: string[] = [CSV_COLUMNS.join(",")];
   for (const word of words) {
@@ -77,7 +76,6 @@ export function exportCsv(words: Word[]): string {
         csvCell(word.example),
         csvCell(word.exampleZh ?? ""),
         csvCell(word.note),
-        csvCell(word.tags.join(";")),
         csvCell(word.status),
       ].join(","),
     );
@@ -138,7 +136,6 @@ function parseJsonImport(text: string, listId: string): ImportResult | null {
       example: asString(rec?.example),
       exampleZh: asString(rec?.exampleZh) || undefined,
       note: asString(rec?.note),
-      tags: asTags(rec?.tags),
       status: asStatus(rec?.status),
       favorite: rec?.favorite === true,
       listId,
@@ -168,7 +165,6 @@ function parseCsvImport(text: string, listId: string): ImportResult {
     "例句译文",
   );
   const noteIdx = find("note", "notes", "备注", "笔记");
-  const tagsIdx = find("tags", "tag", "标签");
   const statusIdx = find("status", "状态");
   const start = termIdx >= 0 ? 1 : 0;
 
@@ -189,7 +185,6 @@ function parseCsvImport(text: string, listId: string): ImportResult {
       example: cellAt(row, exampleIdx),
       exampleZh: cellAt(row, exampleZhIdx) || undefined,
       note: cellAt(row, noteIdx),
-      tags: splitTags(cellAt(row, tagsIdx)),
       status: asStatus(cellAt(row, statusIdx)),
       listId,
     });
@@ -262,7 +257,6 @@ function parseAnkiImport(text: string, listId: string): ImportResult {
       definition2: "",
       example: "",
       note: "",
-      tags: [],
       listId,
     });
   }
@@ -283,15 +277,6 @@ function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function asTags(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const tags: string[] = [];
-  for (const item of value) {
-    if (typeof item === "string" && item.trim()) tags.push(item.trim());
-  }
-  return tags;
-}
-
 function asStatus(value: unknown): WordStatus | undefined {
   return value === "new" || value === "reviewing" || value === "learning" || value === "mastered"
     ? value
@@ -301,13 +286,6 @@ function asStatus(value: unknown): WordStatus | undefined {
 function cellAt(row: string[], index: number): string {
   if (index < 0 || index >= row.length) return "";
   return (row[index] ?? "").trim();
-}
-
-function splitTags(raw: string): string[] {
-  return raw
-    .split(/[;；]/)
-    .map((tag) => tag.trim())
-    .filter(Boolean);
 }
 
 function stripHtml(input: string): string {

@@ -36,13 +36,15 @@ interface SrsState {
 interface WordRecord {
   id: string;
   term: string;
+  phonetic?: string;       // IPA, no slashes
+  pos?: string;            // part of speech, space separated (`"n. v."`)
   definition: string;
   definition2: string;
   example: string;
+  exampleZh?: string;      // translation of `example`
   note: string;
   status: WordStatus;
   favorite: boolean;
-  tags: string[];
   listId: string;
   sourceLang: string;
   targetLang: string;

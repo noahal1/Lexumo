@@ -5,7 +5,6 @@
  * keep importing from one place:
  *   - `Modal.tsx`    — focus-trapped dialog + ConfirmDialog
  *   - `Toast.tsx`    — toast queue and its provider
- *   - `TagInput.tsx` — tag chip and the inline tag editor
  */
 import { useId, type ReactNode } from "react";
 import { cx } from "@/lib/utils";
@@ -14,7 +13,6 @@ import { Icon, type IconName } from "@/components/Icon";
 export { ConfirmDialog, Modal } from "@/components/Modal";
 export { ToastProvider, useToast } from "@/components/Toast";
 export type { ToastAction, ToastFn, ToastKind, ToastOptions } from "@/components/Toast";
-export { TagChip, TagInput } from "@/components/TagInput";
 
 /* ------------------------------------------------------------------ */
 /* Page shell — every page uses this so headers stay consistent        */

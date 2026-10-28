@@ -69,9 +69,23 @@ export function emptyData(): AppData {
 }
 
 /**
+ * Drop the `tags` array that version 2 wrote on every word.
+ *
+ * Version 3 removed tag support. Snapshots from before that still carry the
+ * array, and leaving it there would mean it rides along in every backup and
+ * every sync payload forever. Runs per word rather than on the whole snapshot
+ * so it can stay a pure `Word -> Word` step.
+ */
+function dropLegacyTags(word: Word): Word {
+  if (!("tags" in word)) return word;
+  const { tags: _removed, ...rest } = word as Word & { tags?: unknown };
+  return rest;
+}
+
+/**
  * Bring any older snapshot up to the current shape. Data written before sync
  * existed (version 1) simply gains empty tombstones/pending and an `updatedAt`
- * on each list — nothing is dropped.
+ * on each list — nothing is dropped, except the field version 3 retired.
  */
 export function migrateSnapshot(raw: unknown): AppData | null {
   if (!raw || typeof raw !== "object") return null;
@@ -83,6 +97,7 @@ export function migrateSnapshot(raw: unknown): AppData | null {
     ...base,
     ...snap,
     version: DATA_VERSION,
+    words: snap.words.map(dropLegacyTags),
     logs: Array.isArray(snap.logs) ? snap.logs : [],
     settings: { ...DEFAULT_SETTINGS, ...(snap.settings ?? {}) },
     settingsUpdatedAt: snap.settingsUpdatedAt ?? 0,
@@ -121,7 +136,6 @@ export interface NewWordInput {
   /** Translation of `example`; same optionality as `phonetic`. */
   exampleZh?: string;
   note?: string;
-  tags?: string[];
   listId: string;
   status?: WordStatus;
   favorite?: boolean;
@@ -171,20 +185,6 @@ export interface Store {
   pendingChangeCount(): number;
   /** Apply one finished round: settle what we sent, then merge the answer. */
   applyRound(round: SyncRound): void;
-}
-
-function dedupeTags(tags: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const raw of tags) {
-    const tag = raw.trim();
-    if (!tag) continue;
-    const key = tag.toLocaleLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(tag);
-  }
-  return out.slice(0, 12);
 }
 
 function withDefaultList(d: AppData, now: number): AppData {
@@ -353,7 +353,6 @@ export function createStore(options: StoreOptions): Store {
         note: (input.note ?? "").trim(),
         status: input.status ?? "new",
         favorite: input.favorite ?? false,
-        tags: dedupeTags(input.tags ?? []),
         listId: list?.id ?? DEFAULT_LIST_ID,
         sourceLang: list?.sourceLang ?? "en",
         targetLang: list?.targetLang ?? "zh-CN",
@@ -372,7 +371,6 @@ export function createStore(options: StoreOptions): Store {
     updateWord(id, patch) {
       commit((d) => {
         const next: Partial<Word> = { ...patch, updatedAt: clock() };
-        if (patch.tags) next.tags = dedupeTags(patch.tags);
         if (!patchWord(d, id, next)) return;
         journal.touch(d, "word", id);
       });

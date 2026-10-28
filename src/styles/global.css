@@ -777,7 +777,7 @@ a:hover {
   background: var(--danger-soft);
   color: var(--danger);
 }
-.chip-tag {
+.chip-meta {
   background: var(--surface-2);
   color: var(--ink-2);
   border-color: var(--line);
@@ -992,14 +992,6 @@ a:hover {
   color: var(--ink-3);
   font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
-}
-.row-tags {
-  margin-top: 2px;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 /* One-line muted snippet for a search hit inside a word row. */
 .row-match {
@@ -1529,7 +1521,7 @@ mark {
   border-radius: var(--r-2xs);
   padding: 0 1px;
 }
-.tag-row {
+.chip-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-1);
@@ -1974,10 +1966,6 @@ mark {
     align-items: center;
     column-gap: var(--sp-3);
     row-gap: var(--sp-1);
-    /* 8px, not 12px: a phone row carries a tag line under the gloss, so at
-       12px the total lands just over 100px. Measured 100.8 → 92.8. */
-    padding-top: var(--sp-2);
-    padding-bottom: var(--sp-2);
   }
   .row-words > .row-flex {
     grid-area: term;

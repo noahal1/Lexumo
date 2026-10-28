@@ -69,8 +69,6 @@
   /* ---- chart series ---- */
   --info: #416791;
   --info-soft: #e2ecf7;
-  --mark: #685282;
-  --mark-soft: #eee8f5;
 
   /* ---- stone: the frame ---- */
   --frame: #252c28;
@@ -216,8 +214,6 @@
 
   --info: #96bbe3;
   --info-soft: #232f3d;
-  --mark: #bca5d8;
-  --mark-soft: #342d3d;
 
   /* The stone goes darker than the page in dark mode: the frame recedes and
      the page comes forward, the same relationship as in light mode. */

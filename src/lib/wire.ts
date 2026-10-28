@@ -57,8 +57,6 @@ const optStr = (value: unknown): string | undefined =>
 const num = (value: unknown): number =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 const bool = (value: unknown): boolean => value === true;
-const strList = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
 const isStamp = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -112,7 +110,6 @@ function cleanWord(value: unknown): Word {
     note: str(raw.note),
     status: asStatus(raw.status),
     favorite: bool(raw.favorite),
-    tags: strList(raw.tags),
     listId: str(raw.listId),
     sourceLang: str(raw.sourceLang),
     targetLang: str(raw.targetLang),

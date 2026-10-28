@@ -301,7 +301,7 @@ export function QuizPage() {
                   </p>
                 </div>
                 <div className="row-flex wrap">
-                  <span className="chip chip-tag">{directionLabel}</span>
+                  <span className="chip chip-meta">{directionLabel}</span>
                   <span className="chip chip-new">
                     {t("quiz.eligible", { n: eligible.length })}
                   </span>
@@ -346,7 +346,7 @@ export function QuizPage() {
             <div className="study-bar">
               <div className="study-bar-row">
                 <span className="study-bar-label mono">{questionLabel}</span>
-                <span className="chip chip-tag">{directionLabel}</span>
+                <span className="chip chip-meta">{directionLabel}</span>
                 <span className="spacer" />
                 <span className="chip chip-mastered mono">
                   {t("quiz.score")} {score}

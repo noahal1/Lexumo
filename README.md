@@ -10,7 +10,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 
 ## 功能
 
-- **词库管理**：多词库、增删改查、搜索、状态筛选、标签筛选、排序、收藏；每条词条包含主释义、词性、补充释义、例句与例句译文、笔记、标签、音标（词性与释义分开存：释义里不会出现 `n.` 这类前缀，列表和闪卡上词性以小字显示在释义之前）。支持批量操作（全选 / 收藏 / 加标签 / 删除所选）；删除词条后可在提示条上「撤销」，词条与它的复习记录一起回来。
+- **词库管理**：多词库、增删改查、搜索、状态筛选、排序、收藏；每条词条包含主释义、词性、补充释义、例句与例句译文、笔记、音标（词性与释义分开存：释义里不会出现 `n.` 这类前缀，列表和闪卡上词性以小字显示在释义之前）。支持批量操作（全选 / 收藏 / 删除所选）；删除词条后可在提示条上「撤销」，词条与它的复习记录一起回来。
 - **添加时自动翻译**：新建或编辑词条时输入单词并失焦，自动查词典填入释义、词性、补充释义、**例句与例句的中文翻译**、音标；可一键「重新翻译」强制覆盖。桌面版通过 Rust 代理查有道词典（音标 + 词性 + 双语例句），网页版降级到有道 / MyMemory / Google 机器翻译链；结果缓存 30 天，命中限流时自动冷却换源，查不到不阻塞手动填写，设置里可整体关闭。**例句译文只会跟着它配套的那句话走**：你自己手写的例句不会被配上词典里另一句的翻译（详见下文「例句」）。
 - **间隔重复**：SM-2 变体调度，评分分为 `easy / good / hard`；ease 限制在 `[1.3, 2.5]`，间隔限制在 `[1, 3650]` 天；卡片状态由已获得的间隔推导：`new → reviewing → learning → mastered`。
 - **闪卡复习**：四种组卡方式（到期卡片 / 新卡片 / 全部词语 / 收藏词语，各自显示数量）、到期队列 + 新卡队列（受每日新卡上限约束）、翻面后仍保留词形、评分按钮上直接预览「下次间隔」、可随时「撤销上一次」评分或跳过、中途可「结束本轮」、键盘快捷键、自动/手动 TTS 发音。
@@ -117,8 +117,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   │   ├── SessionResult.tsx   # 闪卡/测验共用的结算页（正确率只在这里格式化）
 │   │   ├── Modal.tsx           # 焦点陷阱对话框与 ConfirmDialog
 │   │   ├── Toast.tsx           # 提示条队列（悬停暂停自动消失）
-│   │   ├── TagInput.tsx        # 标签胶囊与行内标签编辑器
-│   │   └── ui.tsx              # 其余通用 UI（PageShell / Segmented / Ring / StatTile 等），并再导出上面三个模块
+│   │   └── ui.tsx              # 其余通用 UI（PageShell / Segmented / Ring / StatTile 等），并再导出上面两个模块
 │   ├── i18n/
 │   │   ├── index.tsx           # 翻译函数与 Provider；`TFunc` 的 key 被约束为 `MessageKey`
 │   │   ├── i18n.test.ts        # 字典自检：两种语言路径一致、无空串、每个 key 都能解析、插值
@@ -129,7 +128,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 │   │   ├── journal.ts          # 变更日志：pending / tombstones 的唯一写者
 │   │   ├── srs.ts              # 间隔重复：调度算术 + 「评分后是什么状态」的唯一决策点
 │   │   ├── session.ts          # 学习会话状态机（纯函数，闪卡与测验共用）
-│   │   ├── wordIndex.ts        # 词库索引：每库分桶、状态计数、标签池、筛选排序、统计头条
+│   │   ├── wordIndex.ts        # 词库索引：每库分桶、状态计数、筛选排序、统计头条
 │   │   ├── dayStats.ts         # 今日复习数 / 连续学习天数（纯函数）
 │   │   ├── quiz.ts             # 出题（纯函数）
 │   │   ├── transfer.ts         # 导入导出：JSON / CSV / Anki TXT
@@ -228,19 +227,20 @@ npm test
 | `src/lib/transfer.test.ts` | 20 | 三种文件格式的进出口：CSV 表头顺序与 RFC 4180 引号、`pos` 与 `exampleTranslation` 两列的导出与导入（各含四个别名）、空值折叠成 `undefined`、BOM 与 CRLF、未知 status 不猜、JSON 快照只恢复词条、Anki 多列合并与 HTML 剥离、无法识别时不抛错 |
 | `src/lib/syncMerge.test.ts` | 23 | 待推改动收集、LWW 合并、墓碑删除、日志并集去重 |
 | `src/lib/journal.test.ts` | 23 | 用真实 store 实例验证：每次本地编辑都进 pending、删除必留墓碑、删词库级联词与日志、快照不可变、`applyRound` 真的结算、远端改动不算本地编辑 |
-| `src/lib/wordIndex.test.ts` | 22 | 每库分桶与状态计数、标签池排序（含同次数 localeCompare 兜底）、到期判定、四种筛选与四种排序、统计头条各数字 |
+| `src/lib/wordIndex.test.ts` | 21 | 每库分桶与状态计数、到期判定、四种筛选与四种排序、统计头条各数字；搜索只覆盖 `term` / `definition` / `definition2` / `note`（词性与音标不进搜索） |
 | `src/lib/shortcuts.test.ts` | 20 | 快捷键的单一来源：作用域优先级（modal > page > app）、输入框内单键让位、修饰键组合仍生效、注册与卸载、`SHORTCUT_HELP` 与真实绑定一致 |
 | `src/lib/utils.test.ts` | 20 | 文本归一化、clamp、shuffle、日期差值、dayKey、cx、uid、相对时间 |
 | `src/lib/session.test.ts` | 19 | 学习会话状态机：全程进度、hard 算复习但不算答对、skip 语义、undo 双向精确还原、空列表、正确率不为 NaN |
 | `src/lib/quiz.test.ts` | 18 | 出题：选项不重复且必含正确答案、同词不重复、词表不足四个时不崩、三种题面模式 |
-| `src/lib/wire.test.ts` | 17 | 同步线格式：逐字段重建让服务器盖的 `_rev` 无法回写/回推/进备份、畸形记录被丢弃、`decode/encode` 往返无损、可选文本字段（`phonetic` / `exampleZh`）往返不丢且空串折叠成 `undefined` |
+| `src/lib/wire.test.ts` | 17 | 同步线格式：逐字段重建让服务器盖的 `_rev` 无法回写/回推/进备份、畸形记录被丢弃、`decode/encode` 往返无损、可选文本字段（`phonetic` / `exampleZh`）往返不丢且空串折叠成 `undefined`、已删除的 `tags` 字段不会复活 |
 | `src/lib/syncRound.test.ts` | 13 | 一轮同步的结算与合并：发送后结算、在途编辑仍留 pending、远端合并但不算本地编辑、墓碑删除、旧记录 LWW 落败、回声不重复 |
+| `src/lib/migrate.test.ts` | 6 | 快照迁移：旧版本就地补齐同步簿记字段、来自未来的版本拒绝加载、畸形快照返回 null、**版本 3 丢掉遗留的 `tags` 数组**、无 `tags` 的记录迁移幂等 |
 | `src/lib/dayStats.test.ts` | 9 | 今日复习数只算本地午夜之后、连续天数（今天空着不断档、缺一天即停、同一天多次只算一天、跨月不串） |
 | `src/__tests__/app.smoke.test.tsx` | 5 | 在 jsdom 中真实挂载整个应用：五个页面渲染、主题切换、弹窗开关、搜索过滤 |
 | `src/__tests__/error-paths.test.tsx` | 3 | 两条没有自然归属的失败路径：渲染崩溃由根 ErrorBoundary 接住并换成说明卡片、监听器之间互不牵连、快照两处都写不进去时上报 `store-write` |
 | `src/i18n/i18n.test.ts` | 6 | 字典自检：中文/英文路径完全一致、没有空串值、每个键在两种语言里都能解析出文案（不会把键名本身显示给用户）、`{var}` 插值与未知占位符保留 |
 
-共 **330** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
+共 **335** 个用例。后端另有 `server/` 下的 `node:test` 用例（`cd server && npm test`）。
 
 > 文案的键名在编译期就是强类型的：`TFunc` 只接受 `MessageKey`（从 `zh-CN.ts` 的字典推导出的点路径联合类型）。写错一个键名会在 `tsc` 阶段报 `TS2345`，而不是在界面上静默显示成 `stats.titel`。
 
@@ -252,7 +252,7 @@ npm test
 
   ```ts
   interface AppData {
-    version: number;            // 当前 DATA_VERSION = 2
+    version: number;            // 当前 DATA_VERSION = 3
     lists: WordList[];
     words: Word[];
     logs: ReviewLog[];          // 每次评分的复习日志
@@ -268,11 +268,11 @@ npm test
 - **一轮同步的顺序**：推送成功后的「先结算已发送、再合并远端」不再写在 `sync.ts` 的调用点，而是由纯函数 `applyRound(data, { sent, received })` 一次完成，store 只暴露单个 `applyRound`。顺序之所以重要，是因为结算带版本守卫——只有当本地记录仍是推送出去的那个版本时才清 `pending`；请求在途期间用户又编辑过，这条记录就保持 pending 进入下一轮。合并属于「服务器在说话」，因此不触发本地变更事件，避免每次推送后再空跑一轮同步。
 - **学习会话**：闪卡页与测验页共用 `src/lib/session.ts` 的状态机（当前卡片、进度、正确率、撤销栈），「hard 算复习但不算答对」这条规则与正确率格式化各只有一处实现，两个页面只负责渲染、键盘与调用 `gradeWord` / `undoReview`。
 - **复习决策**：`src/lib/srs.ts` 不只算间隔，也拥有「评完这一档之后这张卡是什么状态」的完整决策——`reviewCard(card, grade, now, ids)` 返回 `{ srs, status, log }`，其中状态按「永不降级」规则提升、复习日志在模块内部铸造；`undoGrade(prev, log)` 是它的精确逆（**故意不重算**，否则一张刚失手的已掌握卡片会被降级回去），`previewGrades` 让评分按钮预览的正是将要执行的那条规则。`store.ts` 里只剩持久化与同步记账，因此这条不变量不会再因为出现第二个调用者而被绕开。
-- **词库派生**：状态计数、标签池、到期桶、筛选排序与统计头条全部由 `src/lib/wordIndex.ts` 一次遍历产出（`buildWordIndex` / `queryWords` / `summarize`），页面不再各自手写一份。今日复习数与连续天数归 `src/lib/dayStats.ts` 所有，侧栏与统计页读同一份实现。此前词库页表头的到期数是全局的、标签下拉却作用于单个词库，会出现「选了标签却是空列表」这类前后不一致；现在表头、标签下拉与列表都描述同一个词库，侧栏徽标仍保持全局。
+- **词库派生**：状态计数、到期桶、筛选排序与统计头条全部由 `src/lib/wordIndex.ts` 一次遍历产出（`buildWordIndex` / `queryWords` / `summarize`），页面不再各自手写一份。今日复习数与连续天数归 `src/lib/dayStats.ts` 所有，侧栏与统计页读同一份实现。此前词库页表头的到期数是全局的、列表却按单个词库过滤，会出现「表头说有 12 张到期、列表却是空的」这类前后不一致；现在表头与列表都描述同一个词库，侧栏徽标仍保持全局。
 - **回退链**：IndexedDB 不可用或读写失败 → localStorage 键 `lexumo:data`（JSON 字符串）→ 再失败则仅保存在内存（刷新即丢失）。
 - **线格式边界**：服务器给每条记录额外盖一个 `_rev` 字段，它属于服务器的簿记，不属于词条。`src/lib/wire.ts` 的 `decodeChangeSet` 在边界上逐字段重建领域记录（剥掉 `_rev` 与任何未知键，形状不符的记录直接丢弃而不是抛错），`encodeChangeSet` 负责上行；因此 `_rev` 不会写进快照、不会被下次上传回推、也不会跑进用户的 JSON 备份。备份导出用 `encodeAppData` 只写领域字段（`version` / `lists` / `words` / `logs` / `settings` / `settingsUpdatedAt`），不把 `pending` / `tombstones` 这些同步簿记交给用户。**逐字段重建意味着字段白名单必须完备**：`phonetic` 与 `exampleZh` 都曾在白名单之外，导致音标和例句译文在同步与 JSON 备份两侧被静默剥离——两者现在都在白名单里，且 `wire.test.ts` 对「可选文本字段往返不丢」有专门的用例兜住这类回归。
 - **清空数据的传播**：清空会为每个被删的词、词库、日志写墓碑（否则下次登录同步会把「已清空」的数据再拉回来）；唯独默认词库只更新时间戳而不写墓碑——它的 id 是固定值，新快照一定会重建它，写墓碑会让回声删除把刚建好的空词库也删掉，最终一个词库都不剩。
-- **版本迁移**：启动时若快照 `version` 低于 `DATA_VERSION`，会就地补齐新字段（`updatedAt` / `tombstones` / `pending` / `settingsUpdatedAt`）并保留原有数据；只有 `version` 高于当前版本（降级运行）才会重新播种。
+- **版本迁移**：启动时若快照 `version` 低于 `DATA_VERSION`，会就地补齐新字段（`updatedAt` / `tombstones` / `pending` / `settingsUpdatedAt`）并保留原有数据；只有 `version` 高于当前版本（降级运行）才会重新播种。版本 3 还会逐词丢掉已移除的 `tags` 字段——不丢的话，旧快照里的标签数组会永远跟着每一次备份与上传走。
 - **隐私**：数据默认只在本机。只有在「设置 → 账号与同步」中显式登录后，词库、复习日志与设置才会推送到你填写的服务器地址；不登录则没有任何网络上传。
 
 ## 导入 / 导出格式
@@ -290,11 +290,10 @@ npm test
 导出首行为表头，列顺序固定：
 
 ```csv
-term,pos,definition,definition2,example,exampleTranslation,note,tags,status
-serendipity,n.,意外发现美好事物的能力,,a serendipitous meeting,一次机缘巧合的相遇,来自阅读,抽象;名词,reviewing
+term,pos,definition,definition2,example,exampleTranslation,note,status
+serendipity,n.,意外发现美好事物的能力,,a serendipitous meeting,一次机缘巧合的相遇,来自阅读,reviewing
 ```
 
-- `tags` 用分号 `;`（也接受全角 `；`）分隔；
 - `pos` 是词性，可留空；导入时也认 `part of speech`/`partOfSpeech`/`词性`。释义本身不含词性前缀，两者分开存；
 - `exampleTranslation` 是例句的译文，可留空；导入时也认 `example_zh`/`examplezh`/`例句翻译`/`例句译文` 这几个列名；
 - 含逗号、双引号或换行的字段按 RFC 4180 用双引号包裹，内部双引号写两遍；
@@ -367,7 +366,7 @@ npm start
 - **图标**：由 `src-tauri/icons/generate-icons.py` 用 Pillow 生成，不依赖任何外部素材与字体（图形全部是几何与圆角矩形）。**16px 用的是另一套简化画法**：石头墙加厚、书脊放大 1.55 倍、去掉纸上的墨点，否则那三个细节在 16px 会抗锯齿成一团灰。`.ico` 与 `.icns` 容器是脚本手写拼装的，因为 Pillow 的写入器只会把单张图缩放塞进每个槽位，会丢掉简化画法。
 - **安装包**：`cargo build --release` 已在 Windows 上通过，产物 `src-tauri/target/release/lexumo.exe`（约 12.9 MB）可正常启动并显示窗口。<br>`cargo check` 在最后一次收尾时**未能复现**：`vswhom-sys` 的构建脚本调用 VS2019 BuildTools 的 `cl.exe` 编 `ext/vswhom.cpp` 失败（同一环境此前通过过，属工具链差异，与代码无关；`cargo build --release` 与 `npx tauri build --no-bundle` 都正常完成，说明 Rust 代码本身没问题）。<br>另外 `npm run tauri:build` 的**打包步骤**未能在本环境完成：Tauri 需要从 GitHub Releases 下载 WiX（MSI）或 NSIS（EXE 安装器），该域名在开发环境中超时。二进制本身没有问题，在能访问 GitHub 的机器上重跑即可产出安装包；或先用 `npx tauri build --no-bundle` 只产出可执行文件。
 - **自动翻译**：依赖有道词典 / MyMemory 等公开接口，需联网；接口可能限流或变更，届时查词会降级或提示失败，不影响手动录入。缓存 30 天，设置里可清除。
-- **视觉验证**：功能层有 330 个单元 / 冒烟用例；界面另有基于 headless Edge + DevTools 协议的可重复校验脚本（`.shots/`，不随仓库分发），把「看起来对」换成实测数字：五个页面在浅色与深色下的全部文本节点对比度（WCAG AA，0 处不达标，并用一个故意做坏的节点反向验证这套扫描确实能报错）、统计柱状图在 1280 / 760 / 390px 三种宽度 × 7 / 30 / 90 天区间下轴标签不裁切不重叠、手机布局无横向溢出且触控目标 ≥ 40px、提示条不被底部标签栏遮挡、批量选择与撤销删除的完整流程、输入框内打字不触发单键快捷键、以及页面上不残留任何未翻译的 i18n 键；动效则逐条断言 computed `animation-name` / 延迟、翻面过程中途的 `transform` 矩阵、以及模拟「减少动态」后动画确实归零。另用 Hallmark 的 `sloplint`（app 作用域 + 渲染层，7 种宽度 × 5 个页面共 25 张截图）做结构与反模板自检，结果为 0 FAIL / 0 WARN / 1 已记录豁免 / 2 已作答；以及 19 条 DOM 断言，确认石与纸两套材质、强调色、字体、焦点环、控件高度和 320–1920px 无横向溢出确实落到了屏幕上。另有一条把 IndexedDB 与 localStorage 同时写坏的探针，确认写不进去时会弹出说明后果与下一步的提示条、界面不崩；渲染崩溃则由根 ErrorBoundary 换成一张说明卡片。未做跨平台像素级视觉回归，也没有接入 CI。
+- **视觉验证**：功能层有 335 个单元 / 冒烟用例；界面另有基于 headless Edge + DevTools 协议的可重复校验脚本（`.shots/`，不随仓库分发），把「看起来对」换成实测数字：五个页面在浅色与深色下的全部文本节点对比度（WCAG AA，0 处不达标，并用一个故意做坏的节点反向验证这套扫描确实能报错）、统计柱状图在 1280 / 760 / 390px 三种宽度 × 7 / 30 / 90 天区间下轴标签不裁切不重叠、手机布局无横向溢出且触控目标 ≥ 40px、提示条不被底部标签栏遮挡、批量选择与撤销删除的完整流程、输入框内打字不触发单键快捷键、以及页面上不残留任何未翻译的 i18n 键；动效则逐条断言 computed `animation-name` / 延迟、翻面过程中途的 `transform` 矩阵、以及模拟「减少动态」后动画确实归零。另用 Hallmark 的 `sloplint`（app 作用域 + 渲染层，7 种宽度 × 5 个页面共 25 张截图）做结构与反模板自检，结果为 0 FAIL / 0 WARN / 1 已记录豁免 / 2 已作答；以及 19 条 DOM 断言，确认石与纸两套材质、强调色、字体、焦点环、控件高度和 320–1920px 无横向溢出确实落到了屏幕上。另有一条把 IndexedDB 与 localStorage 同时写坏的探针，确认写不进去时会弹出说明后果与下一步的提示条、界面不崩；渲染崩溃则由根 ErrorBoundary 换成一张说明卡片。未做跨平台像素级视觉回归，也没有接入 CI。
 - **TTS**：依赖系统语音合成引擎，可用音色与语言随平台而异；部分语言可能没有可用语音，此时听音功能静默降级。
 - **同步**：自带的后端是单进程、每用户一个 JSON 文件的实现，适合个人或小规模自建；不支持集群、无数据库、无备份策略。传输默认是明文 HTTP（本机或局域网内使用没问题，暴露到公网请自行在前面加 HTTPS 反向代理）。令牌存在 localStorage，有效期 30 天。改名前的旧本地数据不会自动迁移（存储键已随应用改名更换）。
 - **规模**：采用「全量快照 + 防抖写盘」，词条量很大（约 2 万以上）时每次写入会有可感知延迟。同步也是整条记录增量传输，单次最多 5000 条改动。

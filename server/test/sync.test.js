@@ -15,7 +15,6 @@ function makeWord(id, updatedAt = T0, overrides = {}) {
     note: '',
     status: 'new',
     favorite: false,
-    tags: [],
     listId: 'list-1',
     sourceLang: 'en',
     targetLang: 'zh-CN',

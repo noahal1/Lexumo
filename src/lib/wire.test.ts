@@ -25,7 +25,6 @@ function word(id: string, updatedAt: number, patch: Partial<Word> = {}): Word {
     note: "",
     status: "new",
     favorite: false,
-    tags: [],
     listId: DEFAULT_LIST_ID,
     sourceLang: "en",
     targetLang: "zh-CN",
@@ -130,7 +129,7 @@ describe("decodeChangeSet strips server bookkeeping", () => {
     const w = decoded.words[0] as Word;
     expect(w).toMatchObject({ id: "w1", term: "hola", updatedAt: 10 });
     expect(w.definition).toBe("");
-    expect(w.tags).toEqual([]);
+    expect("tags" in w).toBe(false);
     expect(w.srs).toBeNull();
     expect(w.status).toBe("new");
     expect(decoded.settings).toMatchObject({ updatedAt: 20, theme: "system" });
