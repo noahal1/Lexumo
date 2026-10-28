@@ -668,6 +668,19 @@ a:hover {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--sp-3);
 }
+/* The part-of-speech box is a label first and an input second: it must not
+   steal width from the definition beside it, and it should look narrower than
+   the gloss it annotates. 5.5ch fits "adj.", "n. v." and "prep." without
+   clipping. */
+.pos-input {
+  flex: 0 0 auto;
+  width: 5.5ch;
+  min-width: 0;
+  padding: 0 var(--sp-2);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
 .check {
   display: inline-grid;
   place-items: center;
@@ -962,6 +975,15 @@ a:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* The tag rides in the same column as the gloss it belongs to, one step down in
+   weight and colour — present when you look for it, invisible when you don't. */
+.row-pos {
+  margin-right: 5px;
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  font-style: italic;
+  letter-spacing: 0.01em;
 }
 .row-meta {
   display: flex;
@@ -1952,8 +1974,10 @@ mark {
     align-items: center;
     column-gap: var(--sp-3);
     row-gap: var(--sp-1);
-    padding-top: var(--sp-3);
-    padding-bottom: var(--sp-3);
+    /* 8px, not 12px: a phone row carries a tag line under the gloss, so at
+       12px the total lands just over 100px. Measured 100.8 → 92.8. */
+    padding-top: var(--sp-2);
+    padding-bottom: var(--sp-2);
   }
   .row-words > .row-flex {
     grid-area: term;

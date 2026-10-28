@@ -113,6 +113,8 @@ export interface StoreOptions {
 export interface NewWordInput {
   term: string;
   phonetic?: string;
+  /** Part-of-speech tags, space separated ("adj." / "n. v."). */
+  pos?: string;
   definition?: string;
   definition2?: string;
   example?: string;
@@ -343,6 +345,7 @@ export function createStore(options: StoreOptions): Store {
         id: uid("w"),
         term: input.term.trim(),
         phonetic: (input.phonetic ?? "").trim(),
+        pos: (input.pos ?? "").trim() || undefined,
         definition: (input.definition ?? "").trim(),
         definition2: (input.definition2 ?? "").trim(),
         example: (input.example ?? "").trim(),

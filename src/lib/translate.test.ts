@@ -15,6 +15,7 @@ import {
   parseMyMemory,
   parseYoudao,
   parseYoudaoTranslation,
+  posTags,
   primaryMeaning,
   resetProviderCooldown,
   type Lookup,
@@ -102,8 +103,42 @@ describe("parseYoudao", () => {
       { pos: "adj.", meaning: "坦率的，直言不讳的" },
       { pos: "adj.", meaning: "抓拍的，偷拍的" },
       { pos: "adj.", meaning: "公正的" },
-      { pos: "", meaning: "【名】 （Candid）（罗）坎迪德（人名）" },
     ]);
+  });
+
+  it("drops the proper-noun line a dictionary appends to common words", () => {
+    // Youdao ends most entries with an E/C translation of the surname
+    // ("【名】 （Candid）（罗）坎迪德（人名）"). It is not a sense of the word, and
+    // it used to eat one of the three slots the secondary field has.
+    const withName = parseYoudao(
+      {
+        ec: {
+          word: [
+            {
+              trs: [
+                {
+                  tr: [
+                    {
+                      l: {
+                        i: [
+                          "n. 记录，记载；（某人或某物过去的）记录，经历",
+                          "v. 记录；录制；（仪器）显示，标示",
+                          "【名】 （Record）（美）勒科尔（人名）",
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      "record",
+    )!;
+    expect(posTags(withName)).toEqual(["n.", "v."]);
+    expect(alternativeMeaning(withName)).not.toContain("【名】");
+    expect(alternativeMeaning(withName)).not.toContain("勒科尔");
   });
 
   it("keeps at most two examples and strips markup", () => {
@@ -183,12 +218,166 @@ describe("parseGoogle", () => {
 describe("formatting helpers", () => {
   const result = parseYoudao(youdaoPayload, "candid")!;
 
-  it("prefixes the first sense with its part of speech", () => {
-    expect(primaryMeaning(result)).toBe("adj. 坦率的，直言不讳的");
+  it("keeps the tag off the primary meaning", () => {
+    // The tag now lives in `Word.pos`; spelling it into `definition` made the
+    // list read "n. 类比，比拟" instead of "类比，比拟".
+    expect(primaryMeaning(result)).toBe("坦率的，直言不讳的");
+    expect(primaryMeaning(result)).not.toMatch(/^[a-z]+\./);
   });
 
   it("joins the remaining senses for the secondary field", () => {
-    expect(alternativeMeaning(result)).toBe("抓拍的，偷拍的；公正的；【名】 （Candid）（罗）坎迪德（人名）");
+    expect(alternativeMeaning(result)).toBe("抓拍的，偷拍的；公正的");
+  });
+
+  it("re-tags a secondary sense only when its part of speech changes", () => {
+    const mixed = parseYoudao(
+      {
+        ec: {
+          word: [
+            {
+              trs: [
+                {
+                  tr: [
+                    {
+                      l: {
+                        i: [
+                          "n. 类比，比拟",
+                          "n. 类似的人（或物）",
+                          "v. 与……类似",
+                          "adj. 类似的",
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      "analogy",
+    )!;
+    expect(alternativeMeaning(mixed)).toBe("类似的人（或物）；v. 与……类似；adj. 类似的");
+  });
+
+  it("keeps a different part of speech even when same-tag senses come first", () => {
+    // `record` arrives noun, noun, noun, verb, adjective. Taking the first three
+    // senses put three noun shades in the field and said nothing about the word
+    // being a verb — the exact failure a browser probe caught and the unit tests
+    // had blessed.
+    const record = parseYoudao(
+      {
+        ec: {
+          word: [
+            {
+              trs: [
+                {
+                  tr: [
+                    {
+                      l: {
+                        i: [
+                          "n. 记录，记载",
+                          "n. （某人或某物过去的）记录，经历",
+                          "n. 唱片；纪录",
+                          "v. 记录；录制；（仪器）显示，标示",
+                          "adj. 创纪录的",
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      "record",
+    )!;
+    const secondary = alternativeMeaning(record);
+    expect(secondary).toBe("v. 记录；录制；（仪器）显示，标示");
+    expect(secondary).toMatch(/(^|；)v\.\s/);
+  });
+
+  it("fills leftover slots with same-tag senses after the odd one out", () => {
+    const senses = ["n. 甲", "n. 乙", "adj. 丙", "n. 丁"];
+    const result = {
+      provider: "youdao" as const,
+      term: "x",
+      phonetic: "",
+      senses: senses.map((line) => {
+        const [pos, meaning] = line.split(" ");
+        return { pos, meaning };
+      }),
+      examples: [],
+      fromCache: false,
+    };
+    // The adjective is promoted ahead of the third noun, but everything still
+    // comes out in dictionary order.
+    expect(alternativeMeaning(result)).toBe("乙；adj. 丙；丁");
+  });
+
+  it("caps the secondary field at three senses", () => {
+    // "run" has 45 senses in the dictionary; all of them in one input box is
+    // not a glossary, it is a wall.
+    const many = parseYoudao(
+      {
+        ec: {
+          word: [
+            {
+              trs: [
+                {
+                  tr: [
+                    {
+                      l: {
+                        i: [
+                          "v. 跑；奔跑；运转",
+                          "v. 二；三；四；五；六；七；八；九；十",
+                        ],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      "run",
+    )!;
+    expect(many.senses.length).toBeGreaterThan(3);
+    expect(alternativeMeaning(many).split("；")).toHaveLength(3);
+  });
+
+  it("has no secondary text when there is only one sense", () => {
+    const single = parseYoudao({ fanyi: { tran: "视为当然" } }, "take it for granted")!;
+    expect(alternativeMeaning(single)).toBe("");
+  });
+
+  it("lists the parts of speech in the order the dictionary gives them", () => {
+    const mixed = parseYoudao(
+      {
+        ec: {
+          word: [
+            {
+              trs: [
+                {
+                  tr: [
+                    {
+                      l: {
+                        i: ["n. 记录，记载", "n. 唱片", "v. 记录；录制", "adj. 创纪录的"],
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      "record",
+    )!;
+    expect(posTags(mixed)).toEqual(["n.", "v.", "adj."]);
+    expect(posTags(result)).toEqual(["adj."]);
   });
 
   it("formats every sense on one line", () => {
@@ -404,7 +593,7 @@ describe("tauri adapter (the shipping path)", () => {
 
     expect(invokeMock).toHaveBeenCalledWith("lookup_word", { term: "candid" });
     expect(found.provider).toBe("youdao");
-    expect(found.senses).toHaveLength(4);
+    expect(found.senses).toHaveLength(3);
     expect(found.phonetic).toBe("ˈkændɪd");
   });
 

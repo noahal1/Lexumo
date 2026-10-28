@@ -68,7 +68,14 @@ describe("CSV export", () => {
   it("writes the documented header in the documented order", () => {
     const csv = exportCsv([makeWord()]);
     const header = csv.replace(/^\uFEFF/, "").split(/\r\n/)[0];
-    expect(header).toBe("term,definition,definition2,example,exampleTranslation,note,tags,status");
+    expect(header).toBe(
+      "term,pos,definition,definition2,example,exampleTranslation,note,tags,status",
+    );
+  });
+
+  it("writes the part of speech in its own column", () => {
+    const csv = exportCsv([makeWord({ pos: "n." })]);
+    expect(csv).toContain("serendipity,n.,意外发现美好事物的能力,");
   });
 
   it("puts the example translation in its own column", () => {
@@ -108,6 +115,21 @@ describe("CSV import", () => {
       status: "reviewing",
       listId: LIST_ID,
     });
+  });
+
+  it("keeps the part of speech across an export and import", () => {
+    const word = makeWord({ pos: "n." });
+    const result = parseImport(exportCsv([word]), LIST_ID);
+    expect(result.words[0]?.pos).toBe("n.");
+    expect(result.words[0]?.definition).toBe("意外发现美好事物的能力");
+  });
+
+  it("accepts the part of speech under any of its aliases", () => {
+    for (const header of ["pos", "part of speech", "partOfSpeech", "词性"]) {
+      const text = `term,${header},definition\nword one,adj.,一个词义\n`;
+      const result = parseImport(text, LIST_ID);
+      expect(result.words[0]?.pos, header).toBe("adj.");
+    }
   });
 
   it("accepts the example translation under any of its aliases", () => {

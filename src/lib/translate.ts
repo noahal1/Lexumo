@@ -237,6 +237,19 @@ function myMemoryPair(from: string, to: string): string {
   return `${norm(from)}|${norm(to)}`;
 }
 
+/**
+ * Youdao appends a proper-noun block to nearly every common word:
+ *
+ *   `【名】 （Record）（美）勒科尔（人名）`
+ *
+ * It is not a sense of the word — it is the surname that happens to share its
+ * spelling. Left in place it crowds out the real secondary senses (and for a
+ * three-sense budget it can be the only thing that survives).
+ */
+function isProperNoun(meaning: string): boolean {
+  return /^【名】/.test(meaning) || meaning.includes("（人名）");
+}
+
 /** Turn a Youdao sense string into `{pos, meaning}` parts. */
 function splitSense(raw: string): DictSense[] {
   const text = stripTags(raw).trim();
@@ -248,6 +261,7 @@ function splitSense(raw: string): DictSense[] {
     .split(/[；;]\s*/)
     .map((part) => part.trim())
     .filter(Boolean)
+    .filter((meaning) => !isProperNoun(meaning))
     .map((meaning) => ({ pos, meaning }));
 }
 
@@ -681,22 +695,85 @@ export function resetProviderCooldown(): void {
 
 /* ----------------------------------------------------------- formatting */
 
-/** `"adj. 坦率的"` — part of speech kept, since it carries real information. */
+/**
+ * How many extra senses the secondary field may hold. A long word can come back
+ * with dozens (`run` returns forty-five, 437 characters' worth); past three of
+ * them the field stops being a gloss and becomes a dictionary page.
+ */
+const MAX_SECONDARY_SENSES = 3;
+
+/**
+ * The primary sense on its own, with no part-of-speech prefix.
+ *
+ * The tag belongs in its own field (`Word.pos`) rather than glued to the front
+ * of the meaning: `"n. 类比，比拟"` is a dictionary line, not a gloss, and it
+ * reads badly in the word list, on a flashcard, and as a quiz option.
+ */
 export function primaryMeaning(result: LookupResult): string {
-  const first = result.senses[0];
-  if (!first) return "";
-  return first.pos ? `${first.pos} ${first.meaning}` : first.meaning;
+  return result.senses[0]?.meaning ?? "";
 }
 
-/** The remaining senses, joined the way Chinese dictionaries write them. */
+/**
+ * The remaining senses, joined the way Chinese dictionaries write them.
+ *
+ * Two rules, both learned from what the dictionary actually returns:
+ *
+ * 1. **A different part of speech outranks another sense of the same one.**
+ *    `record` arrives as noun, noun, noun, verb, adjective; taking the first
+ *    three senses would spend the whole field on three noun shades and hide the
+ *    fact that the word is also a verb. So senses that disagree with the primary
+ *    tag are picked first, and only leftover slots go to same-tag senses.
+ * 2. **A sense keeps its tag only once per run**, and never when it matches the
+ *    primary one — `candid` (three adjective senses) reads
+ *    `"抓拍的，偷拍的；公正的"`, not `"adj. 抓拍的，偷拍的；adj. 公正的"`.
+ *
+ * The chosen senses are still emitted in dictionary order.
+ */
 export function alternativeMeaning(result: LookupResult): string {
-  return result.senses
-    .slice(1)
-    .map((sense) => sense.meaning)
-    .join("；");
+  const primary = result.senses[0];
+  if (!primary) return "";
+  const rest = result.senses.slice(1);
+
+  const picked = new Set<number>();
+  // Pass one: a part of speech the primary sense does not have.
+  for (let i = 0; i < rest.length && picked.size < MAX_SECONDARY_SENSES; i++) {
+    if (rest[i].pos !== "" && rest[i].pos !== primary.pos) picked.add(i);
+  }
+  // Pass two: fill what is left with further shades of the primary sense.
+  for (let i = 0; i < rest.length && picked.size < MAX_SECONDARY_SENSES; i++) {
+    picked.add(i);
+  }
+
+  const parts: string[] = [];
+  let lastPos: string | null = null;
+  for (const i of [...picked].sort((a, b) => a - b)) {
+    const sense = rest[i];
+    const needsTag = sense.pos !== "" && sense.pos !== primary.pos && sense.pos !== lastPos;
+    parts.push(needsTag ? `${sense.pos} ${sense.meaning}` : sense.meaning);
+    lastPos = sense.pos;
+  }
+  return parts.join("；");
 }
 
 /** All senses as one line — used for the "填入释义" preview and toasts. */
 export function formatSenses(result: LookupResult): string {
   return result.senses.map((s) => (s.pos ? `${s.pos} ${s.meaning}` : s.meaning)).join("；");
+}
+
+/**
+ * Distinct part-of-speech tags in order of first appearance, e.g.
+ * `["n.", "v.", "adj."]`. Feeds the `pos` field in the editor: a word can be a
+ * noun and a verb at once, and the secondary field only has room for three
+ * senses, so this is the reliable place to record that it is both.
+ */
+export function posTags(result: LookupResult): string[] {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const sense of result.senses) {
+    if (sense.pos && !seen.has(sense.pos)) {
+      seen.add(sense.pos);
+      tags.push(sense.pos);
+    }
+  }
+  return tags;
 }

@@ -698,6 +698,10 @@ export function FlashcardsPage() {
                       <div className="fc-term-sm">{word.term}</div>
                       <div className="fc-divider" />
                       <div className="fc-def">
+                        {/* The tag belongs next to the gloss, not on the front:
+                            seeing "n." before you recall the word would hand
+                            away half the answer. */}
+                        {word.pos && <span className="fc-pos">{word.pos}</span>}
                         {word.definition || t("words.noDefinition")}
                       </div>
                       {word.definition2 && (

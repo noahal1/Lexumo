@@ -599,6 +599,11 @@ export function WordsPage() {
 
                 <div className="row-col-def" style={{ minWidth: 0 }}>
                   <div className="row-def">
+                    {/* The tag is a label, not part of the gloss: it sits
+                        outside `highlight` so a search that matches the meaning
+                        marks the meaning, and typing "adj." does not light up
+                        every adjective in the list. */}
+                    {w.pos && <span className="row-pos">{w.pos}</span>}
                     {w.definition
                       ? highlight(w.definition, trimmedQuery)
                       : t("words.noDefinition")}

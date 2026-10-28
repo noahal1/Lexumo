@@ -28,7 +28,17 @@ export interface Word {
    * written before it existed have none.
    */
   phonetic?: string;
-  /** Primary meaning in the target language. */
+  /**
+   * Part-of-speech tags, space separated, e.g. `"adj."` or `"n. v."`.
+   *
+   * Kept out of `definition` on purpose: `"n. 类比，比拟"` is how a dictionary
+   * prints a line, but a gloss that a user reads on a flashcard, in the list and
+   * as a quiz option should just be `"类比，比拟"` with the tag shown next to it.
+   * Optional because hand-typed words and records from before this field have
+   * none.
+   */
+  pos?: string;
+  /** Primary meaning in the target language, without the part-of-speech tag. */
   definition: string;
   /** Secondary definition / nuance. */
   definition2: string;

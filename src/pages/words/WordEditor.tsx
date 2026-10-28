@@ -8,6 +8,7 @@ import {
   LookupError,
   alternativeMeaning,
   lookupTerm,
+  posTags,
   primaryMeaning,
   type LookupFailure,
 } from "@/lib/translate";
@@ -31,6 +32,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   const data = useAppData();
 
   const [term, setTerm] = useState("");
+  const [pos, setPos] = useState("");
   const [definition, setDefinition] = useState("");
   const [definition2, setDefinition2] = useState("");
   const [example, setExample] = useState("");
@@ -60,6 +62,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
     setPhonetic(word?.phonetic ?? "");
     if (word) {
       setTerm(word.term);
+      setPos(word.pos ?? "");
       setDefinition(word.definition);
       setDefinition2(word.definition2);
       setExample(word.example);
@@ -71,6 +74,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       setFavorite(word.favorite);
     } else {
       setTerm("");
+      setPos("");
       setDefinition("");
       setDefinition2("");
       setExample("");
@@ -100,6 +104,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   const dirty =
     term !== (word?.term ?? "") ||
     phonetic !== (word?.phonetic ?? "") ||
+    pos !== (word?.pos ?? "") ||
     definition !== (word?.definition ?? "") ||
     definition2 !== (word?.definition2 ?? "") ||
     example !== (word?.example ?? "") ||
@@ -154,6 +159,13 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
 
         const primary = primaryMeaning(result);
         const secondary = alternativeMeaning(result);
+        // Part of speech goes into its own field, never into the definition:
+        // "n. 类比，比拟" is a dictionary line, but the gloss the user reads on
+        // a card should just be "类比，比拟" with "n." shown beside it.
+        const posText = posTags(result).join(" ");
+        if (posText) {
+          setPos((prev) => (force || !prev.trim() ? posText : prev));
+        }
         if (primary) {
           setDefinition((prev) => (force || !prev.trim() ? primary : prev));
         }
@@ -218,6 +230,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       updateWord(word.id, {
         term: trimmed,
         phonetic: phonetic.trim(),
+        pos: pos.trim() || undefined,
         definition: definition.trim(),
         definition2: definition2.trim(),
         example: example.trim(),
@@ -233,6 +246,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       addWord({
         term: trimmed,
         phonetic: phonetic.trim(),
+        pos: pos.trim() || undefined,
         definition,
         definition2,
         example,
@@ -404,13 +418,32 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
                 {translateLabel}
               </button>
             </div>
-            <input
-              id="word-def"
-              className="input"
-              value={definition}
-              onChange={(e) => setDefinition(e.target.value)}
-              placeholder={t("words.definitionPlaceholder")}
-            />
+            <div className="row-flex" style={{ gap: "var(--sp-2)", alignItems: "flex-start" }}>
+              {/*
+                The tag sits to the left of the gloss because that is how it is
+                read on a card and in the list — a label, not part of the text.
+                Keeping it in its own field is what stops "adj." from ending up
+                inside the definition the user has to type around.
+              */}
+              <input
+                id="word-pos"
+                className="input pos-input"
+                value={pos}
+                onChange={(e) => setPos(e.target.value)}
+                placeholder={t("words.posPlaceholder")}
+                aria-label={t("common.pos")}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <input
+                id="word-def"
+                className="input"
+                style={{ flex: 1, minWidth: 0 }}
+                value={definition}
+                onChange={(e) => setDefinition(e.target.value)}
+                placeholder={t("words.definitionPlaceholder")}
+              />
+            </div>
             {lookupState === "error" && (
               <span className="hint" style={{ color: "var(--warn)" }}>
                 {errorText}

@@ -17,6 +17,7 @@ export interface ImportResult {
 
 const CSV_COLUMNS = [
   "term",
+  "pos",
   "definition",
   "definition2",
   "example",
@@ -70,6 +71,7 @@ export function exportCsv(words: Word[]): string {
     rows.push(
       [
         csvCell(word.term),
+        csvCell(word.pos ?? ""),
         csvCell(word.definition),
         csvCell(word.definition2),
         csvCell(word.example),
@@ -130,6 +132,7 @@ function parseJsonImport(text: string, listId: string): ImportResult | null {
     }
     words.push({
       term,
+      pos: asString(rec?.pos) || undefined,
       definition: asString(rec?.definition),
       definition2: asString(rec?.definition2),
       example: asString(rec?.example),
@@ -153,6 +156,7 @@ function parseCsvImport(text: string, listId: string): ImportResult {
     header.findIndex((cell) => aliases.includes(cell));
 
   const termIdx = find("term", "word", "词语", "单词");
+  const posIdx = find("pos", "part of speech", "partofspeech", "词性");
   const defIdx = find("definition", "meaning", "释义", "意思");
   const def2Idx = find("definition2", "definition_2", "second definition", "补充释义");
   const exampleIdx = find("example", "sentence", "例句");
@@ -179,6 +183,7 @@ function parseCsvImport(text: string, listId: string): ImportResult {
     }
     words.push({
       term,
+      pos: cellAt(row, posIdx) || undefined,
       definition: cellAt(row, defIdx),
       definition2: cellAt(row, def2Idx),
       example: cellAt(row, exampleIdx),

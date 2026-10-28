@@ -213,6 +213,16 @@
   text-wrap: pretty;
 }
 
+/* Inline before the gloss, at the gloss's own weight but quieter: the tag is
+   the label on the definition, not a heading of its own. */
+.fc-pos {
+  margin-right: var(--sp-2);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  letter-spacing: 0;
+}
+
 .fc-def2 {
   font-size: var(--fs-base);
   line-height: var(--lh-body);

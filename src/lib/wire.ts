@@ -104,6 +104,7 @@ function cleanWord(value: unknown): Word {
     id: str(raw.id),
     term: str(raw.term),
     phonetic: optStr(raw.phonetic),
+    pos: optStr(raw.pos),
     definition: str(raw.definition),
     definition2: str(raw.definition2),
     example: str(raw.example),

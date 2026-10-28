@@ -10,6 +10,7 @@ import { DAY_MS } from "./srs";
 interface SeedWord {
   term: string;
   definition: string;
+  pos?: string;
   definition2?: string;
   example?: string;
   /** Translation of `example`; the demo deck shows both faces of the card. */
@@ -24,6 +25,7 @@ interface SeedWord {
 const SEED: SeedWord[] = [
   {
     term: "serendipity",
+    pos: "n.",
     definition: "意外发现美好事物的运气",
     definition2: "机缘巧合；不期而遇的惊喜",
     example: "Finding that little bookshop was pure serendipity.",
@@ -35,6 +37,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "resilient",
+    pos: "adj.",
     definition: "有韧性的；能迅速恢复的",
     definition2: "形容人或材料受挫后仍能复原",
     example: "Children are remarkably resilient.",
@@ -45,6 +48,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "ubiquitous",
+    pos: "adj.",
     definition: "无处不在的；普遍存在的",
     example: "Smartphones have become ubiquitous.",
     exampleZh: "智能手机已经无处不在。",
@@ -54,6 +58,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "meticulous",
+    pos: "adj.",
     definition: "一丝不苟的；极其仔细的",
     definition2: "对细节近乎挑剔的认真",
     example: "She kept meticulous notes.",
@@ -64,6 +69,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "ephemeral",
+    pos: "adj.",
     definition: "短暂的；转瞬即逝的",
     example: "Fame can be ephemeral.",
     exampleZh: "名声可能是短暂的。",
@@ -72,6 +78,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "candid",
+    pos: "adj.",
     definition: "坦率的；直言不讳的",
     definition2: "不加修饰地说出真实想法",
     example: "Thank you for your candid feedback.",
@@ -82,6 +89,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "nuance",
+    pos: "n.",
     definition: "细微差别；微妙之处",
     example: "The translation misses the nuance.",
     exampleZh: "这个翻译丢掉了原文的细微差别。",
@@ -91,6 +99,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "pragmatic",
+    pos: "adj.",
     definition: "务实的；讲求实际的",
     example: "We need a pragmatic solution.",
     exampleZh: "我们需要一个务实的方案。",
@@ -100,6 +109,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "ambiguous",
+    pos: "adj.",
     definition: "模棱两可的；含糊不清的",
     example: "His answer was deliberately ambiguous.",
     exampleZh: "他的回答是故意含糊的。",
@@ -108,6 +118,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "diligent",
+    pos: "adj.",
     definition: "勤勉的；用功的",
     example: "A diligent student reviews every day.",
     exampleZh: "勤勉的学生每天都会复习。",
@@ -117,6 +128,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "empathy",
+    pos: "n.",
     definition: "共情；同理心",
     definition2: "理解他人感受的能力",
     example: "Good design starts with empathy.",
@@ -127,6 +139,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "tenacious",
+    pos: "adj.",
     definition: "顽强的；坚持不懈的",
     example: "A tenacious researcher rarely gives up.",
     exampleZh: "顽强的研究者很少放弃。",
@@ -136,6 +149,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "concise",
+    pos: "adj.",
     definition: "简洁的；简明的",
     example: "Keep the summary concise.",
     exampleZh: "摘要保持简洁。",
@@ -145,6 +159,7 @@ const SEED: SeedWord[] = [
   },
   {
     term: "inevitable",
+    pos: "adj.",
     definition: "不可避免的；必然发生的",
     example: "Change is inevitable.",
     exampleZh: "变化是不可避免的。",
@@ -211,6 +226,7 @@ export function seedData(now = Date.now()): AppData {
   const words: Word[] = SEED.map((s, i) => ({
     id: `seed_${i}`,
     term: s.term,
+    pos: s.pos,
     definition: s.definition,
     definition2: s.definition2 ?? "",
     example: s.example ?? "",
