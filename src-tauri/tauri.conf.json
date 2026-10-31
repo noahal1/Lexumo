@@ -13,14 +13,14 @@
     "windows": [
       {
         "label": "main",
-        "title": "Lexumo · 词砚",
+        "title": "Lexumo 词砚",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
         "minHeight": 640,
         "resizable": true,
         "center": true,
-        "decorations": true
+        "decorations": false
       }
     ],
     "security": {

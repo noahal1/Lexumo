@@ -16,7 +16,8 @@
   "dependencies": {
     "@tauri-apps/api": "^2.9.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "tauri-plugin-tts-api": "^0.2.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0",

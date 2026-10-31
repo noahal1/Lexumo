@@ -171,7 +171,15 @@
   --content-max: 1180px;
   --control-h: 36px;
   --control-h-sm: 32px;
+  /* The window title bar. 36px keeps the caption buttons on the same rhythm as
+     every other control while staying under the 44px Windows uses at 150%. */
+  --frame-bar-h: 36px;
   --tap: 44px;
+  /* The band of the window a thumb can still reach. `lib/keyboard.ts` overwrites
+     both on the root element as the soft keyboard opens and pans; these defaults
+     describe "no keyboard", where the band is the whole viewport. */
+  --vv-top: 0px;
+  --vv-h: 100dvh;
 
   /* ---- z-index ---- */
   --z-sticky: 20;

@@ -53,7 +53,6 @@ function makeSettings(updatedAt = T0, overrides = {}) {
     audioFirst: false,
     newCardsPerDay: 10,
     reviewOrder: 'due',
-    autoTranslate: false,
     updatedAt,
     ...overrides,
   }

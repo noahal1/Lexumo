@@ -128,15 +128,107 @@ a:hover {
    App shell
    ============================================================ */
 .app {
-  display: flex;
+  /* Two rows, two columns: the window title bar spans the top, the sidebar and
+     the paper sit beneath it. Grid rather than a wrapper element because the
+     title bar only exists inside the desktop shell — when it renders nothing,
+     its row collapses to zero and the shell is exactly as it was. */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   /* The desk. Every screen you work in sits on it as paper. */
   background: var(--frame);
 }
 
+/* ---------- Window title bar (desktop shell only) ---------- */
+
+.frame-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--frame-bar-h);
+  /* Stone, like the sidebar: the two are one frame around the paper. */
+  background: var(--frame);
+  color: var(--frame-ink-2);
+  border-bottom: 1px solid var(--frame-line);
+  user-select: none;
+  --focus: var(--frame-accent);
+}
+
+.frame-bar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  /* The seal sits on the icon column, not on the sidebar's outer edge: sidebar
+     padding plus the nav item's own padding. It heads the five icons below it. */
+  padding-left: calc(var(--sp-3) + var(--sp-2));
+}
+.frame-bar-mark {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  display: block;
+}
+.frame-bar-name {
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--frame-ink);
+  white-space: nowrap;
+}
+.frame-bar-sub {
+  font-size: var(--fs-xs);
+  line-height: 1;
+  color: var(--frame-ink-3);
+  white-space: nowrap;
+}
+
+.frame-bar-controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+/* The three system buttons. 46px wide and full height is the Windows
+   convention: it makes the target impossible to miss and lets the close button
+   bleed into the corner, which is where a hand looks for it. */
+.wctl {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--frame-ink-2);
+  cursor: default;
+}
+.wctl:hover {
+  background: var(--frame-3);
+  color: var(--frame-ink);
+}
+.wctl:active {
+  background: var(--frame-line);
+}
+.wctl:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+/* Close is the one button that answers in cinnabar. */
+.wctl-close:hover,
+.wctl-close:active {
+  background: var(--danger);
+  color: var(--on-danger);
+}
+
 .sidebar {
+  grid-row: 2;
+  grid-column: 1;
   width: var(--sidebar-w);
-  flex: 0 0 var(--sidebar-w);
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
@@ -149,51 +241,6 @@ a:hover {
   /* The ring is the accent of whichever material it sits on. On stone that
      is the pale mineral, because azurite is far too dark to read here. */
   --focus: var(--frame-accent);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: 2px 4px var(--sp-6);
-  min-height: 34px;
-}
-
-/* The seal. A flat square of azurite with the app's own character cut into it —
-   the one place the accent is allowed to be a fill. */
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  border-radius: var(--r-2xs);
-  display: grid;
-  place-items: center;
-  background: var(--accent);
-  color: var(--on-accent);
-  font-family: var(--font-display);
-  font-size: 19px;
-  font-weight: 600;
-  line-height: var(--lh-none);
-  padding-bottom: 1px;
-}
-
-.brand-text {
-  min-width: 0;
-  white-space: nowrap;
-}
-.brand-name {
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: var(--lh-tight);
-  color: var(--frame-ink);
-}
-.brand-sub {
-  font-size: var(--fs-xs);
-  color: var(--frame-ink-3);
-  line-height: var(--lh-snug);
-  margin-top: 1px;
 }
 
 .nav {
@@ -328,15 +375,21 @@ a:hover {
 /* Collapsed rail */
 .app.rail .sidebar {
   width: var(--sidebar-w-rail);
-  flex-basis: var(--sidebar-w-rail);
   padding-left: var(--sp-2);
   padding-right: var(--sp-2);
 }
-.app.rail .brand {
+/* The seal heads the nav icons, so it follows them into the rail: the wordmark
+   drops (exactly as the sidebar drops its labels there) and the seal centres on
+   the icon column. Width, not a hand-measured padding, so it cannot drift. */
+.app.rail .frame-bar-brand {
+  width: var(--sidebar-w-rail);
   justify-content: center;
-  padding-inline: 0;
+  padding-left: 0;
 }
-.app.rail .brand-text,
+.app.rail .frame-bar-name,
+.app.rail .frame-bar-sub {
+  display: none;
+}
 .app.rail .nav-label,
 .app.rail .nav-count,
 .app.rail .streak-card,
@@ -396,8 +449,10 @@ a:hover {
 
 /* The paper. Everything below the topbar is one sheet. */
 .main {
-  flex: 1;
+  grid-row: 2;
+  grid-column: 2;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -405,19 +460,32 @@ a:hover {
   color: var(--ink);
 }
 
+/* The header is chrome, but its text belongs to the same column as the page:
+   the title's left edge and the actions' right edge line up with the content
+   at every width, and the rule under it spans the window rather than stopping
+   short of it. The header never scrolls away, because it is a flex sibling of
+   the scrolling page rather than a sticky element inside it. */
 .topbar {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--sp-4);
-  padding: var(--sp-6) var(--sp-8) var(--sp-4);
+  padding: var(--sp-5) var(--sp-8) var(--sp-4);
   border-bottom: 1px solid var(--line);
+}
+.topbar-inner {
+  width: 100%;
+  max-width: var(--content-max);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
   flex-wrap: wrap;
+}
+.topbar-head {
+  min-width: 0;
 }
 .topbar-title {
   font-family: var(--font-display);
   font-size: var(--fs-xl);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
   line-height: var(--lh-tight);
   text-wrap: balance;
 }
@@ -425,6 +493,7 @@ a:hover {
   font-size: var(--fs-sm);
   color: var(--ink-3);
   margin-top: 2px;
+  line-height: var(--lh-snug);
   font-variant-numeric: tabular-nums;
 }
 .topbar-actions {
@@ -704,40 +773,6 @@ a:hover {
   color: var(--on-accent);
 }
 
-.search {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.search .input {
-  padding-left: var(--sp-8);
-  padding-right: var(--sp-8);
-  background: var(--surface);
-}
-.search-icon {
-  position: absolute;
-  left: var(--sp-3);
-  color: var(--ink-3);
-  pointer-events: none;
-  display: grid;
-  place-items: center;
-}
-.search-clear {
-  position: absolute;
-  right: var(--sp-1);
-  border: 0;
-  background: transparent;
-  color: var(--ink-3);
-  cursor: pointer;
-  padding: var(--sp-1);
-  border-radius: var(--r-sm);
-  display: grid;
-  place-items: center;
-}
-.search-clear:hover {
-  background: var(--surface-hover);
-  color: var(--ink);
-}
 
 /* ============================================================
    Chips / badges / tags
@@ -838,24 +873,259 @@ a:hover {
 }
 
 /* ============================================================
-   Toolbars
+   Query bar
    ============================================================ */
-.toolbar {
+/* The chrome above a table is one strip, not six controls in a row. Only two
+   things on it are boxes: the search field and the sort, because a field's
+   edge is what says "you can type here". The status filter is text carrying a
+   count and the tools are text carrying an icon, so the strip speaks one
+   visual language instead of five. Filters that are on grow a second line
+   inside the same strip, so turning one on never adds another bar to the page. */
+.qbar-main {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
 }
-.toolbar .search {
-  flex: 1 1 240px;
-  max-width: 320px;
-}
-.toolbar .select {
-  width: auto;
+.qbar-field {
+  position: relative;
+  flex: 1 1 220px;
   min-width: 0;
+  max-width: 420px;
 }
-.toolbar .btn {
+/* The icon and the clear button sit over the input rather than beside it, so
+   the input's own border is the whole field's edge. A field's edge is the only
+   thing that says "you can type here", so it is held at 3:1. */
+.qbar-field-ico {
+  position: absolute;
+  top: 50%;
+  left: var(--sp-3);
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+/* Same recipe as every other field in the app: 3:1 edge, and focus is a ring
+   shadow plus an accent edge, never a wider border, so nothing reflows. */
+.qbar-input {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--sp-8);
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  transition:
+    border-color var(--dur-1) var(--ease),
+    box-shadow var(--dur-1) var(--ease);
+}
+.qbar-input::placeholder {
+  color: var(--ink-3);
+}
+.qbar-input:hover {
+  border-color: var(--ink-3);
+}
+.qbar-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.qbar-clear {
+  position: absolute;
+  top: 50%;
+  right: var(--sp-1);
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-2xs);
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.qbar-clear:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+.qbar-clear:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+/* The status filter loses its tray inside the bar: the active item's tint says
+   where you are, and a second border would cut the bar in two. */
+.qbar .segmented {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.qbar .segmented button {
+  height: var(--control-h);
+  padding: 0 var(--sp-2);
+  color: var(--ink-3);
+}
+.qbar .segmented button:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+.qbar .segmented button.active {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  box-shadow: none;
+}
+.qbar .segmented button .seg-count {
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+}
+.qbar-tools {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: auto;
+}
+.qbar-sort {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+/* The sort is the second field on the strip: it holds data the way the search
+   does, so it keeps the same edge rather than becoming another button. */
+.qbar-sort-select {
+  appearance: none;
+  height: var(--control-h);
+  padding: 0 var(--sp-7) 0 var(--sp-3);
+  border: 1px solid var(--line-control);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-1) var(--ease),
+    box-shadow var(--dur-1) var(--ease);
+}
+.qbar-sort-select:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+.qbar-sort-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.qbar-sort svg {
+  position: absolute;
+  right: var(--sp-2);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.qbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--control-h);
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+.qbar-btn:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+.qbar-btn:active {
+  transform: scale(0.97);
+}
+.qbar-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.qbar-btn.is-on {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+.qbar-btn-icon {
+  width: var(--control-h);
+  padding: 0;
+  justify-content: center;
+}
+/* The second line lives inside the same edge, so turning a filter on never
+   makes a new bar appear above the table. */
+.qbar-active {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+.qbar-count {
+  margin-right: var(--sp-1);
+  color: var(--ink-3);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+.qbar-token {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 22px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+.qbar-token:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+}
+.qbar-token:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.qbar-reset {
+  margin-left: auto;
+  height: 22px;
+  padding: 0 var(--sp-1);
+  border: 0;
+  border-radius: var(--r-2xs);
+  background: transparent;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.qbar-reset:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.qbar-reset:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 
 .list-tabs {
@@ -979,7 +1249,7 @@ a:hover {
 /* The tag rides in the same column as the gloss it belongs to, one step down in
    weight and colour — present when you look for it, invisible when you don't. */
 .row-pos {
-  margin-right: 5px;
+  margin-right: var(--sp-1);
   color: var(--ink-3);
   font-size: var(--fs-sm);
   font-style: italic;
@@ -1028,6 +1298,36 @@ a:hover {
 .row-pair {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--sp-3);
+}
+/* The "create a new list" entry pinned under the list manager's rows — always
+   visible so adding a list is discoverable, dashed to read as "one more slot". */
+.list-create-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: var(--control-h);
+  margin-top: var(--sp-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+    border-color var(--dur-1) var(--ease);
+}
+.list-create-row:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+/* The create form card that replaces the dashed row while open. */
+.list-create {
+  margin-top: var(--sp-2);
+  border-color: var(--line-strong);
 }
 .row-fav {
   color: var(--danger);
@@ -1795,6 +2095,23 @@ mark {
   display: none;
 }
 
+/* With the sidebar gone the paper takes the whole width. */
+.app.mobile .main {
+  grid-column: 1 / -1;
+}
+
+/* With the sidebar gone there is no icon column to head, so the bar returns to
+   its full mark and lines up with the page's own left margin. */
+.app.mobile .frame-bar-brand {
+  width: auto;
+  justify-content: flex-start;
+  padding-left: var(--sp-4);
+}
+.app.mobile .frame-bar-name,
+.app.mobile .frame-bar-sub {
+  display: inline;
+}
+
 .app.mobile .tabbar {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1886,6 +2203,13 @@ mark {
   .skip-link:focus-visible {
     outline-color: var(--focus);
   }
+  /* The link is text-sized, which on a phone makes it a 37px target. It is the
+     first thing a keyboard or switch user reaches, so it is worth a full one. */
+  .skip-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap);
+  }
   .topbar {
     padding-top: calc(var(--sp-5) + env(safe-area-inset-top, 0px));
     padding-left: var(--sp-4);
@@ -1897,43 +2221,82 @@ mark {
     /* leave room for the fixed tab bar */
     padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px));
   }
+  /* One finger, no hover, no cursor: every control a thumb has to find is 44px
+     on its shortest side. The desktop sizes (36/32) are tuned for a mouse and
+     were measurably too small here — 27 of the 49 targets on the word list and
+     27 of 32 on settings came out under 44. Height only: the widths already
+     come from the content. */
   .btn {
-    min-height: 40px;
+    min-height: var(--tap);
   }
-  .btn-icon {
-    width: 40px;
+  .btn-sm {
+    min-height: var(--tap);
+  }
+  .btn-icon,
+  .btn-icon.btn-sm {
+    width: var(--tap);
   }
   .nav-item {
     padding: 12px var(--sp-4);
   }
-  .search-clear,
   .row-actions .btn-icon {
-    width: 40px;
-    height: 40px;
+    width: var(--tap);
+    height: var(--tap);
+  }
+  .modal-close {
+    width: var(--tap);
+    height: var(--tap);
+    padding: 0;
+  }
+  /* A field is a tap target too, and 36px is under the threshold. */
+  .input,
+  .textarea,
+  .select,
+  .set-ctl .input-sm {
+    min-height: var(--tap);
   }
 
   /* Modals become bottom sheets: full width, rounded top, never taller than
-     the viewport minus the status bar. */
+     the visible band. */
   .overlay {
     padding: 0;
     align-items: flex-end;
+    /* A fixed box is laid out against the layout viewport, and on Android the
+       layout viewport does not move when the keyboard opens — only the visual
+       one shrinks and pans. Anchoring the sheet to the visible band instead
+       keeps its footer above the keys and its title on the screen; with no
+       keyboard the band is the whole window, so this changes nothing. */
+    top: var(--vv-top);
+    bottom: auto;
+    height: var(--vv-h);
   }
   .modal {
     width: 100% !important;
     max-width: none;
-    max-height: calc(100dvh - var(--sp-6));
+    max-height: calc(var(--vv-h) - var(--sp-6));
     border-radius: var(--r-lg) var(--r-lg) 0 0;
     animation: sheet-in var(--dur-2) var(--ease-out);
   }
   .modal-foot {
     padding-bottom: calc(var(--sp-4) + env(safe-area-inset-bottom, 0px));
   }
+  /* The gesture bar is under the keyboard while it is up, so the sheet must not
+     reserve room for it. */
+  .kb-open .modal-foot {
+    padding-bottom: var(--sp-4);
+  }
+  /* A toast is the one thing that has to be read while typing, so it rises to
+     the top of the keys rather than hiding behind them. */
+  .kb-open .toast-stack {
+    bottom: calc(100dvh - var(--vv-top) - var(--vv-h) + var(--sp-4));
+  }
 
   /* Form controls must stay at 16px so mobile browsers do not zoom on focus. */
   .input,
   .textarea,
   .select,
-  .search input,
+  .qbar-input,
+  .qbar-sort-select,
   .set-ctl .input-sm {
     font-size: 16px;
   }
@@ -1941,17 +2304,60 @@ mark {
   /* Segmented pickers and list tabs get real tap targets. */
   .segmented button,
   .list-tab {
-    min-height: 38px;
+    min-height: var(--tap);
   }
   .list-tab-add {
-    width: 38px;
-    height: 38px;
+    width: var(--tap);
+    height: var(--tap);
   }
   .list-tabs {
     flex-wrap: wrap;
   }
-  .toolbar {
+  /* The query bar stacks: the field takes the first line, the status filter
+     scrolls sideways on the second, the tools stay at its right edge. */
+  .qbar-main {
     flex-wrap: wrap;
+    padding: var(--sp-2);
+  }
+  .qbar-field {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .qbar-input,
+  .qbar-sort-select {
+    height: 44px;
+  }
+  .qbar-clear {
+    width: 32px;
+    height: 32px;
+  }
+  /* The clear glyph stays 32px so it does not crowd the text it sits over, but
+     the thumb gets the whole height of the field to hit. */
+  .qbar-clear::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+  }
+  .qbar-status {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .qbar-status::-webkit-scrollbar {
+    display: none;
+  }
+  .qbar-btn {
+    height: var(--tap);
+  }
+  .qbar-btn-icon {
+    width: var(--tap);
+  }
+  /* The removable filter chips are full controls on a phone, not annotations. */
+  .qbar-token,
+  .qbar-reset {
+    height: var(--tap);
+    padding: 0 var(--sp-2);
   }
 
   /* Word rows: term + definition stacked, status and play beside them. */

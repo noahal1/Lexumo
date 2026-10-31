@@ -84,7 +84,6 @@ interface SettingsRecord {
   audioFirst: boolean;
   newCardsPerDay: number;
   reviewOrder: "due" | "random";
-  autoTranslate: boolean;
   updatedAt: number;
 }
 

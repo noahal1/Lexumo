@@ -26,8 +26,26 @@ pub struct ProxyResponse {
     pub error: Option<String>,
 }
 
+/// A TLS config with a bundled root store instead of the platform verifier.
+///
+/// `reqwest`'s `default-tls` feature resolves to rustls *with*
+/// `rustls-platform-verifier`, which on Android panics until the JVM side has
+/// initialised it (`android.rs:90`, "Expect rustls-platform-verifier to be
+/// initialized"). That panic aborted the proxy task on the phone, so the word
+/// dialog stayed on "翻译中…" until the frontend gave up. Handing reqwest a
+/// fully-built `ClientConfig` keeps one code path for desktop and mobile and
+/// needs no JNI plumbing.
+fn tls_config() -> rustls::ClientConfig {
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth()
+}
+
 fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
+        .tls_backend_preconfigured(tls_config())
         .timeout(REQUEST_TIMEOUT)
         .user_agent(USER_AGENT)
         .build()
@@ -115,6 +133,12 @@ async fn translate_text(q: String, from: String, to: String) -> Result<ProxyResp
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Native text-to-speech. The desktop build already has Web Speech in
+        // WebView2, but Android's WebView does not expose `speechSynthesis` at
+        // all — `"speechSynthesis" in window` is false there — even though the
+        // device ships a perfectly good engine (com.google.android.tts). Without
+        // this plugin every 发音 button on the phone would stay hidden forever.
+        .plugin(tauri_plugin_tts::init())
         .invoke_handler(tauri::generate_handler![lookup_word, translate_text])
         .run(tauri::generate_context!())
         .expect("error while running the Lexumo window");

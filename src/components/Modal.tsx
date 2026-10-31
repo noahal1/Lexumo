@@ -4,6 +4,7 @@ import { cx } from "@/lib/utils";
 import { Icon } from "@/components/Icon";
 import { useT } from "@/i18n";
 import { SHORTCUTS, useShortcutScope, type ShortcutBinding } from "@/lib/shortcuts";
+import { registerBackClaim } from "@/lib/backButton";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -53,6 +54,26 @@ export function Modal({
   );
   useShortcutScope("modal", modalShortcuts);
 
+  /* Android's back affordance means "dismiss the thing on top". A dialog is
+     always that thing, so it claims the press before the shell can decide to
+     walk history or leave the app. The claim reads the newest props through a
+     ref so opening and closing do not re-register it on every render. */
+  const latestClose = useRef(onClose);
+  latestClose.current = onClose;
+  const latestDismissible = useRef(dismissible);
+  latestDismissible.current = dismissible;
+
+  useEffect(() => {
+    if (!open) return;
+    return registerBackClaim(() => {
+      /* A dialog that refuses Esc and the backdrop must refuse back too — but
+         it still consumes the press, because the alternative is leaving the app
+         from inside an unresolved question. */
+      if (latestDismissible.current) latestClose.current();
+      return true;
+    });
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -76,16 +97,27 @@ export function Modal({
     };
 
     document.addEventListener("keydown", onKey, true);
-    const first = ref.current?.querySelector<HTMLElement>(
-      "input, textarea, select, button:not(.modal-close)",
-    );
+    /* Put the caret in the first text field, not in the first enabled button:
+       a button that is disabled on open (nothing to look up yet) matches the
+       selector but cannot take focus, so the dialog used to open with focus on
+       the container. */
+    const first =
+      ref.current?.querySelector<HTMLElement>(
+        "input:not([disabled]):not([type='hidden']), textarea:not([disabled]), select:not([disabled])",
+      ) ?? ref.current?.querySelector<HTMLElement>("button:not(.modal-close)");
     first?.focus();
 
     return () => {
       document.removeEventListener("keydown", onKey, true);
       previous?.focus?.();
     };
-  }, [open, onClose, dismissible]);
+    /* Deps are `open` alone on purpose. This effect moves the caret, so it may
+       only run when the dialog opens. `onClose` is a fresh closure on every
+       parent render, and while it was a dependency the effect re-ran on every
+       keystroke: each character re-focused the first control in the dialog and
+       pulled the caret out of the field being typed into. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!open) return null;
   return (

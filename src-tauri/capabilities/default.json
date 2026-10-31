@@ -3,5 +3,14 @@
   "identifier": "default",
   "description": "Default capability for the Lexumo main window.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:app:allow-exit",
+    "tts:default"
+  ]
 }

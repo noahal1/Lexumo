@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Modal, useToast } from "@/components/ui";
 import { useT } from "@/i18n";
+import { langName } from "@/lib/languages";
 import { addWord, findDuplicate, updateWord, useAppData } from "@/lib/store";
 import {
   LookupError,
@@ -48,16 +49,24 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   const [lookupError, setLookupError] = useState<LookupFailure | null>(null);
   const [phonetic, setPhonetic] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  // The reverse direction (meaning → word) runs on its own controller: typing a
+  // meaning must not cancel an in-flight forward lookup, and vice versa.
+  const [reverseState, setReverseState] = useState<LookupState>("idle");
+  const [reverseError, setReverseError] = useState<LookupFailure | null>(null);
+  const reverseAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!open) {
       abortRef.current?.abort();
+      reverseAbortRef.current?.abort();
       return;
     }
     setError("");
     setDismissOpen(false);
     setLookupState("idle");
     setLookupError(null);
+    setReverseState("idle");
+    setReverseError(null);
     setPhonetic(word?.phonetic ?? "");
     if (word) {
       setTerm(word.term);
@@ -85,19 +94,29 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   }, [open, word, defaultListId]);
 
   // Drop any in-flight request when the dialog unmounts.
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      reverseAbortRef.current?.abort();
+    },
+    [],
+  );
 
   const list = data.lists.find((l) => l.id === listId) ?? data.lists[0];
   const fromLang = list?.sourceLang ?? "en";
   const toLang = list?.targetLang ?? "zh-CN";
+  // The wordbook's own pair is what translation defaults to; surfacing it next
+  // to the button is what makes that visible instead of implied.
+  const uiLang = data.settings.uiLang;
+  const pairLabel = `${langName(fromLang, uiLang)} → ${langName(toLang, uiLang)}`;
 
   const trimmed = term.trim();
   const duplicate = trimmed ? findDuplicate(data, trimmed, listId) : undefined;
   const showDuplicate = Boolean(duplicate && duplicate.id !== word?.id);
 
   // A draft is dirty when any field differs from what was loaded. The create
-  // baseline is all-empty, so a fetched translation counts too — closing after
-  // auto-translate must not throw the word away without asking.
+  // baseline is all-empty, so a word filled in by the "翻译" button counts too —
+  // closing after a lookup must not throw the result away without asking.
   const dirty =
     term !== (word?.term ?? "") ||
     phonetic !== (word?.phonetic ?? "") ||
@@ -128,14 +147,16 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
   };
 
   /**
-   * Look the term up and fill the empty fields.
+   * Look the term up and fill the meaning fields.
    *
-   * `force` is the "翻译" button: it overwrites what is already there and
-   * bypasses the cache. The automatic pass only ever fills blanks, so a user
-   * who typed their own wording never loses it to a background request.
+   * Only the "翻译" button calls this. Nothing runs on blur or on typing: a
+   * lookup costs a network request and rewrites fields the user may be
+   * mid-way through, so it waits until they ask for it. That makes every call
+   * an explicit overwrite, and `force` (bypass the local cache) is the right
+   * default for it — a click is also how a stale cached entry gets refreshed.
    */
   const runLookup = useCallback(
-    async (force: boolean) => {
+    async () => {
       const value = term.trim();
       if (!value) return;
       abortRef.current?.abort();
@@ -148,7 +169,7 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         const result = await lookupTerm(value, {
           from: fromLang,
           to: toLang,
-          force,
+          force: true,
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -159,30 +180,23 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         // "n. 类比，比拟" is a dictionary line, but the gloss the user reads on
         // a card should just be "类比，比拟" with "n." shown beside it.
         const posText = posTags(result).join(" ");
-        if (posText) {
-          setPos((prev) => (force || !prev.trim() ? posText : prev));
-        }
-        if (primary) {
-          setDefinition((prev) => (force || !prev.trim() ? primary : prev));
-        }
-        if (secondary) {
-          setDefinition2((prev) => (force || !prev.trim() ? secondary : prev));
-        }
+        if (posText) setPos(posText);
+        if (primary) setDefinition(primary);
+        if (secondary) setDefinition2(secondary);
         // The dictionary payload carries the example both ways when the target
         // language is Chinese. Both halves go in: the sentence is what you read
         // in the deck, the translation is what makes an unknown word usable.
         //
-        // The translation is only acceptable alongside the sentence it came
-        // with. A hand-typed example keeps its own (empty) translation — pasting
-        // the dictionary's Chinese sentence under the user's own English one
-        // would put two unrelated sentences on the same card.
+        // They go in together or not at all. The translation only means
+        // something under the sentence it came with, so it is written only in
+        // the same step that writes that sentence — never attached to a
+        // sentence the user typed, which would put two unrelated lines on one
+        // card.
         const sampleEn = result.examples[0]?.en ?? "";
         const sampleZh = result.examples[0]?.zh ?? "";
-        const takesExample = force || !example.trim();
-        const keepsSample = example.trim() === sampleEn;
-        if (sampleEn && takesExample) setExample(sampleEn);
-        if (sampleZh && (takesExample || keepsSample) && (force || !exampleZh.trim())) {
-          setExampleZh(sampleZh);
+        if (sampleEn) {
+          setExample(sampleEn);
+          if (sampleZh) setExampleZh(sampleZh);
         }
         setPhonetic(result.phonetic);
         setLookupState("idle");
@@ -193,11 +207,9 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
         setLookupError(e instanceof LookupError ? e.reason : "offline");
       }
     },
-    // `example` and `exampleZh` are read (not just written) to decide whether
-    // the fetched sentence may replace what is already there, so they belong in
-    // the dependency list — a stale closure here would compare against an old
-    // draft and overwrite a sentence the user had already typed.
-    [term, example, exampleZh, fromLang, toLang, t, toast],
+    // The example fields are only written now, never read, so they are not
+    // dependencies — a click always replaces both halves together.
+    [term, fromLang, toLang, t, toast],
   );
 
   const translateLabel =
@@ -206,6 +218,80 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
       : lookupState === "error"
         ? t("words.retranslate")
         : t("words.translate");
+
+  /**
+   * The reverse direction: a gloss the user typed becomes the query, and the
+   * word comes back.
+   *
+   * This is what makes a Japanese wordbook usable the way people actually fill
+   * one in — you know "苹果" and you want "りんご", so typing the meaning first
+   * is the natural order. The pair is simply swapped: meaning language → the
+   * list's learning language.
+   *
+   * It runs only when asked. A word already typed is the user's decision, but
+   * because nothing calls this in the background any more, a click is
+   * unambiguously an instruction to overwrite it with what the dictionary found.
+   */
+  const runReverse = useCallback(
+    async () => {
+      const query = definition.trim();
+      if (!query) return;
+      reverseAbortRef.current?.abort();
+      const controller = new AbortController();
+      reverseAbortRef.current = controller;
+
+      setReverseState("loading");
+      setReverseError(null);
+      try {
+        // Swapped on purpose: the gloss is written in the list's *meaning*
+        // language, and the word we want is in its *learning* language.
+        //
+        // The chain order matters here in a way it does not for the forward
+        // pass. Youdao translates *out of* Chinese as machine translation and
+        // renders a bare noun as a polite sentence — `苹果` comes back
+        // `りんごです`, which is not a word anyone would add to a wordbook.
+        // Google returns the lemma (`りんご`) and MyMemory returns `リンゴ`;
+        // both are usable, so Youdao is pushed behind them.
+        const result = await lookupTerm(query, {
+          from: toLang,
+          to: fromLang,
+          force: true,
+          prefer: ["google", "mymemory"],
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+
+        const found = primaryMeaning(result).trim();
+        if (!found) {
+          setReverseState("idle");
+          return;
+        }
+        setTerm(found);
+        setError("");
+        setLookupState("idle");
+        setLookupError(null);
+        setReverseState("idle");
+        if (!result.fromCache) toast(t("words.reverseApplied"), "ok");
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        setReverseState("error");
+        setReverseError(e instanceof LookupError ? e.reason : "offline");
+      }
+    },
+    [definition, fromLang, toLang, t, toast],
+  );
+
+  const reverseLabel =
+    reverseState === "loading" ? t("words.translating") : t("words.reverseTranslate");
+
+  const reverseErrorText =
+    reverseError === "rate-limited"
+      ? t("words.translationRateLimited")
+      : reverseError === "offline"
+        ? t("words.translationOffline")
+        : reverseError === "not-found"
+          ? t("words.translationNotFound")
+          : t("words.translationFailed");
 
   const errorText =
     lookupError === "rate-limited"
@@ -335,9 +421,27 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
     >
       <div className="stack" style={{ gap: "var(--sp-4)" }} onKeyDown={onKeyDown}>
         <div className="field">
-          <label className="label" htmlFor="word-term">
-            {t("words.term")}
-          </label>
+          <div
+            className="row-flex"
+            style={{ justifyContent: "space-between", gap: "var(--sp-2)", alignItems: "center" }}
+          >
+            <label className="label" htmlFor="word-term">
+              {t("words.term")}
+            </label>
+            {/* The other half of the pair. Sits on the term field because that
+                is the field it fills, and stays disabled until there is a
+                meaning to search with. */}
+            <button
+              className="btn btn-quiet btn-sm"
+              type="button"
+              onClick={() => void runReverse()}
+              disabled={reverseState === "loading" || !definition.trim()}
+              title={t("words.reverseHint")}
+            >
+              <Icon name={reverseState === "loading" ? "refresh" : "undo"} size={13} />
+              {reverseLabel}
+            </button>
+          </div>
           <input
             id="word-term"
             className="input"
@@ -350,25 +454,9 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
               setLookupError(null);
               setPhonetic("");
             }}
-            onBlur={() => {
-              // Automatic pass, in both modes, but only when there is a blank
-              // the lookup could fill. An empty example is as good a reason as
-              // an empty definition — the dictionary hands back both at once,
-              // and typing a sentence by hand is the slowest part of adding a
-              // word. Nothing that is already typed is ever overwritten; the
-              // "翻译" button remains the explicit overwrite.
-              const couldFill =
-                !definition.trim() ||
-                !example.trim() ||
-                (example.trim() !== "" && !exampleZh.trim());
-              if (data.settings.autoTranslate && trimmed && couldFill) {
-                void runLookup(false);
-              }
-            }}
             onKeyDown={(e) => {
-              // Enter moves on to the meaning instead of saving. Saving from
-              // here used to abort the blur-triggered lookup, so the flagship
-              // auto-translate never got to run. Ctrl/⌘+Enter still saves.
+              // Enter moves on to the meaning instead of saving. Ctrl/⌘+Enter
+              // still saves from anywhere.
               if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
                 e.preventDefault();
                 if (!trimmed) {
@@ -401,16 +489,21 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
               <label className="label" htmlFor="word-def">
                 {t("common.definition")}
               </label>
-              <button
-                className="btn btn-quiet btn-sm"
-                type="button"
-                onClick={() => void runLookup(true)}
-                disabled={lookupState === "loading" || !trimmed}
-                title={t("words.translateHint")}
-              >
-                <Icon name={lookupState === "loading" ? "refresh" : "sparkles"} size={13} />
-                {translateLabel}
-              </button>
+              <div className="row-flex" style={{ gap: "var(--sp-2)", alignItems: "center" }}>
+                <span className="hint" title={t("words.translateHint")}>
+                  {pairLabel}
+                </span>
+                <button
+                  className="btn btn-quiet btn-sm"
+                  type="button"
+                  onClick={() => void runLookup()}
+                  disabled={lookupState === "loading" || !trimmed}
+                  title={t("words.translateHint")}
+                >
+                  <Icon name={lookupState === "loading" ? "refresh" : "sparkles"} size={13} />
+                  {translateLabel}
+                </button>
+              </div>
             </div>
             <div className="row-flex" style={{ gap: "var(--sp-2)", alignItems: "flex-start" }}>
               {/*
@@ -434,13 +527,22 @@ export function WordEditor({ open, word, defaultListId, onClose, onDelete }: Wor
                 className="input"
                 style={{ flex: 1, minWidth: 0 }}
                 value={definition}
-                onChange={(e) => setDefinition(e.target.value)}
+                onChange={(e) => {
+                  setDefinition(e.target.value);
+                  setReverseState("idle");
+                  setReverseError(null);
+                }}
                 placeholder={t("words.definitionPlaceholder")}
               />
             </div>
             {lookupState === "error" && (
               <span className="hint" style={{ color: "var(--warn)" }}>
                 {errorText}
+              </span>
+            )}
+            {reverseState === "error" && (
+              <span className="hint" style={{ color: "var(--warn)" }}>
+                {reverseErrorText}
               </span>
             )}
           </div>

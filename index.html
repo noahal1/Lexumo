@@ -5,16 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#f9f7f3" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#121614" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#1d231f" media="(prefers-color-scheme: dark)" />
     <title>Lexumo 词砚</title>
     <meta
       name="description"
       content="Lexumo 词砚，本地优先的间隔重复词汇学习桌面应用"
     />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='4' fill='%23175b72'/%3E%3Ctext x='32' y='47' font-family='Songti SC,SimSun,serif' font-size='40' font-weight='600' fill='%23f9fcfe' text-anchor='middle'%3E%E8%AF%8D%3C/text%3E%3C/svg%3E"
-    />
+    <link rel="icon" href="/icon.svg" />
     <style>
       /* Paint the right canvas and a matching skeleton before the bundle
          loads, so the first frame is never a blank white rectangle. These
@@ -33,15 +30,15 @@
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --b-bg: #121614;
-          --b-surface: #1c201e;
+          --b-bg: #1d231f;
+          --b-surface: #262c27;
           --b-line: #2f3633;
-          --b-skel: #232826;
-          --b-frame: #070b09;
-          --b-frame-2: #040605;
-          --b-frame-line: #1f2623;
+          --b-skel: #2d342e;
+          --b-frame: #050706;
+          --b-frame-2: #030504;
+          --b-frame-line: #39443e;
           --b-frame-ink: #dddfda;
-          --b-accent: #70c8cd;
+          --b-accent: #66adc5;
         }
       }
       html,
@@ -56,9 +53,41 @@
       }
       .boot {
         display: flex;
+        flex-direction: column;
         height: 100%;
         font-family: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Microsoft YaHei",
           system-ui, sans-serif;
+      }
+      /* The title bar only exists in the desktop shell, so the skeleton only
+         draws it there — otherwise a browser tab would flash a strip that the
+         app then removes. */
+      .boot-bar {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        height: 36px;
+        /* 20px, not 12: the real bar puts the seal on the nav icons' axis, and
+           the skeleton must not jump 8px sideways when the app takes over.
+           The window opens at 1200px, which is the full-sidebar layout. */
+        padding-left: 20px;
+        box-sizing: border-box;
+        background: var(--b-frame);
+        border-bottom: 1px solid var(--b-frame-line);
+      }
+      html.is-desktop .boot-bar {
+        display: flex;
+      }
+      .boot-barmark {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 16px;
+        border-radius: 2px;
+        background: var(--b-frame-line);
+      }
+      .boot-body {
+        display: flex;
+        flex: 1;
+        min-height: 0;
       }
       .boot-side {
         width: 232px;
@@ -67,31 +96,6 @@
         background: var(--b-frame);
         padding: 20px 12px;
         box-sizing: border-box;
-      }
-      .boot-brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 2px 8px 22px;
-      }
-      .boot-mark {
-        width: 32px;
-        height: 32px;
-        flex: 0 0 32px;
-        border-radius: 2px;
-        background: var(--b-accent);
-        color: #f9fcfe;
-        display: grid;
-        place-items: center;
-        font-family: "IBM Plex Serif", "Songti SC", SimSun, serif;
-        font-size: 19px;
-        font-weight: 600;
-        line-height: 1;
-      }
-      .boot-brandtext {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
       }
       .boot-nav {
         display: flex;
@@ -161,6 +165,11 @@
         border-radius: 3px;
         margin-left: auto;
       }
+      .sk.tname {
+        width: 64px;
+        height: 10px;
+        background: var(--b-frame-line);
+      }
       @keyframes boot-pulse {
         0%,
         100% {
@@ -176,46 +185,63 @@
         }
       }
     </style>
+    <script>
+      // The window title bar exists only inside the desktop shell. Deciding it
+      // before first paint keeps the skeleton from shifting when the bundle
+      // takes over. Tauri's init script runs before this one, so the check
+      // holds; in a browser tab the class is simply never added.
+      //
+      // Mobile is a Tauri shell too (same global) but it has no window chrome:
+      // the system draws the status bar. So it gets neither the is-desktop class
+      // nor the skeleton stripe that the app would then have to remove. The UA
+      // is tested inline because this runs before the bundle and must not
+      // depend on it.
+      if (
+        "__TAURI_INTERNALS__" in window &&
+        !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      ) {
+        document.documentElement.className = "is-desktop";
+      }
+    </script>
   </head>
   <body>
     <div id="root">
       <div class="boot" aria-hidden="true">
-        <div class="boot-side">
-          <div class="boot-brand">
-            <div class="boot-mark">词</div>
-            <div class="boot-brandtext">
-              <span class="sk" style="width: 74px"></span>
-              <span class="sk" style="width: 40px"></span>
-            </div>
-          </div>
-          <div class="boot-nav">
-            <span class="sk nav"></span>
-            <span class="sk nav"></span>
-            <span class="sk nav"></span>
-            <span class="sk nav"></span>
-            <span class="sk nav"></span>
-          </div>
+        <div class="boot-bar">
+          <span class="boot-barmark"></span>
+          <span class="sk tname"></span>
         </div>
-        <div class="boot-main">
-          <div class="boot-head">
-            <span class="sk h1"></span>
-            <span class="sk h2"></span>
+        <div class="boot-body">
+          <div class="boot-side">
+            <div class="boot-nav">
+              <span class="sk nav"></span>
+              <span class="sk nav"></span>
+              <span class="sk nav"></span>
+              <span class="sk nav"></span>
+              <span class="sk nav"></span>
+            </div>
           </div>
-          <div class="boot-card">
-            <div class="boot-row">
-              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+          <div class="boot-main">
+            <div class="boot-head">
+              <span class="sk h1"></span>
+              <span class="sk h2"></span>
             </div>
-            <div class="boot-row">
-              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
-            </div>
-            <div class="boot-row">
-              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
-            </div>
-            <div class="boot-row">
-              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
-            </div>
-            <div class="boot-row">
-              <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+            <div class="boot-card">
+              <div class="boot-row">
+                <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+              </div>
+              <div class="boot-row">
+                <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+              </div>
+              <div class="boot-row">
+                <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+              </div>
+              <div class="boot-row">
+                <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+              </div>
+              <div class="boot-row">
+                <span class="sk term"></span><span class="sk def"></span><span class="sk pill"></span>
+              </div>
             </div>
           </div>
         </div>

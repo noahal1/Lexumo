@@ -31,19 +31,22 @@ export function PageShell({
   wide?: boolean;
 }) {
   const id = useId();
+  const column = wide ? { maxWidth: 1360 } : undefined;
   return (
     <>
       <header className="topbar">
-        <div style={{ minWidth: 0 }}>
-          <h1 className="topbar-title" id={id}>
-            {title}
-          </h1>
-          {subtitle && <div className="topbar-sub">{subtitle}</div>}
+        <div className="topbar-inner" style={column}>
+          <div className="topbar-head">
+            <h1 className="topbar-title" id={id}>
+              {title}
+            </h1>
+            {subtitle && <div className="topbar-sub">{subtitle}</div>}
+          </div>
+          {actions && <div className="topbar-actions">{actions}</div>}
         </div>
-        {actions && <div className="topbar-actions">{actions}</div>}
       </header>
       <div className="page" role="region" aria-labelledby={id}>
-        <div className="page-inner" style={wide ? { maxWidth: 1360 } : undefined}>
+        <div className="page-inner" style={column}>
           {children}
         </div>
       </div>

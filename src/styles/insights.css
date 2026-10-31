@@ -630,8 +630,9 @@
 /* Touch: a 6px-tall box is impossible to grab, so grow the hit area and the
    thumb without changing the visual track thickness. */
 @media (max-width: 720px) {
+  /* A 20px box is a hit area, not a control. */
   .range {
-    height: 36px;
+    height: var(--tap);
   }
   .range::-webkit-slider-thumb {
     width: 22px;
@@ -642,11 +643,21 @@
     width: 20px;
     height: 20px;
   }
-  /* 51×31 is the platform-standard switch size (iOS uses the same). */
+  /* 51×31 is the platform-standard switch size, and stretching the track to 44
+     would read as a different control. So the *target* grows instead: the
+     pseudo-element is part of the button, which means a tap 6px above or below
+     the track still lands on it, while the switch keeps the shape people
+     recognise. */
   .switch {
+    position: relative;
     width: 51px;
     height: 31px;
     padding: 2px;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    inset: -8px -2px;
   }
   .switch-knob {
     width: 23px;
@@ -868,6 +879,10 @@
 @media (max-width: 720px) {
   .set-ctl .input-sm {
     max-width: none;
+    /* The desktop height for this field is declared above at the same
+       specificity, and this file loads after global.css, so the phone-sized
+       tap target has to be restated here to actually win. */
+    min-height: var(--tap);
   }
 
   .sync-status {

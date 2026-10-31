@@ -227,6 +227,19 @@ function youdaoLang(code: string): string {
   return code;
 }
 
+/**
+ * Google Translate does not accept Youdao's `zh-CHS` dialect tag. Worse than
+ * rejecting it, it silently echoes the input back untranslated — which reads
+ * as a real gloss and hides the failure. Google wants `zh-CN` / `zh-TW`.
+ */
+function googleLang(code: string): string {
+  const c = code.toLowerCase();
+  if (c.startsWith("zh")) {
+    return c.includes("tw") || c.includes("hk") ? "zh-TW" : "zh-CN";
+  }
+  return youdaoLang(code);
+}
+
 function myMemoryPair(from: string, to: string): string {
   const norm = (c: string) => {
     const lower = c.toLowerCase();
@@ -448,12 +461,21 @@ interface ProxyResponse {
   error: string | null;
 }
 
+/** True when a list asks for a Chinese gloss (the only thing Youdao's
+ *  dictionary endpoint can produce). */
+function isChineseTarget(to: string | undefined): boolean {
+  return !to || to.toLowerCase().startsWith("zh");
+}
+
 /** The desktop transport: a Rust command proxying Youdao (no CORS involved). */
 export function tauriAdapter(): LookupAdapter {
   return {
     id: "youdao",
-    // The proxy answers or it does not; there is no language-pair gate.
-    canServe: () => true,
+    // `dict.youdao.com/jsonapi` always glosses into Chinese, whatever `to` the
+    // list asked for. Serving a Japanese target from it would silently hand
+    // back Chinese, so this adapter only claims Chinese targets; every other
+    // pair is left to the web adapters in `createTauriAdapters`.
+    canServe: (_from, to) => isChineseTarget(to),
     async fetch(term) {
       const res = await invoke<ProxyResponse>("lookup_word", { term });
       if (!res.ok) {
@@ -471,6 +493,20 @@ async function fetchJson(url: string, signal: AbortSignal): Promise<unknown> {
   if (!res.ok) throw new LookupError("offline", `http ${res.status}`);
   return res.json();
 }
+
+/**
+ * How long one provider may take before the chain moves on, and how long the
+ * whole lookup may take across all of them.
+ *
+ * These are two budgets, not one. A single shared 9s signal used to be handed
+ * to every adapter, so a provider that does not answer *at all* — Google's
+ * endpoint from the Android WebView, for instance — ate the entire budget and
+ * left the following providers holding an already-aborted signal. The visible
+ * symptom was a translate button that sat on "翻译中…" and then reported the
+ * term as missing while a perfectly good provider behind it never got a try.
+ */
+const PER_PROVIDER_MS = 4_000;
+const TOTAL_LOOKUP_MS = 9_000;
 
 function timeoutSignal(signal: AbortSignal | undefined, ms: number): AbortSignal {
   const controller = new AbortController();
@@ -526,8 +562,8 @@ export function googleAdapter(): LookupAdapter {
         "https://translate.googleapis.com/translate_a/single?" +
         new URLSearchParams({
           client: "gtx",
-          sl: youdaoLang(from),
-          tl: youdaoLang(to),
+          sl: googleLang(from),
+          tl: googleLang(to),
           dt: "t",
           q: term,
         }).toString();
@@ -541,9 +577,14 @@ export function createBrowserAdapters(): LookupAdapter[] {
   return [youdaoWebAdapter(), myMemoryAdapter(), googleAdapter()];
 }
 
-/** The desktop chain: one adapter, the Rust proxy. */
+/**
+ * The desktop chain. The Rust proxy is only needed for Youdao's dictionary
+ * endpoint (it sends no CORS headers), and that endpoint can only gloss into
+ * Chinese — so it leads, and the CORS-friendly public endpoints the browser
+ * build already uses cover every other target (and fill gaps for Chinese).
+ */
 export function createTauriAdapters(): LookupAdapter[] {
-  return [tauriAdapter()];
+  return [tauriAdapter(), googleAdapter(), myMemoryAdapter()];
 }
 
 /**
@@ -562,6 +603,18 @@ export interface LookupOptions {
   /** Skip the cache and re-fetch (the "重新翻译" button). */
   force?: boolean;
   signal?: AbortSignal;
+  /**
+   * Adapter ids to try first, in this order. Everything else keeps its chain
+   * position afterwards.
+   *
+   * The engines are not interchangeable for every query. Youdao translates
+   * *into* Chinese from a dictionary and *out of* Chinese as machine
+   * translation, which renders a bare noun as a polite sentence — `苹果` comes
+   * back as `りんごです`, not `りんご`. That is fine for prose and wrong for a
+   * vocabulary entry, which needs the lemma. Callers that want a word rather
+   * than a sentence ask for the engine that returns one.
+   */
+  prefer?: ProviderId[];
 }
 
 /** What a lookup instance exposes. */
@@ -624,18 +677,31 @@ export function createLookup({ adapters, cache, clock = systemClock }: LookupDep
       if (cached) return cached;
     }
 
-    const signal = timeoutSignal(options.signal, 9_000);
-    const context: LookupContext = { from, to, signal };
+    const totalSignal = timeoutSignal(options.signal, TOTAL_LOOKUP_MS);
 
     let rateLimited = false;
     let reachable = false;
 
-    for (const adapter of adapters) {
+    // `prefer` only reorders; it never removes a fallback. A caller asking for
+    // Google first still gets MyMemory when Google is unreachable.
+    const chain = options.prefer?.length
+      ? [
+          ...adapters.filter((a) => options.prefer!.includes(a.id)),
+          ...adapters.filter((a) => !options.prefer!.includes(a.id)),
+        ]
+      : adapters;
+
+    for (const adapter of chain) {
       if (!adapter.canServe(from, to)) continue;
       if (cooling(adapter.id)) {
         rateLimited = true;
         continue;
       }
+      // A leash per provider, still bounded by the overall deadline and still
+      // abortable through the caller's own signal. A silent provider costs one
+      // slot of the budget instead of all of it.
+      const signal = timeoutSignal(totalSignal, PER_PROVIDER_MS);
+      const context: LookupContext = { from, to, signal };
       try {
         const result = await adapter.fetch(cleaned, context);
         reachable = true;

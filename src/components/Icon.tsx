@@ -40,7 +40,10 @@ export type IconName =
   | "moon"
   | "undo"
   | "cloud"
-  | "list";
+  | "list"
+  | "minimize"
+  | "maximize"
+  | "restore";
 
 const PATHS: Record<IconName, string> = {
   words: "M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21V5.5Z M20 18.5H6.5",
@@ -82,6 +85,11 @@ const PATHS: Record<IconName, string> = {
   undo: "M4 9h9.5a5.5 5.5 0 0 1 0 11H8 M4 9l4-4 M4 9l4 4",
   cloud: "M7 18.5a4.5 4.5 0 0 1-.6-8.96 6 6 0 0 1 11.5 1.1A3.9 3.9 0 0 1 17.5 18.5H7Z",
   list: "M8 6h13 M8 12h13 M8 18h13 M3.5 6h.01 M3.5 12h.01 M3.5 18h.01",
+  // Window controls: the system's three shapes, drawn on the same grid and
+  // stroke as everything else rather than copied from a Segoe glyph.
+  minimize: "M5 12h14",
+  maximize: "M5.5 5.5h13v13h-13Z",
+  restore: "M4.5 9.5h10v10h-10Z M9.5 4.5h10v10h-4",
 };
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, "name"> {

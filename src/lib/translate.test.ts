@@ -9,6 +9,7 @@ import {
   createLookupCache,
   createTauriAdapters,
   formatSenses,
+  googleAdapter,
   lookupCacheSize,
   normalizeTerm,
   parseGoogle,
@@ -419,6 +420,66 @@ describe("lookupTerm", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("honours `prefer` by reordering the chain without dropping a fallback", async () => {
+    // The reverse direction needs the lemma, and Youdao's out-of-Chinese
+    // machine translation returns a polite sentence instead. `prefer` moves
+    // Google first; everything else must still be there if it fails.
+    const fetchMock = vi.fn(async (_url: string, _init?: unknown) =>
+      jsonResponse([[["りんご", "苹果", null, null, 10]], null, "ja"]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await lookup.lookupTerm("苹果", { from: "zh-CN", to: "ja", prefer: ["google"] });
+
+    expect(result.provider).toBe("google");
+    expect(result.senses[0].meaning).toBe("りんご");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("translate.googleapis.com");
+  });
+
+  it("still falls back past a preferred provider that answers with nothing", async () => {
+    let call = 0;
+    const fetchMock = vi.fn(async () => {
+      call += 1;
+      // google: empty payload → null, then youdao-web answers.
+      return call === 1 ? jsonResponse([null]) : jsonResponse({ errorCode: 0, translation: ["りんご"] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await lookup.lookupTerm("苹果", { from: "zh-CN", to: "ja", prefer: ["google"] });
+    expect(result.provider).toBe("youdao-web");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("moves on when a provider hangs instead of spending the whole budget", async () => {
+    // A provider that never answers (Google inside the Android WebView) must
+    // cost one slot, not the entire deadline — otherwise the providers behind
+    // it get a pre-aborted signal and the user sees "查不到" for a word the
+    // next provider could have translated.
+    const hung = fakeAdapter("google", (_term, { signal }) => {
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      });
+    });
+    const answers = fakeAdapter("mymemory", async (_term, { signal }) => {
+      // A real provider rejects immediately when handed a dead signal, which is
+      // exactly what the old single-budget chain produced.
+      if (signal.aborted) throw new Error("signal already aborted");
+      return {
+        term: "candid",
+        phonetic: "",
+        senses: [{ pos: "", meaning: "坦率的" }],
+        examples: [],
+        provider: "mymemory",
+        fromCache: false,
+      };
+    });
+
+    const hangingLookup = makeLookup([hung, answers]);
+    const result = await hangingLookup.lookupTerm("candid");
+    expect(result.provider).toBe("mymemory");
+    expect(result.senses[0].meaning).toBe("坦率的");
+  }, 15_000);
+
   it("serves repeat lookups from the cache", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ errorCode: 0, translation: ["坦率的"] }));
     vi.stubGlobal("fetch", fetchMock);
@@ -573,11 +634,60 @@ describe("adapter chain", () => {
   });
 });
 
+describe("google adapter language tags", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("asks Google for zh-CN, not Youdao's zh-CHS, when the target is Chinese", async () => {
+    // Given `tl=zh-CHS` Google echoes the input back untranslated instead of
+    // erroring, so a wrong tag here silently "translates" Chinese into English.
+    const fetchMock = vi.fn(async (_url: string, _init?: unknown) => ({
+      ok: true,
+      status: 200,
+      json: async () => [[["坦率", "candid", null, null, 2]], null, "en"],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const lookup = makeLookup([googleAdapter()]);
+    const found = await lookup.lookupTerm("candid", { from: "en", to: "zh-CN" });
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain("tl=zh-CN");
+    expect(url).not.toContain("zh-CHS");
+    expect(found.senses[0]?.meaning).toBe("坦率");
+  });
+
+  it("keeps a traditional-Chinese target distinct from the simplified one", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: unknown) => ({
+      ok: true,
+      status: 200,
+      json: async () => [[["坦率", "candid", null, null, 2]], null, "en"],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const lookup = makeLookup([googleAdapter()]);
+    await lookup.lookupTerm("candid", { from: "en", to: "zh-TW" });
+
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("tl=zh-TW");
+  });
+});
+
 describe("tauri adapter (the shipping path)", () => {
   const invokeMock = vi.mocked(invoke);
 
   beforeEach(() => {
     invokeMock.mockReset();
+    // The desktop chain falls back to the web adapters, so keep them off the
+    // network: an empty payload makes them return null quickly.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) })),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("calls lookup_word and parses the dictionary payload", async () => {
@@ -613,6 +723,41 @@ describe("tauri adapter (the shipping path)", () => {
 
     const lookup = makeLookup(createTauriAdapters());
     await expect(lookup.lookupTerm("candid")).rejects.toMatchObject({ reason: "not-found" });
+  });
+
+  it("keeps the dictionary path when the target is Chinese, even for a Japanese source", async () => {
+    invokeMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: JSON.stringify(youdaoPayload),
+      error: null,
+    });
+
+    const lookup = makeLookup(createTauriAdapters());
+    await lookup.lookupTerm("candid", { from: "ja", to: "zh-CN" });
+
+    expect(invokeMock).toHaveBeenCalledWith("lookup_word", { term: "candid" });
+  });
+
+  it("hands a Japanese target to the web endpoints instead of the Chinese-only proxy", async () => {
+    // `dict.youdao.com/jsonapi` only glosses into Chinese, so serving an
+    // English→Japanese list from it would silently show Chinese. The proxy
+    // adapter must decline the pair and let the CORS-friendly web adapters
+    // (Google first) answer in Japanese.
+    const fetchMock = vi.fn(async (_url: string, _init?: unknown) => ({
+      ok: true,
+      status: 200,
+      json: async () => [[["りんご", "apple", null, null, 10]], null, "ja"],
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const lookup = makeLookup(createTauriAdapters());
+    const found = await lookup.lookupTerm("apple", { from: "en", to: "ja" });
+
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(found.provider).toBe("google");
+    expect(found.senses[0]?.meaning).toBe("りんご");
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("translate.googleapis.com");
   });
 });
 

@@ -22,3 +22,22 @@ serde_json = "1"
 # Only used by the two proxy commands in `lib.rs`: the webview cannot call the
 # dictionary endpoints directly because they do not allow cross-origin reads.
 reqwest = { version = "0.13", default-features = false, features = ["default-tls", "charset", "query"] }
+# `default-tls` resolves to rustls *with the platform verifier*, and that
+# verifier refuses to work on Android until the JVM side initialises it:
+#     thread 'tokio-rt-worker' panicked at rustls-platform-verifier/src/android.rs:90:
+#     Expect rustls-platform-verifier to be initialized
+# The panic killed the proxy task mid-request, so on the phone the translate
+# button sat on "翻译中…" until the 9s frontend timeout. Rather than wire JNI
+# initialisation through the Android activity, the client is built with an
+# explicit root store — the Mozilla bundle — which needs no per-platform setup
+# and behaves identically on desktop. Versions are pinned to the ones reqwest
+# itself resolves; `ClientBuilder::tls_backend_preconfigured` downcasts to
+# *that* `rustls::ClientConfig` type, so a mismatch would silently fall back to
+# the platform verifier and reintroduce the crash.
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
+webpki-roots = "1"
+# Native speech. Android's WebView exposes no `speechSynthesis`, so on the phone
+# the only way to pronounce a word is the OS engine reached from Rust; on desktop
+# this plugin uses WinRT and the frontend still prefers Web Speech where it
+# exists. See `src/lib/tts.ts` for the seam.
+tauri-plugin-tts = "0.2"

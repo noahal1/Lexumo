@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The Lexumo app mark: a stone frame holding a paper sheet, with an
+       azurite spine down the left edge and one ink dot — the word you are on.
+       Drawn to match src-tauri/icons/generate-icons.py at 1/16 scale. -->
+  <rect x="6.375" y="6.375" width="51.188" height="51.188" rx="11.25" fill="#252c28"/>
+  <rect x="10.316" y="10.316" width="43.306" height="43.306" rx="5.688" fill="#f9f7f3" stroke="#e0ded7" stroke-width="0.125"/>
+  <rect x="18.251" y="19.438" width="7.808" height="25.063" rx="3.142" fill="#175b72"/>
+  <circle cx="37.625" cy="31.938" r="6.317" fill="#1e221e"/>
+</svg>

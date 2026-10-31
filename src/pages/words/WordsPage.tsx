@@ -352,7 +352,7 @@ export function WordsPage() {
   return (
     <PageShell
       title={t("words.title")}
-      subtitle={`${listCount} ${t("common.words")} · ${t("words.dueToday")} ${dueCount}`}
+      subtitle={t("words.pageSubtitle", { words: listCount, due: dueCount })}
       actions={
         <>
           <button
@@ -398,86 +398,124 @@ export function WordsPage() {
         </button>
       </div>
 
-      {/* Toolbar */}
-      <div className="toolbar">
-        <div className="search">
-          <span className="search-icon">
-            <Icon name="search" size={15} />
-          </span>
-          <input
-            ref={searchRef}
-            className="input"
-            value={filters.query ?? ""}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("words.searchPlaceholder")}
-            aria-label={t("common.search")}
-            onKeyDown={(e) => {
-              if (e.key === "Escape" && filters.query) {
-                e.preventDefault();
-                setQuery("");
-              }
-            }}
-          />
-          {filters.query && (
-            <button
-              className="search-clear"
-              type="button"
-              onClick={() => {
-                setQuery("");
-                searchRef.current?.focus();
+      {/* One bar, not a row of widgets: the field, the status filter and the
+          tools share a single edge, so the chrome above the table reads as one
+          object instead of six. Filters that are on grow a second line inside
+          that same edge, where they can be read and taken off one at a time. */}
+      <div className="qbar">
+        <div className="qbar-main">
+          <div className="qbar-field">
+            <span className="qbar-field-ico" aria-hidden="true">
+              <Icon name="search" size={15} />
+            </span>
+            <input
+              ref={searchRef}
+              className="qbar-input search-input"
+              value={filters.query ?? ""}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("words.searchPlaceholder")}
+              aria-label={t("common.search")}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && filters.query) {
+                  e.preventDefault();
+                  setQuery("");
+                }
               }}
-              aria-label={t("common.clear")}
+            />
+            {filters.query && (
+              <button
+                className="qbar-clear"
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  searchRef.current?.focus();
+                }}
+                aria-label={t("common.clear")}
+              >
+                <Icon name="x" size={13} />
+              </button>
+            )}
+          </div>
+
+          <div className="qbar-status">
+            <Segmented
+              value={filters.status ?? "all"}
+              options={statusOptions}
+              onChange={setStatusFilter}
+              ariaLabel={t("words.filterStatus")}
+            />
+          </div>
+
+          <div className="qbar-tools">
+            <span className="qbar-sort">
+              <select
+                className="qbar-sort-select"
+                value={filters.sort ?? "recent"}
+                onChange={(e) => setSort(e.target.value as SortKey)}
+                aria-label={t("common.sort")}
+              >
+                <option value="recent">{t("words.sortRecent")}</option>
+                <option value="alpha">{t("words.sortAlpha")}</option>
+                <option value="due">{t("words.sortDue")}</option>
+                <option value="status">{t("words.sortStatus")}</option>
+              </select>
+              <Icon name="chevron-down" size={12} />
+            </span>
+
+            <button
+              type="button"
+              className={cx("qbar-btn qbar-btn-icon", filters.favoriteOnly && "is-on")}
+              onClick={() => setFilters((f) => ({ ...f, favoriteOnly: !f.favoriteOnly }))}
+              title={t("words.filterFavorites")}
+              aria-label={t("words.filterFavorites")}
+              aria-pressed={Boolean(filters.favoriteOnly)}
             >
-              <Icon name="x" size={13} />
+              <Icon name={filters.favoriteOnly ? "star-filled" : "star"} size={16} />
             </button>
-          )}
+
+            <button
+              type="button"
+              className={cx("qbar-btn", selectMode && "is-on")}
+              onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+              aria-pressed={selectMode}
+            >
+              <Icon name={selectMode ? "check" : "list"} size={14} />
+              <span className="qbar-btn-label">
+                {selectMode ? t("common.done") : t("words.select")}
+              </span>
+            </button>
+          </div>
         </div>
 
-        <Segmented
-          value={filters.status ?? "all"}
-          options={statusOptions}
-          onChange={setStatusFilter}
-          ariaLabel={t("words.filterStatus")}
-        />
-
-        <select
-          className="select"
-          value={filters.sort ?? "recent"}
-          onChange={(e) => setSort(e.target.value as SortKey)}
-          aria-label={t("common.sort")}
-          style={{ minWidth: 128 }}
-        >
-          <option value="recent">{t("words.sortRecent")}</option>
-          <option value="alpha">{t("words.sortAlpha")}</option>
-          <option value="due">{t("words.sortDue")}</option>
-          <option value="status">{t("words.sortStatus")}</option>
-        </select>
-
-        <button
-          type="button"
-          className={cx("btn btn-icon", filters.favoriteOnly && "btn-primary")}
-          onClick={() => setFilters((f) => ({ ...f, favoriteOnly: !f.favoriteOnly }))}
-          title={t("words.filterFavorites")}
-          aria-pressed={Boolean(filters.favoriteOnly)}
-        >
-          <Icon name={filters.favoriteOnly ? "star-filled" : "star"} size={16} />
-        </button>
-
-        <button
-          type="button"
-          className={cx("btn btn-sm", selectMode ? "btn-primary" : "btn-quiet")}
-          onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
-          aria-pressed={selectMode}
-        >
-          <Icon name={selectMode ? "check" : "list"} size={14} />
-          {selectMode ? t("common.done") : t("words.select")}
-        </button>
-
         {filtersActive && (
-          <button type="button" className="btn btn-quiet btn-sm" onClick={resetFilters}>
-            <Icon name="x" size={14} />
-            {t("common.reset")}
-          </button>
+          <div className="qbar-active">
+            {trimmedQuery && (
+              <span className="qbar-count" role="status">
+                {t("words.matches", { n: filtered.length })}
+              </span>
+            )}
+            {(filters.status ?? "all") !== "all" && (
+              <button type="button" className="qbar-token" onClick={() => setStatusFilter("all")}>
+                {statusOptions.find((o) => o.value === filters.status)?.label}
+                <Icon name="x" size={12} />
+                <span className="sr-only">{t("common.clear")}</span>
+              </button>
+            )}
+            {filters.favoriteOnly && (
+              <button
+                type="button"
+                className="qbar-token"
+                onClick={() => setFilters((f) => ({ ...f, favoriteOnly: false }))}
+              >
+                {t("words.filterFavorites")}
+                <Icon name="x" size={12} />
+                <span className="sr-only">{t("common.clear")}</span>
+              </button>
+            )}
+            <button type="button" className="qbar-reset" onClick={resetFilters}>
+              {t("common.reset")}
+            </button>
+          </div>
         )}
       </div>
 
@@ -796,84 +834,12 @@ function ListManagerModal({
       title={t("common.list")}
       subtitle={t("words.listsSubtitle", { n: data.lists.length })}
       footer={
-        <>
-          <button className="btn" type="button" onClick={onClose}>
-            {t("common.close")}
-          </button>
-          <button className="btn btn-primary" type="button" onClick={() => setCreating((v) => !v)}>
-            <Icon name="plus" size={15} />
-            {t("words.newList")}
-          </button>
-        </>
+        <button className="btn" type="button" onClick={onClose}>
+          {t("common.close")}
+        </button>
       }
     >
       <div className="stack" style={{ gap: "var(--sp-4)" }}>
-        {creating && (
-          <div className="card card-pad rise" style={{ background: "var(--surface-2)" }}>
-            <div className="stack" style={{ gap: "var(--sp-3)" }}>
-              <div className="field">
-                <label className="label" htmlFor="new-list-name">
-                  {t("words.listName")}
-                </label>
-                <input
-                  id="new-list-name"
-                  className="input"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder={t("words.listName")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") submitCreate();
-                  }}
-                  autoFocus
-                />
-              </div>
-              <div className="field-row">
-                <div className="field">
-                  <span className="label">{t("words.sourceLang")}</span>
-                  <select
-                    className="select"
-                    value={sourceLang}
-                    onChange={(e) => setSourceLang(e.target.value)}
-                  >
-                    {LANGUAGES.map((l) => (
-                      <option key={l.code} value={l.code}>
-                        {langName(l.code, "zh-CN")}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <span className="label">{t("words.targetLang")}</span>
-                  <select
-                    className="select"
-                    value={targetLang}
-                    onChange={(e) => setTargetLang(e.target.value)}
-                  >
-                    {LANGUAGES.map((l) => (
-                      <option key={l.code} value={l.code}>
-                        {langName(l.code, "zh-CN")}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="row-flex" style={{ justifyContent: "flex-end" }}>
-                <button className="btn btn-sm" type="button" onClick={() => setCreating(false)}>
-                  {t("common.cancel")}
-                </button>
-                <button
-                  className="btn btn-primary btn-sm"
-                  type="button"
-                  onClick={submitCreate}
-                  disabled={!name.trim()}
-                >
-                  {t("common.create")}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div className="list">
           {data.lists.map((l) => {
             const count = data.words.filter((w) => w.listId === l.id).length;
@@ -956,6 +922,83 @@ function ListManagerModal({
             );
           })}
         </div>
+
+        {creating ? (
+          <div className="card card-pad list-create" style={{ background: "var(--surface-2)" }}>
+            <div className="stack" style={{ gap: "var(--sp-3)" }}>
+              <div className="row-flex" style={{ alignItems: "baseline", gap: 8 }}>
+                <span className="label" style={{ margin: 0 }}>
+                  {t("words.newList")}
+                </span>
+                <span className="tiny muted">{t("words.listName")}</span>
+              </div>
+              <input
+                id="new-list-name"
+                className="input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t("words.listName")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitCreate();
+                  if (e.key === "Escape") setCreating(false);
+                }}
+                autoFocus
+              />
+              <div className="field-row">
+                <div className="field">
+                  <span className="label">{t("words.sourceLang")}</span>
+                  <select
+                    className="select"
+                    value={sourceLang}
+                    onChange={(e) => setSourceLang(e.target.value)}
+                  >
+                    {LANGUAGES.map((l) => (
+                      <option key={l.code} value={l.code}>
+                        {langName(l.code, "zh-CN")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <span className="label">{t("words.targetLang")}</span>
+                  <select
+                    className="select"
+                    value={targetLang}
+                    onChange={(e) => setTargetLang(e.target.value)}
+                  >
+                    {LANGUAGES.map((l) => (
+                      <option key={l.code} value={l.code}>
+                        {langName(l.code, "zh-CN")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="row-flex" style={{ justifyContent: "flex-end" }}>
+                <button className="btn btn-sm" type="button" onClick={() => setCreating(false)}>
+                  {t("common.cancel")}
+                </button>
+                <button
+                  className="btn btn-primary btn-sm"
+                  type="button"
+                  onClick={submitCreate}
+                  disabled={!name.trim()}
+                >
+                  {t("common.create")}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="list-create-row"
+            onClick={() => setCreating(true)}
+          >
+            <Icon name="plus" size={15} />
+            {t("words.newList")}
+          </button>
+        )}
       </div>
 
       <ConfirmDialog

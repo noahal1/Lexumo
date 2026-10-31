@@ -180,7 +180,6 @@ function cleanSettings(value: unknown): Settings {
     audioFirst: bool(raw.audioFirst),
     newCardsPerDay: num(raw.newCardsPerDay),
     reviewOrder: raw.reviewOrder === "random" ? "random" : "due",
-    autoTranslate: bool(raw.autoTranslate),
     autoSync: bool(raw.autoSync),
   };
 }

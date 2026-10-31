@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Icon, type IconName } from "@/components/Icon";
 import { Modal, ShortcutRow, useToast } from "@/components/ui";
+import { TitleBar } from "@/components/TitleBar";
 import { useT, type MessageKey } from "@/i18n";
 import {
   useAppData,
@@ -27,6 +28,7 @@ import { getSyncStatus, subscribeSyncStatus, type SyncError } from "@/lib/sync";
 import { useRouter, type PageId } from "@/app/router";
 import { cx } from "@/lib/utils";
 import { onError } from "@/lib/errors";
+import { warmNativeTts } from "@/lib/tts";
 import { WordsPage } from "@/pages/words/WordsPage";
 import { FlashcardsPage } from "@/pages/study/FlashcardsPage";
 import { QuizPage } from "@/pages/study/QuizPage";
@@ -174,6 +176,14 @@ export function App() {
     }
   }, [page]);
 
+  // Warm the native speech engine once, on the shells that have no Web Speech.
+  // Android's engine initialises asynchronously and reports no voices until it
+  // is ready, so the settings voice picker would otherwise stay empty forever.
+  // On desktop this is a no-op: `speechSynthesis` already exists.
+  useEffect(() => {
+    void warmNativeTts();
+  }, []);
+
   const due = dueWords(data).length;
   const streak = streakDays(data);
   const today = reviewsToday(data);
@@ -232,15 +242,9 @@ export function App() {
         {t("shell.skipToContent")}
       </a>
 
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">词</div>
-          <div className="brand-text">
-            <div className="brand-name">{t("common.appName")}</div>
-            <div className="brand-sub">{t("shell.brandSub")}</div>
-          </div>
-        </div>
+      <TitleBar />
 
+      <aside className="sidebar">
         <nav className="nav" aria-label={t("nav.main")}>
           {NAV.map((item, i) => (
             <button

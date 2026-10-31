@@ -368,15 +368,8 @@ export function SettingsPage() {
           <Section
             icon="book"
             title={t("settings.dictionary")}
-            note={t("settings.autoLookupNote")}
+            note={t("settings.dictionaryNote")}
           >
-            <Row label={t("settings.autoTranslate")} hint={t("settings.autoTranslateHint")}>
-              <Switch
-                checked={settings.autoTranslate}
-                label={t("settings.autoTranslate")}
-                onChange={(autoTranslate) => updateSettings({ autoTranslate })}
-              />
-            </Row>
             <Row
               label={t("settings.translateCache")}
               hint={t("settings.translateCacheHint", { n: cacheSize })}

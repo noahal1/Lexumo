@@ -23,9 +23,9 @@ export interface Word {
   id: string;
   term: string;
   /**
-   * IPA transcription without the slashes, when known. Filled by auto-translate
-   * and shown in the list and on the flashcard back. Optional because records
-   * written before it existed have none.
+   * IPA transcription without the slashes, when known. Filled by the dictionary
+   * lookup and shown in the list and on the flashcard back. Optional because
+   * records written before it existed have none.
    */
   phonetic?: string;
   /**
@@ -93,8 +93,6 @@ export interface Settings {
   audioFirst: boolean;
   newCardsPerDay: number;
   reviewOrder: "due" | "random";
-  /** Look the term up online and prefill the meaning when adding a word. */
-  autoTranslate: boolean;
   /** Push/pull changes automatically while signed in. */
   autoSync: boolean;
 }
@@ -183,7 +181,6 @@ export const DEFAULT_SETTINGS: Settings = {
   audioFirst: false,
   newCardsPerDay: 15,
   reviewOrder: "due",
-  autoTranslate: true,
   autoSync: true,
 };
 
