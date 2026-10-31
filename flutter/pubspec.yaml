@@ -1,0 +1,56 @@
+name: lexumo
+description: "Lexumo · 词砚 — a calm desktop vocabulary studio (Flutter)"
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.13.0 <4.0.0"
+  flutter: ">=3.47.0"
+
+dependencies:
+  file_selector: ^1.1.0
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_tts:
+    path: third_party/flutter_tts
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # The three IBM Plex faces tokens.dart names — the same self-hosted latin
+  # subsets the web build shipped (src/styles/fonts.css), converted to TTF
+  # because Flutter cannot read woff2. Chinese is deliberately NOT bundled: a
+  # CJK face is megabytes and the app has to work offline, so the platform's
+  # PingFang SC / Microsoft YaHei covers it through Fonts.cjkFallback.
+  #
+  # The `.ttf` files are the only thing registered here — listing the whole
+  # `assets/fonts/` directory as well would bundle every face twice.
+  fonts:
+    - family: IBM Plex Sans
+      fonts:
+        - asset: assets/fonts/plex-sans-400.ttf
+          weight: 400
+        - asset: assets/fonts/plex-sans-500.ttf
+          weight: 500
+        - asset: assets/fonts/plex-sans-600.ttf
+          weight: 600
+    - family: IBM Plex Serif
+      fonts:
+        - asset: assets/fonts/plex-serif-400.ttf
+          weight: 400
+        - asset: assets/fonts/plex-serif-500.ttf
+          weight: 500
+        - asset: assets/fonts/plex-serif-600.ttf
+          weight: 600
+    - family: IBM Plex Mono
+      fonts:
+        - asset: assets/fonts/plex-mono-400.ttf
+          weight: 400
+        - asset: assets/fonts/plex-mono-500.ttf
+          weight: 500

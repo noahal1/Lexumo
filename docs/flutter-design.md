@@ -1,0 +1,767 @@
+# Lexumo · 词砚 — Flutter 移植说明
+
+这份文档记录 `flutter/` 这一份实现：它从 `src/`（Tauri 2 + React 19）逐层移植而来，
+**不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
+Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
+
+工程规模：`lib/` 与 `test/` 共 31,019 行 Dart，506 个测试通过（另有 6 条需要真 Postgres
+桥接的 E2E 默认 skip），`flutter analyze` 零问题。
+
+---
+
+## 1. 为什么是 Flutter，以及它换来了什么
+
+原来的技术栈是 Tauri 2 + React 19 + TypeScript：WebView 渲染界面，Rust 侧做文件读写。
+问题出在 WebView 这一层——不同 Windows 机器上 WebView2 的版本、字体回退、输入法
+行为、拖拽区域各不相同，一些组件（自绘窗口条、拖拽区域、滚动条）在部分机器上直接
+失效。而这些恰好是桌面背单词应用最依赖的部分。
+
+Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果在 Windows / Android / macOS
+上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
+React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
+
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，506 个测试覆盖纯逻辑与
+共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
+
+---
+
+## 2. 目录结构与职责
+
+```
+flutter/lib/                        47 个文件，21,226 行（test/ 另有 25 个文件 9,793 行）
+  main.dart            入口：Store 初始化 → StoreScope → I18nScope → ToastHost → MaterialApp
+  app/
+    scope.dart         InheritedWidget 层：StoreNotifier / StoreScope / I18nScope / ToastScope / NavScope
+    shell.dart         应用外壳：三档布局（wide / rail / mobile）+ 快捷键 + 页面切换
+    toast.dart         轻提示，含堆叠、自动消失、动作按钮
+  design/
+    tokens.dart        全部设计令牌（Palette / Sp / R / Fs / Lh / Fonts / Motion / Layout / Shadows）
+    theme.dart         ThemeData 构建，把 Palette 塞进 ThemeExtension
+  domain/              纯逻辑，无 Flutter 依赖
+    types.dart         AppData / Word / WordList / ReviewLog / Settings / Tombstones / PendingChanges
+    srs.dart           间隔重复：applyGrade / statusForInterval / previewGrades
+    session.dart       会话状态机：current / record / skip / undo / reset
+    quiz.dart          出题：buildQuiz / quizShortfall / quizEligibleWords
+    word_index.dart    索引与查询：buildWordIndex / queryWords / summarize
+    seed.dart          示例词库
+    day_stats.dart     今日复习数、连续天数（49 行）
+    languages.dart     70 种语言选项
+    utils.dart         uid / startOfDay / dayKeyOfTs / normalizeTerm / jsRound …
+  data/
+    store.dart         全部写操作的唯一入口，不可变提交（561 行）
+    snapshot_store.dart  Persistence 接口 + 文件实现 + MemoryStore（测试用）
+    journal.dart       变更日志：pending / tombstones 记账（217 行）
+    app_dir.dart       数据目录解析
+    transfer.dart      导出 JSON / CSV / Anki 与导入解析（394 行）
+    wire.dart          协议编解码：encode/decodeChangeSet、encodeAppData（539 行）
+    sync_merge.dart    合并：collectChanges / applyRemote / applyRound（316 行）
+    sync_transport.dart SyncTransport 接口 + IoTransport（自建协议）+ CredentialAware（167 行）
+    supabase_transport.dart  GoTrue 登录刷新 + PostgREST 调 RPC（320 行）
+    backend_transport.dart   按 URL 形状在两个后端间分派（162 行）
+    sync_engine.dart   会话、轮次、轮询、状态广播（486 行）
+    sync_config.dart   凭证与 rev 持久化到 sync.json（195 行）
+  i18n/
+    i18n.dart          I18n 运行时：dict / t(key, vars) / has(key)
+    zh_cn.dart         337 条键
+    en.dart            同键英文（键集由 i18n_test 强制一致）
+  platform/
+    tts.dart           朗读服务：TtsEngine 接缝 + Speech + 语速/音色换算（500 行）
+    speak_word.dart    speakWord / speakTerm：朗读 + 计数，页面唯一入口
+    file_dialogs.dart  文件选择/保存接缝：Android 走平台通道，桌面走 file_selector（167 行）
+  third_party/
+    flutter_tts/       flutter_tts 4.2.5 的原样拷贝，只改 Windows 的 C++（见 7.2）
+  ui/
+    widgets.dart       PageShell / Segmented / EmptyState / ProgressBar / Ring / StatusChip / StatTile / ShortcutRow / Kbd / Card
+    controls.dart      LexButton / LexInput / LexTextArea / LexSelect / showLexModal / confirmLex / ContentCenter / LexField
+    lex_icon.dart      图标系统：Ic 常量 + LexIcon
+    icon_paths.dart    SVG path 数据
+    keyboard_hints.dart  showKeyboardHints()：按平台判断是否显示键帽（32 行）
+  pages/
+    words_page.dart        词库列表 + 筛选 + 批量操作（2181 行）
+    word_editor.dart       新建/编辑词（741 行）
+    flashcards_page.dart   闪卡复习会话（1632 行）
+    quiz_page.dart         测验（1156 行）
+    stats_page.dart        统计（932 行）
+    settings_page.dart     设置（1784 行）
+    session_result.dart    会话结果卡（两个学习页共用）
+```
+
+**分层纪律**：`domain/` 不 import Flutter，因此可以脱离 widget 树测试；`ui/` 不知道页面；
+`pages/` 只通过 `context.data` / `context.store` 读写数据，不直接碰文件。
+
+`platform/` 是唯一碰宿主机能力的地方，三个文件各管一件事：朗读、文件选择、数据目录
+（后者在 `data/` 里，因为它是持久化的一部分）。这三件事在 Web 版里分别是 Web Speech
+API、`<input type="file">`、localStorage——都是浏览器白送的，这里都要自己写。
+
+---
+
+## 3. 设计令牌如何落到 Flutter
+
+`src/styles/tokens.css` 的每一个值都在 `lib/design/tokens.dart` 里有对应常量，
+命名按语义而非数值：
+
+| CSS 变量 | Dart | 说明 |
+| --- | --- | --- |
+| `--bg` `--surface` `--surface-2` … | `Palette.of(context).bg` / `.surface` / `.surface2` | `Palette` 是 `ThemeExtension`，随亮暗主题切换 |
+| `--sp-1` … `--sp-16` | `Sp.x1` … `Sp.x16` | 4 / 8 / 12 / 16 / 20 / 24 / 28 / 32 / 40 / 48 / 64 |
+| `--r-2xs` … `--r-full` | `R.x2xs` … `R.full` + `R.borderXs/sm/md/lg/xl` | 后一组是 `BorderRadius` 现成对象 |
+| `--fs-xs` … `--fs-3xl` | `Fs.xs` … `Fs.x3xl` | 12 / 13 / 15 / 16 / 19 / 24 / 30 / 38 |
+| `--lh-*` | `Lh.none/display/title/tight/snug/body/loose` | 1 / 1.05 / 1.15 / 1.2 / 1.4 / 1.6 / 1.7 |
+| `--font-display/ui/mono` | `Fonts.display/ui/mono` | IBM Plex Serif / Sans / Mono |
+| `--ease-*` `--dur-*` | `Motion.ease/easeOut/easeIn/easeTurn` + `Motion.dur1..dur5` | 120 / 180 / 260 / 420 / 620 ms |
+| `--sidebar-w` `--content-max` … | `Layout.sidebarW` `Layout.contentMax` … | 232 / 1180 / 36 / 44 / 1000 / 720 |
+
+关键点：**颜色只能从 `Palette.of(context)` 取**。没有全局颜色常量，也没有硬编码 `Color(0xFF…)`
+散落在页面里——亮暗主题切换时，每个 `Palette` 字段自动换值，页面代码一行不用改。
+
+字体：IBM Plex 三个家族共 8 个 TTF（约 1.4 MB）打包在 `assets/fonts/`，
+`pubspec.yaml` 按 weight 400/500/600 注册。**CJK 故意不打包**——Plex 没有中文字形，
+靠系统的 PingFang SC / Microsoft YaHei，`Fonts.cjkFallback` 列了 7 个候选。
+
+这 8 个 TTF 不是手下的：`scripts/fetch-plex-ttf.cjs` 向 Google Fonts 要 css2 时
+**故意不带 User-Agent**，这样返回的 `src` 是 `.ttf` 而不是 `.woff2`（Flutter 只吃前者），
+然后把二进制直接写到 `flutter/assets/fonts/`。Web 版用的是 woff2（`src/styles/fonts.css`），
+所以这是一份独立的取字流程，不是复用。
+
+---
+
+## 4. 状态管理与不可变提交
+
+React 那边是 `useSyncExternalStore` + 不可变快照。Flutter 这边同样：
+
+- `Store` 持有唯一的 `AppData`。所有写操作（`addWord` / `gradeWord` / `updateSettings` …）
+  **返回一个新的 `AppData`**，而不是就地修改。`_commit` 用 `identical(next, _data)`
+  判断「没有任何变化」并跳过通知，所以空操作不会触发重建。
+- `StoreNotifier extends ChangeNotifier` 桥接 `InheritedWidget`。`context.data` 读快照
+  并订阅变更；`context.store` 只拿操作入口，不订阅——避免「只想写却被动重建」。
+- 保存是防抖的（`saveDelayMs` 默认 220ms），窗口关闭时 `flush()` 兜底。
+- `Persistence` 是三方法接口（`load` / `save` / `clear`）。测试用 `MemoryStore`，
+  生产用 `SnapshotStore`（写入临时文件再原子改名，保留 `.bak`）。
+
+一个和 TypeScript 版不同的地方：TS 用 immer 式 draft 再 mutate，Dart 版**每个操作显式
+构造新对象**。好处是没有隐藏的状态共享，坏处是 `copyWith` 调用很多——`domain/types.dart`
+里的 `Word.copyWith` 因此支持 `clearSrs` 这样的显式清除标记。
+
+---
+
+## 5. 页面实现要点
+
+### 词库页（`words_page.dart`，2181 行）
+最复杂的一页：搜索框、五个状态筛选（全部/新词/复习中/学习中/已掌握）、排序、
+收藏筛选、批量选择模式、行内收藏/朗读/删除、空状态。批量模式下底部浮出一条操作栏。
+
+**行布局：词条在上、释义在下。** 这是相对 web 版的一处有意偏离。`WordsPage.tsx`
+用的是四列网格（词语 1fr / 释义 1.6fr / 状态 136px / 操作 148px），在桌面上没问题，
+但搬到手机上就成了「词容易展示不全」：一列英文词条和一列中文释义各自只能分到约一半
+行宽，两边都只能截断。Flutter 版把词条与释义叠进**同一个自适应列**，状态与操作收成
+固定宽度的侧栏：
+
+- 宽度 ≥ 640：词条一行、释义在其下方（最多 2 行），右侧是 128px 状态列 + 140px 操作列。
+- 宽度 < 640：整行折成三行——词条（2 行）／释义（3 行）／状态+朗读+删除。列头整块隐藏，
+  因为两行式布局里它只是重复。
+- 工具栏同理：窄屏下搜索框、状态条、工具按钮分三行，状态条横向可滚动，避免把筛选
+  按钮裁掉一半。
+
+`test/words_layout_test.dart` 用几何断言锁住这三点（释义在词条下方、释义列宽占行宽
+一半以上、窄屏不溢出），因为截图只能证明「看起来对了」，不能证明「为什么对了」。
+
+### 闪卡页（`flashcards_page.dart`，1632 行）
+会话状态机来自 `domain/session.dart`。卡片翻面是两段式 Y 轴旋转（`Matrix4.rotateY`），
+键盘：空格翻面、1/2/3 评分、←/→ 跳过、Ctrl+Z 撤销。右侧面板显示快捷键与进度。
+会话结束复用 `session_result.dart`。
+
+### 测验页（`quiz_page.dart`，1156 行）
+四个选项自适应排成 1/2/4 列（240px 最小宽度）。答完即时反馈：正确项描边 accent，
+错选项描边 cinnabar，其余降到 55% 不透明度。键盘 A–D / 1–4 选择，Enter 下一题。
+
+### 统计页（`stats_page.dart`，932 行）
+目标环 + 六个统计块 + 状态分布条 + 今日待复习列表。全部数值来自
+`domain/word_index.dart` 的 `summarize()`，页面本身不做计算。
+
+### 设置页（`settings_page.dart`，1784 行）
+五块：外观（主题三选、界面语言二选）、学习（每日目标、新卡上限、复习顺序）、
+音频（语速、自动发音、音色选择与试听）、同步（登录态、服务器地址、Supabase anon key、
+自动同步开关、立即同步、退出登录）、数据（计数、导出 JSON / CSV、导入、清空）。
+写操作全部经 `store.updateSettings`；导出/导入走 `data/transfer.dart` 与
+`platform/file_dialogs.dart`，同步走 `data/sync_engine.dart`。
+
+同步这一块有两种登录形态，靠 `detectBackend(server)` 判断当前是哪一种：自建协议只要
+服务器地址 + 邮箱 + 密码，Supabase 还要一个 anon key——这个输入框**只在地址看起来像
+Supabase 项目时才出现**，且每次 build 重算而不是存字段，否则改地址的瞬间会显示错状态。
+`anonKey` 与 `refreshToken` 落在 `sync.json` 而不是 `AppData`，理由见第 6 节第 2 条。
+
+---
+
+## 6. 与 Web 版的已知差异
+
+这些是**有意的**取舍，不是遗漏：
+
+1. **没有自绘窗口条**。原版用 `decorations: false` 自己画 36px 窗口条（含最小化/最大化/关闭）。
+   Flutter 桌面端这里走系统原生标题栏——自绘标题栏要接 `window_manager` 之类的插件，
+   而窗口拖拽/缩放/贴边在 Windows 上交给系统更稳。代价是视觉上少了那条 stone 色的边。
+2. **同步接了，而且两个后端都能打**。合并逻辑（`sync_merge.dart` 316 行）、
+   会话与轮询（`sync_engine.dart` 486 行）、凭据存储（`sync_config.dart` 195 行）
+   全部就位，设置页的登录 / 注册 / 立即同步 / 退出也都是真控件。传输层有两个实现，
+   由 `backend_transport.dart` 按服务器 URL 分派，`SyncEngine` 不知道有两条路：
+
+   - **自建参考服务**（`sync_transport.dart` 的 `IoTransport`）：说
+     `docs/sync-protocol.md` 那套自建 JSON 协议（`POST /api/sync`），连仓库里的
+     `server/`（653 行零依赖 Node）。
+   - **Supabase**（`supabase_transport.dart` 320 行）：GoTrue 管登录与 token 刷新，
+     同步走 PostgREST 调一个 `security definer` 的 Postgres 函数。服务端 SQL 在
+     `supabase/migrations/0001_sync.sql`。
+
+   分派的依据是 URL 形状（`.supabase.co` / `.supabase.in`），因为那是引擎唯一
+   交出来的信息。**默认猜自建服务是安全的一侧**：Supabase 地址被误判成自建会得到
+   一个清楚的连接错误，反过来会把 bearer token 发到一个不存在的路径上。
+
+   Supabase 的会话比自建服务多两样东西，都只存在 `sync.json` 里、不进 `AppData`：
+   项目的 `anonKey`（公开，每个 Supabase web bundle 都带），以及 `refreshToken`
+   （只发往 token 端点，永不发往 sync 函数）。access token 有效期一小时，401 时
+   传输层换一次 token 并重试——**只重试一次**，第二次 401 是真正的凭据问题。
+
+   实现细节与四层验证见 `docs/supabase-sync-plan.md`。
+
+3. **导出/导入已补上**。`lib/data/transfer.dart` 移植了原版 `src/lib/transfer.ts`
+   （302 行）的全部三条导出与三条导入：JSON 备份、CSV 表格、Anki TXT。检测顺序
+   与原版一致且**顺序即逻辑**——先试 JSON（首格是 `{word` 的 CSV 比损坏 JSON 更
+   可能，所以解析失败会继续往下走）、再看首行有没有 `\t`（Anki 优先于逗号，因为
+   英文释义里常有逗号）、再看逗号、最后全文找 `\t`。CSV 表头别名表也整份搬过来
+   了（`term,word,词语,单词` 都认）。两个容易丢的细节：CSV 导出带 `\uFEFF` BOM +
+   CRLF（否则 Excel 读中文是乱码），空字符串按「缺失」处理（否则空白单元格会变成
+   `pos: ""` 的空标签）。
+   
+   文件选择走 `lib/platform/file_dialogs.dart`，**Android 用平台通道直接调
+   `ACTION_CREATE_DOCUMENT` / `ACTION_OPEN_DOCUMENT`，不是 `file_selector`**。
+   原因是实测发现 `file_selector` 的 `getSaveLocation` 在 Android 上不可用，
+   它只能选「已存在的文件」不能指定新文件的保存位置——而导出恰恰需要后者。
+   桌面端仍走 `file_selector`。这条通道是唯一需要写原生代码的地方
+   （`android/app/src/main/kotlin/.../MainActivity.kt`），其余全是纯 Dart。
+   
+   设置页「数据」区段现在是四行：导出 JSON、导出 CSV、导入、清空。导入会先弹
+   预览（显示识别出的格式、词语数、前几个词条），确认后才写入——**直接写会让
+   一次误选无法撤销**。已存在的词语按 `normalizeTerm` 比对后跳过并计数，因为
+   宽容的解析器意味着「文件与现有词库有重叠」是常态而不是异常。
+4. **拖拽导入仍然没有**。原版可以把 `.json` 拖到窗口导入，Flutter 桌面端要
+   `desktop_drop` 插件。导入解析器和文件选择都已就位，缺的只是这一个拖放接收器；
+   在桌面上补它是十几行的事。Windows 构建现在已通（见 7.2），所以这一项是可
+   验证的。
+5. **没有浏览器版本**。原版 `isDesktopShell()` 让窗口条在浏览器里不渲染。Flutter 这份
+   只有 Windows / Android 两个 target。
+6. **移动端不显示快捷键**。原版所有键帽提示在手机上都还在——手机没有键盘，那些
+   `Ctrl` / `Enter` / `空格` 既按不到，又白占横向空间。`lib/ui/keyboard_hints.dart` 的
+   `showKeyboardHints()` 按**平台**判断（`TargetPlatform.windows/macOS/linux` 为真，
+   android/iOS/fuchsia 为假），不是按窗口宽度：窄化的桌面窗口仍然由键盘驱动，
+   而横屏平板很宽却没有键盘——宽度会把这两种情况都答错。页面里统一走
+   `context.showsKeyHints`，共 13 处调用点（`shell.dart:374`、`flashcards_page.dart`
+   6 处、`quiz_page.dart` 4 处、`settings_page.dart:1597`、`words_page.dart:1854`、
+   `word_editor.dart:332`）。`test/keyboard_hints_test.dart` 的 11 条测试在桌面与
+   Android 两个分支上分别 pump 页面，断言键帽出现/消失。
+
+### 手机布局：一套桌面度量在三处失灵
+
+这套设计令牌是为 1280 宽的窗口量的。搬到 411dp 宽的手机上，有三处不是「变小了」
+而是**直接不成立**，而且三处都会被桌面测试全部放过。
+
+**一、控制高度 36/32 是鼠标量的，指尖不认。** 审计在 411×866 下量出词库一页
+**54 个** `GestureDetector` 小于 44dp，其中 44 个是 32×32 的图标按钮
+（`_RowAction`、`_QbarIconButton`、`_ListTab` 的加号）。`Layout.tap = 44.0` 这个令牌
+一直存在，**但全项目只有 `lib/ui/widgets.dart:63` 的底部留白用过它一次**——
+定义了却没接线，等于没有。
+
+修法是新增 `lib/ui/density.dart`，按**平台**而不是宽度判断（与
+`keyboard_hints.dart` 同一个理由：窄化的桌面窗口仍是鼠标，横屏平板仍是手指）：
+
+```dart
+bool isTouchPlatform({TargetPlatform? platform}) => switch (p) {
+  TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.fuchsia => true,
+  TargetPlatform.windows || TargetPlatform.macOS || TargetPlatform.linux => false,
+};
+```
+
+`context.controlH` / `context.controlHSm` / `context.iconTarget` 三个取值器取代直接
+引用 `Layout.controlH`，`LexButton` / `LexInput` / `LexSelect` / `_TopBar` 的
+`Segmented` 全部改走它们。**两条配方刻意不同**：
+
+- **带文字的按钮整体长大。** 边框和填充就是可供性，44dp 的按钮就是正常手机按钮。
+- **纯图标按钮只长大命中盒，绘制盒不变。** 44dp 的描边方块放进表格行里像一个洞，
+  不像一个控件。这就是 `docs/design.md` 给 Web 版记的「extend the target, not the
+  shape」，Flutter 版的实现是 `TapTarget`：只在触控平台把 child 包进
+  `SizedBox(44) + Center`。
+
+`TapTarget` 有两条接线约束，**放错任何一处都量不出来**：
+
+1. **必须在 `GestureDetector` 内部。** 识别器只在自己盒内收事件，套在外面只是把
+   像素挪了，命中区没动。
+2. **外层 detector 必须带 `HitTestBehavior.opaque`。** 裸 `SizedBox` 自身不可命中，
+   不写这一条，icon 周围那 6dp 的环是死的。
+
+`test/density_test.dart` 因此不看渲染盒，而是**点距中心 19dp 的位置**
+（32 的一半是 16，44 的一半是 22）：第一版把 `TapTarget` 放错层时，量渲染盒永远
+发现不了——两个尺寸都「对」，只有点击落在环上才暴露。
+
+**二、查询带在手机上是三行，占了首屏 164dp。** 搜索、状态筛选、工具行各占一行，
+401dp 宽里第一行单词被推到 y=358，805dp 的可见体已经用掉四成。压法不是隐藏信息
+而是**让两行共用**：
+
+| | 行一 | 行二 |
+| --- | --- | --- |
+| 桌面 | 搜索 3 : 状态 4 + 排序 + 收藏 + 批量选择（全在一行） |
+| 手机 | 搜索 + 排序 + 收藏 | 状态（横向滚动）+ 批量选择 |
+
+查询带 164 → 108dp，第一行单词提到 y=306，**两行都放得下三个和两个控件，
+没有一行只剩一个全宽控件**——那正是「折叠」变成「换成标签」的分界线。
+
+同时修掉三个连带问题：
+
+- **`_actionsColW` 常量 140 删成函数** `math.max(140.0, 4 * context.iconTarget)`。
+  桌面 140 是给四个 32dp 按钮量的，触控下四个 44 需要 176，硬编码 140 让整行
+  **溢出 36px**。
+- **`Segmented` 的边框从 `decoration` 改成 `foregroundDecoration`。** 真实 border
+  会吃掉 1dp 布局空间：44dp 轨道里最高只能放 42dp 的 chip，而 chip 正是要满足
+  44 的那个盒子。画在前景上，chip 拿到完整的 44。
+- **`_DefinitionLine` 的词性胶囊 10px → `Fs.xs`（12）。** 10 不在 `Fs` 刻度里，
+  是全 app 唯一小于 `Fs.xs` 的字号；在手机上它不是「说明文字」，是读不出的字。
+
+**三、设置页横向溢出 40px——这是真 bug，不是观感问题。** `_Row` 在
+`constraints.maxWidth < 520` 时**已经**改成上下堆叠了，但堆叠之后 `widget.control`
+仍是一个 `Row(mainAxisSize: MainAxisSize.min)`，里面有一个 `SizedBox(width: 260)`
+的语音选择器：260 + 8 + 「测试发音」按钮 ≈ 337 > 297 的可用宽。`260` 和 `200`
+（倍速滑杆）都是**桌面宽度，不是下限**，各套一层 `Flexible` 即可。
+
+这一处值得单独记，因为它是唯一一个 `RenderFlex overflowed` 会**直接抛异常**的
+问题——其余两处只是不达标，测试从来不响。
+
+### 用测试代替截图
+
+手机上的几何在这套环境里没法靠眼睛验：`adb` daemon 随 bash 进程树死亡、dev server
+的 origin 不在 capability 作用域内、模拟器截图重复拍出同一个文件（两个 md5 相同）。
+所以这一轮的判据是 `test/mobile_layout_test.dart`，**三条预算，不是三条快照**：
+
+| 断言 | 预算 | 修之前 |
+| --- | --- | --- |
+| 六个界面在 411dp 下不抛异常 | `takeException()` 为 null | 设置页溢出 40px |
+| 五个页面每个 `GestureDetector` 两维 ≥ 44 | `Layout.tap` | 词库 54 个不达标 |
+| 顶栏高 | ≤ 84dp | 87dp |
+| 第一行单词 top | ≤ 320dp | 358dp |
+| 查询带高 | ≤ 120dp | 164dp |
+
+数字全部取「设计能容忍的最大值」而不是「这一次量到的值」，因为字体度量浮动半个
+像素不该让断言变成绊线。`test/settings_layout_test.dart` 另有 4 条管住两个手绘控件
+（`_LexSwitch`、`_RateSlider`）——它们不在 `LexButton` / `LexSelect` 里，所以
+44dp 全扫看不见它们，而它们恰好是**没有任何确认步骤就能改设置**的两个控件。
+`_RateSlider` 的做法是把 `SizedBox(height: 20)` 换成
+`context.isTouch ? Layout.tap : 20`：滑杆是被拖的，只在拇指外面套一个环而不改拖拽面
+等于没改；`_TrackPainter` 按 `size.height / 2` 居中，所以 6dp 轨道与 16dp 拇指的
+观感分毫未变。
+
+**「两端各存一份」只在本机存储这一层成立**——同步是显式的，要登录、要打开
+`autoSync`，开箱即用的默认状态仍然是各存一份。
+
+### 两端的数据是怎么走的
+
+同一份 Dart 代码编出两个 target，**默认**各存一份：
+
+| | 存哪 | 怎么读 |
+| --- | --- | --- |
+| Android | `/data/user/0/dev.lexumo.lexumo/files/Lexumo/lexumo.json` | 应用私有目录 |
+| Windows | `%APPDATA%\Lexumo\lexumo.json` | 用户漫游目录 |
+
+`lib/data/app_dir.dart` 的 `_resolve()` 按 `Platform.isWindows` / `Platform.isAndroid`
+分派，各自落在本机文件系统上。`lib/data/snapshot_store.dart` 只做原子写
+（`lexumo.json.tmp` → flush → rename）、`.bak` 回退和容错读取——三个文件，全在本机。
+
+**但这不是终态**：登录之后两端会通过同步服务合并。所以准确的表述是「本机存储这一层
+是独立的，跨设备需要显式登录」——`pubspec.yaml` 的依赖仍然只有 `flutter`、
+`flutter_localizations`、`flutter_tts`，网络走 `dart:io` 的 `HttpClient`，
+没有第三方 HTTP 包；不发请求的默认状态下，两端的词库确实互不可见。
+
+**连原来的 Tauri 版也不共享数据**。那一版把数据存在 WebView2 的 IndexedDB
+（`%LOCALAPPDATA%\com.lexumo.app\EBWebView\Default\IndexedDB\`，实测 87 MB），
+Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的存储引擎。
+想迁移就得解析 LevelDB，所以这是一次平行重写，不是升级。
+
+这条路径在设置页文案上留下过两道疤，都值得记：
+
+1. `settings.syncUnavailableBody` 曾经让用户「用下方的导出」把数据带走，但当时导出
+   并不存在——**让用户去找一个不存在的按钮，比直接说做不到更糟**。那条文案先被
+   改成如实说明「两端各存一份，且此版本还没有导出」；导出补上之后又改一次；等到
+   同步真正接通，它已经没有必要存在，于是在死代码清理时删掉了。
+2. `settings.wipeConfirmBody` 里的「建议先导出备份」经历了一个来回：导出不存在时
+   删掉过，导出补上后又加了回来——现在那句话指向的按钮真的在那里。
+
+**同一条文案的正确性取决于功能是否存在**，所以文案必须在功能落地时重新审一遍，
+而不是一次写完就算完。这两处都是「功能变了、文案没跟上」的实例，而它们恰好都是
+在用户可见的位置上。
+
+### TTS 已经补上（不再是缺口）
+
+`flutter_tts` 4.2.5 接进了 `lib/platform/tts.dart`，四件事值得记：
+
+1. **语速刻度**。Web Speech 里 `1.0` 是正常速度，`flutter_tts` 把 `0.5` 当正常
+   （Android 侧 `rate * 2`，Windows 侧 `SpeakingRate(rate + 0.5)`）。`Settings.ttsRate`
+   存的是 web 刻度（快照格式早于这次移植），所以换算只发生在 `Speech.speak` 内部，
+   上层不知道这件事。
+2. **音色句柄**。Web Speech 有稳定的 `voiceURI`，插件只给 `{name, locale}` 且没有 id。
+   `VoiceInfo.uri` 因此是自描述的（`name` + `locale` 编码进去），这样持久化的
+   `Settings.ttsVoiceURI` 在重启、且内存里没有任何映射表时仍然能还原。
+3. **就绪时机**。Android 引擎初始化完成前 `getVoices` 返回空，插件是排队而非报错，
+   所以 `Speech.refreshVoices` 轮询最多 10 次、每次间隔 300 ms，然后安静放弃。
+4. **`supported` 的三态**。warm-up 之前答 `true`（否则按钮会闪一下才出现），
+   warm-up 失败之后答 `false`（此时还承诺能朗读是更大的谎）。**平台差异**：Windows
+   上判断「真的能用」要求语音列表非空，其它平台只要求通道通——因为 Windows 那份
+   vendored 插件在引擎没激活时仍会应答每个方法，见 7.2。
+
+调用点：`words_page.dart:464`（行内发音）、`flashcards_page.dart:381/407`（显式朗读 /
+自动朗读，后者不计数）、`quiz_page.dart:143`（题干与复习行）、设置页音色下拉 + 试听。
+`word.listenCount` 现在有触发点了——`speakWord` 每次调用都 `bumpListen`，
+`speakTerm`（自动朗读）不计数，与原版一致。
+
+---
+
+## 7. 构建与验证
+
+三条命令覆盖日常：
+
+```bash
+cd flutter
+../.flutter-sdk/flutterc analyze           # No issues found!
+../.flutter-sdk/flutterc test              # 506 passed, 6 skipped
+./tool/build_apk.sh                        # 出 release APK 到 dist/
+./tool/reinstall.sh                        # 装到模拟器并校验
+```
+
+**不要用 `flutterc build apk`**。这条路径在本机会失败于一个与代码无关的原因，
+见 7.4；`tool/build_apk.sh` 是唯一能用的出包方式。
+
+### 7.1 Android
+
+工作区里有 SDK wrapper `../.flutter-sdk/flutterc`，它把 `HOME` / `APPDATA` /
+`TMP` 钉到工作区内的 `.flutter-home`。不钉的话 flutter 工具会去碰
+`C:\Users\noaha\AppData\Roaming\.flutter_tool_state` 并报「failed to delete file」。
+**所有命令都走这个 wrapper**，直接调 `flutter` 会踩那个坑。
+
+`flutterc devices` 默认超时下常常只报 Windows / Chrome / Edge，看不到模拟器。
+加 `--device-timeout 30` 就能稳定看到：
+
+```
+sdk gphone16k x86 64 (mobile) • emulator-5554 • android-x64 • Android 17 (API 37)
+```
+
+两种调试方式，取舍不同：
+
+| 方式 | 命令 | 代价 |
+| --- | --- | --- |
+| 热重载 | `flutterc run --device-timeout 30 -d emulator-5554` | 每次都要走 Gradle，会碰 7.4 的坑 |
+| 现成包 | `flutterc run --use-application-binary=build/app/outputs/apk/release/app-release.apk` | 完全绕开 Gradle，但**没有热重载** |
+
+包名是 **`dev.lexumo.lexumo`**（`android/app/build.gradle.kts:19`）。不是
+`com.lexumo.app`——那是原 Tauri 版的 identifier。用错包名会让 `pm path` 永远返回空，
+很容易把「已经装上了」误判成「没装上」，`tool/*.sh` 里全都写对了这个值。
+
+### 7.2 Windows
+
+构建与运行都已打通。**走过三道关，前两道是环境、第三道是插件 bug**。
+
+#### 关一：VS 工具链
+
+`flutterc build windows` 原本报 `Unable to find suitable Visual Studio toolchain`，
+根因在 `flutter_tools/lib/src/windows/visual_studio.dart:287-317`：它要求两个
+component 同时存在——
+
+- `Microsoft.VisualStudio.Component.VC.Tools.x86.x64` —— 原本就有
+- `Microsoft.VisualStudio.Component.VC.CMake.Project` —— **原本缺失**
+
+装上后者之后检测通过。注意即使 `VC.Tools` 在、`cl.exe` 也在，缺 CMake 组件时
+flutter 一律判定工具链不可用，不会尝试。
+
+#### 关二：符号链接与 nuget
+
+两个都不能省，否则构建以**看似无关的信息**失败：
+
+1. **符号链接**。`pub get` 报 `Building with plugins requires symlink support.
+   Please enable Developer Mode`。本机 Developer Mode 注册表位是开的，但 bash
+   的 `ln -s` 和 `cmd` 的 `mklink /D` 都能建链接、**Dart 的
+   `Link(link).createSync()` 却抛 `OS Error 1314`**（进程令牌未声明
+   `SeCreateSymbolicLinkPrivilege`，Dart 不申请）。所以由 `tool/prelink.cjs`
+   调 `mklink /D` 补出 `windows/flutter/ephemeral/.plugin_symlinks/*`，再跑
+   `cmd //c windows\flutter\ephemeral\_mklinks.bat`。
+   `prelink.cjs` 会把 `p.path` 里的连续反斜杠折叠、去掉尾部反斜杠（`mklink`
+   否则把它当名字的一部分）。
+2. **nuget 在 PATH 上**。不在就报 `Unable to generate build files`，且 149ms 内
+   就失败，看不到任何 CMake 信息。
+
+#### 关三：`flutter_tts` 让 release 启动即崩
+
+**症状**：debug 构建正常，release/profile 构建启动后 2–3 秒退出，从未画出窗口，
+退出码 `0xC0000409`（`STATUS_STACK_BUFFER_OVERRUN`，MSVC 对未捕获 C++ 异常的
+fail-fast）。
+
+**定责过程**（每一步都用最小工程 `.winrun/probeapp` 交叉验证，不是猜）：
+
+| 实验 | 结论 |
+| --- | --- |
+| 纯模板 release | 能跑 |
+| 模板 + 只加 `file_selector` | 能跑 |
+| 模板 + 只加 `flutter_tts` | **崩**，与 Lexumo 业务代码无关 |
+| 2×2：runner 补 `RoInitialize` × 有无 `flutter_tts` | 补丁无关紧要，**有无插件决定生死** |
+| 插件成员处插探针 | 日志只有 `before-synth`，**没有 `after-synth`** |
+
+最后一行是决定性证据：**崩溃发生在 `SpeechSynthesizer synth;` 这个成员的默认
+构造里，早于构造函数体执行**。所以任何写在构造函数体内的 `try/catch` 都抓不到
+它——这也解释了为什么先前两次「加了 try/catch 就不崩」的结论是假的（那次测的是
+上一次构建残留的 exe，见下面的教训）。
+
+**根因**：本机 WinRT 语音栈没有可用语音。`New-Object
+Windows.Media.SpeechSynthesis.SpeechSynthesizer` 能建实例但 `AllVoices.Count = 0`；
+同时 **SAPI 有两个语音**（`Microsoft Huihui Desktop` zh-CN、`Microsoft Zira
+Desktop` en-US），而这版插件的桌面分支走的是 WinRT 而非 SAPI。激活在零语音时
+抛 `winrt::hresult_error`（`hr=0x800455A0`），抛在成员初始化器里 → fail-fast。
+
+**修法**（`flutter/third_party/flutter_tts/`，见下节）：把激活从成员初始化器搬到
+构造函数体内的一次显式 `activate()`，失败就记 `ready = false` 而不是终止进程，
+再用 `ready` 守卫每个入口。修完 release 构建稳定运行、正常写出数据文件。
+
+**验证**（`tool/probe_exit.ps1`，Windows 上唯一可信的启动测量方式）：
+
+```
+verdict : ALIVE after 15.1s (window=True)
+```
+
+同时写出 `.winrun/v3/Lexumo/lexumo.json`（version 3、1 个 list、14 个词、45 条 log）。
+
+#### 为什么要把 `flutter_tts` 复制进仓库
+
+`flutter/third_party/flutter_tts/` 是 **4.2.5 的原样拷贝**，只改 Windows 那份
+`flutter_tts_plugin.cpp`。`pubspec.yaml` 用 `path:` 指向它。理由：改 pub cache 里的
+文件是「用后必须还原」的临时手段，既不能随代码提交、也不能在另一台机器重现。
+补丁本身也固化成脚本：`node tool/patch_tts_windows.cjs`（`--restore` 还原，备份为
+`.lexpristine`），可重复执行且幂等。
+
+改动的四处：
+
+1. 成员改为不激活的空构造：`SpeechSynthesizer synth{ nullptr };`、
+   `MediaPlayer mPlayer{ nullptr };`，新增 `bool ready = false;`
+2. 新增 `bool activate()`，在 `try/catch` 里做激活并置 `ready`
+3. 12 处入口加 `ready` 守卫：`pause/continuePlay/stop/getVoices/getLanguages` 直接
+   return，`setVoice/setLanguage/speak/asyncSpeak` 回 `Success(0)`（Dart 侧得到回复
+   而不是永久挂起），`setVolume/setPitch/setRate` 三个单行函数加 `if (!ready) return;`
+4. 析构里仅在 `ready` 时 `try { mPlayer.Close(); } catch (...) {}`（对空 player 调
+   `Close()` 会从析构函数抛出）
+
+只改 `#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY == WINAPI_FAMILY_DESKTOP_APP)`
+那半到 `#else` 之间的桌面分支，UWP 半边保持上游原样。**注意**：按
+`void FlutterTtsPlugin::getVoices(...)` 定位会命中两次（两个分支各一份），必须先按
+`\n#else\n` 切开再在 head 里替换。
+
+#### 由此暴露的一个诚实性问题（已修）
+
+插件被守护后不再抛异常，但它**仍然会应答每一个方法**——`getVoices` 返回空列表、
+`setLanguage` 返回 `0`。于是原先的 `init()`「通道答了就说明引擎能用」的判断在这台
+机器上会答 `true`，界面画出 发音 按钮而点了没声音。
+
+`FlutterTtsEngine.init()` 现在分平台判断：**Windows 上要求语音列表非空**才算可用；
+其它平台仍然「通道通了就算可用」，因为 Android 的引擎在后台异步启动、插件会排队，
+冷启动第一次拿到空列表是正常的，把它当失败会在每次启动时藏掉 发音 按钮。平台通过
+构造参数注入（`FlutterTtsEngine(null, TargetPlatform.windows)`）以便测试。
+`test/tts_test.dart` 的 `FlutterTtsEngine.init` 组用 mock method channel 覆盖了
+四种情形：Windows 零语音 → 不可用、Windows 有语音 → 可用、Android 空列表 → 可用、
+通道缺失 → 任何平台都不可用。
+
+**顺带说明桌面语音的最终行为**：这台机器上 Windows 版会把 发音 按钮藏起来（WinRT
+零语音），这是如实反映而不是故障。Android 端的语音正常——那边的引擎是
+`TextToSpeech`，与 WinRT 无关。
+
+#### 沙箱对运行的限制
+
+本机沙箱禁止 **Dart/Flutter 进程**写工作区之外的路径（实测五个目标里只有工作区内
+那个成功，其余全抛 `PathAccessException errno = 5`；bash 与 `cmd` 的
+`echo >` 却能写同一目录，`icacls` 显示全权限、无 deny ACE），所以验证 Windows 版
+必须把 `APPDATA` 指到工作区内：
+
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass \
+  -File flutter/tool/probe_exit.ps1 \
+  -Exe flutter/build/windows/x64/runner/Release/lexumo.exe -Ms 15000 \
+  -AppData .winrun/v3
+```
+
+不指的话应用启动后立刻因 `SnapshotStore.save` 的 `PathAccessException` 退出——那是
+沙箱限制，不是代码问题。
+
+#### 完整的 Windows 构建命令
+
+```bash
+WS="C:/Users/noaha/prj/lingueez-web"
+export HOME="$WS/.flutter-home" USERPROFILE="$WS/.flutter-home" \
+  APPDATA="$WS/.flutter-home/AppData/Roaming" \
+  LOCALAPPDATA="$WS/.flutter-home/AppData/Local" \
+  TMP="$WS/.flutter-home/tmp" TEMP="$WS/.flutter-home/tmp" \
+  TMPDIR="$WS/.flutter-home/tmp" \
+  PATH="/c/Users/noaha/Downloads:$PATH"      # nuget.exe 在这里
+cd "$WS/flutter"
+cmd //c "windows\\flutter\\ephemeral\\_mklinks.bat"   # 符号链接
+../.flutter-sdk/flutterc build windows --release
+```
+
+构建前先 `taskkill //F //IM lexumo.exe`，否则 `LNK1104` 打不开上一个构建的 exe。
+
+#### 产物
+
+`flutter/build/windows/x64/runner/Release/` 约 40 MB：`lexumo.exe`（80,896 B）、
+`flutter_windows.dll`、`flutter_tts_plugin.dll`、`file_selector_windows_plugin.dll`、
+`data/`（`app.so` + `flutter_assets` + `icudtl.dat`）。字体已打进
+`data/flutter_assets/assets/fonts/`。
+
+#### 一条通用教训
+
+这一整轮的多数弯路都不是「分析错了」，而是**测了上一次构建的残留二进制**：旧 exe
+没删，`[ -f "$EXE" ]` 通过，于是「崩溃消失了」和「格子结果互相矛盾」同时出现。
+任何「改代码 → 看行为」的实验，构建前必须删掉目标二进制、构建后必须确认它真的被
+重写。这与死代码扫描器那次「工具报全干净」是同一类错误：**先验证测量手段有效，
+再相信测量结果**。为此 `tool/probe_exit.ps1` 取代了更早的 `tool/run_windows.ps1`——
+后者用 `Start-Process -PassThru`，对短命 GUI 子进程常常返回空 `ExitCode`，把
+「崩溃 `0xC0000409`」和「正常退出 0」都印成 `code= (0x00000000)`。
+
+### 7.3 测试与验证工具
+
+`flutter/tool/` 下的脚本都是为「模拟器 adb 不稳定」这件事写的，都带重试：
+
+| 脚本 | 用途 |
+| --- | --- |
+| `build_apk.sh` | 出 release APK（唯一的正确出包方式） |
+| `reinstall.sh` | 重装并校验远端 APK 大小，确认装的是新包 |
+| `adb.sh` | 带重试的 adb 包装（`tool/adb.sh shell "pm list packages"`） |
+| `dump_ui.sh` | dump 当前界面无障碍树到 xml |
+| `mobile_sweep.sh` | 依次切五个页面并 dump，用于回归 |
+| `check_hints.cjs` | 检查 dump 出的 xml 里有没有残留键帽文本 |
+| `shot.sh` | 截图（同样带 adb 重试） |
+| `apk_state.sh` / `verify_apk.sh` / `diagnose_install.sh` | 安装问题排查 |
+| `repro_lck.sh` | 复现 7.4 的 `.lck` 问题，用于确认环境变量假设 |
+| `scan_i18n.cjs` / `scan_symbols.cjs` / `scan_public.cjs` / `scan_orphans.cjs` | 死代码扫描 |
+| `ui_text.sh` | 只取界面文本标签（比整棵无障碍树好读） |
+| `restart_and_dump.sh` | 重启应用并 dump，用于确认冷启动后的状态 |
+| `shots_mobile.sh` / `shot_retry.sh` | 逐页截图 / 单张截图（都带 adb 重试） |
+| `probe_exit.ps1` | Windows 启动测量：拿真实退出码 + 是否画出窗口（见 7.2） |
+| `run_windows.ps1` | 旧版 Windows 启动测量，退出码不准，已被上一条取代 |
+| `prelink.cjs` | 用 `mklink /D` 补插件符号链接（Dart 建不了，见 7.2） |
+| `patch_tts_windows.cjs` | 给 vendored `flutter_tts` 打 Windows 崩溃补丁（`--restore` 还原） |
+
+一次完整的移动端回归：
+
+```bash
+./tool/build_apk.sh && ./tool/reinstall.sh
+./tool/mobile_sweep.sh .shots/verify
+for f in .shots/verify/*.xml; do node tool/check_hints.cjs "$f" | grep verdict; done
+# 每页都应输出 verdict: CLEAN (no keyboard hints)
+```
+
+### 7.4 为什么必须用脚本：`.lck` 报错的真相
+
+`flutterc build apk` / `flutterc run` 会失败于：
+
+```
+java.io.FileNotFoundException:
+C:\Users\noaha\.gradle\wrapper\dists\gradle-9.3.1-all\9ot9r568e8zfvvd4mn8rbu1j0\gradle-9.3.1-all.zip.lck (拒绝访问。)
+```
+
+这条报错把排查引向了三个错误方向，逐个排除之后才找到真因：
+
+1. **不是权限**。`icacls` 显示 `NOAH\noaha:(I)(F)` 全权限；Java 单独
+   `new RandomAccessFile(lck,"rw")` 也成功；把 `.lck` 删掉仍然报同样的错。
+2. **不是磁盘满**。磁盘一度到 100%（剩 15 MB），清到 8 GB 后报错一字不变。
+3. **不是 target 反斜杠**。`flutterc run -v` 显示它传给 Gradle 的是绝对路径
+   `-Ptarget=C:\Users\noaha\prj\lingueez-web\flutter\lib\main.dart`，不是反斜杠的
+   `lib\main.dart`。
+
+**真因是环境变量**。flutter 只给 Gradle 子进程传 `JAVA_HOME` 和 `PATH`
+（`flutter_tools/lib/src/android/java.dart:154-160` 的 `environment` getter），
+而 `gradlew.bat` 要靠 `HOME` / `USERPROFILE` 定位 `~/.gradle`。继承完整的用户环境
+（`tool/build_apk.sh` 做的就是这个）就能过。
+
+`tool/repro_lck.sh` 是决定性的对照实验：同一个命令行，只改环境变量——
+
+```
+===== A: plain environment =====        BUILD FAILED in 20s
+===== B: flutterc-pinned environment ===  BUILD SUCCESSFUL in 2m 19s
+```
+
+顺带记一个前置：`services.gradle.org` 直连超时，`gradle-9.3.1-all.zip` 是从
+`https://mirrors.cloud.tencent.com/gradle/` 手工下到
+`~/.gradle/wrapper/dists/gradle-9.3.1-all/9ot9r568e8zfvvd4mn8rbu1j0/` 的
+（目录名 = md5(distributionUrl) 的 base36）。下好之后 `./gradlew --version` 自己会
+解压出 `.ok`。这台机器上 Gradle 分发包不是自动拉的，装新机器时要重做一次。
+
+### 7.5 磁盘空间
+
+C: 长期在 99%。移植过程中清掉的：
+
+- `.flutter-sdk/flutter.zip`（1.94 GB）——SDK 已解压，zip 不需要
+- 误拷的 `.flutter-home/gradle-home`（需先 `taskkill //F //IM java.exe` 解锁）
+- `flutter/build` 从 1.8 GB 清到 552 MB（删 `app/intermediates`、`app/tmp`、
+  `.cxx`、`native_assets`）
+
+之后稳定在 6.2 GB 空闲。`flutter/build` 会随每次构建回涨，空间紧张时重复上面第三步。
+
+### 本机环境实测
+
+```
+rustc 1.94.1     node v24.10.0     java 17.0.12 (Oracle)
+Flutter 3.47.8   Dart 3.13.7       PostgreSQL 18.4 (docker, postgres:latest)
+Android SDK 36.0.0  build-tools 36.0.0  platform android-37.0
+模拟器 Medium_Phone (1080×2400)   VS2019 BuildTools 16.11.36602.28（缺 CMake 组件）
+```
+
+### 截图
+
+`.shots/` 下有模拟器实拍：`01-words` `02-flashcards` `03-quiz` `04-stats` `05-settings`
+`06-quiz-active` `07-flashcard-session` `08-settings-dark` `09-settings-en` `10-final-words`。
+
+---
+
+## 8. 如果要继续
+
+按优先级：
+
+1. **在真 Supabase 项目上验证一次**。SQL 函数、13 条 Postgres 测试、差分测试都已
+   就位，但那跑的是「真 Postgres + 手写 RPC 垫片」，GoTrue 是 `rpc_bridge.cjs` 模拟的。
+   真实 GoTrue 发的是 JWT，`auth.uid()` 从 `request.jwt.claim.sub` 读——协议一致，
+   但没在线上项目走过一遍。顺带补 `supabase/config.toml` 与 `db push` 的部署流程
+   （本机无 supabase CLI）。
+2. **自绘标题栏**。Windows 版现在能跑，但窗口用的是系统标题栏，而 Web 版是 36px
+   石色自绘条（`--frame-bar-h`）。要补需要 `window_manager` 加窗口拖拽/最小化/
+   最大化/关闭的原生接线，`Layout.frameBarH` 这个令牌是给它留的。
+3. **拖拽导入**。`desktop_drop` 插件，接到设置页的导入逻辑上。解析器和文件选择都已
+   就位，缺的只是这个拖放接收器；Windows 构建已通，现在加它是可验证的。
+4. **补回查词翻译**。`src/lib/translate.ts`（845 行）没移植，所以编辑词条页的两个
+   查询按钮现在是禁用的占位。同步已经有了 `HttpClient` 的用法可参照，缺的是四个
+   provider 的解析器与 30 天缓存。
+5. **Windows 桌面语音**。本机 WinRT 语音栈零 voice，桌面版会把 发音 按钮藏起来。
+   要真正出声得把插件的桌面分支从 WinRT 换到 SAPI（`sapi.h`/`sphelper.h` 与
+   `SAPI.Lib` 在 SDK 里齐全，SAPI 侧本机有两个可用语音），但那是几百行的改动，且
+   `atlstr.h`（ATL）本机没装。现在的 vendor 补丁刻意没走这条路，只保证「不崩 +
+   不用时安静降级」。
+
+已知**不该再动**的部分：`third_party/flutter_tts` 的桌面分支只承担「不崩」和
+「引擎不可用时安静降级」两个目标。若哪天上游修好了崩溃，删掉 vendor 目录、
+`pubspec.yaml` 改回 `flutter_tts: ^4.2.5` 即可，`tool/patch_tts_windows.cjs` 同步失效。
+
+### 四层验证，以及它们各自抓不到什么
+
+改同步代码时值得知道哪一层会替你看住什么，因为它们看的不是同一件事：
+
+| 层 | 命令 | 能抓到 | 抓不到 |
+| --- | --- | --- | --- |
+| 单元/widget | `flutterc test` | 合并语义、会话文件、UI 状态 | 真实 HTTP 形状、SQL |
+| SQL | `supabase/tests/run.sh` | 函数逻辑、LWW、并发锁、RLS | 客户端是否说对协议 |
+| 端到端 | `LEXUMO_SUPABASE_E2E=… flutterc test test/supabase_e2e_test.dart` | Dart 客户端 ↔ 真 Postgres 的整条链 | 真实 GoTrue 的 JWT |
+| 差分 | `node supabase/tests/differential.cjs` | 两个后端是否给出同一个答案 | 两者是否**都对**（共同的错不会被发现） |
+
+第 3 层不是可选的。它抓到了一个单元测试抓不到的 bug：一轮同步在**请求之前**把
+`config` 快照下来了，而 401 换 token 发生在请求**之中**，于是轮末保存会话时用旧快照
+覆盖了刚拿到的新 refresh token——下一次启动会拿一个已被服务端作废的 token 去刷新。
+这种「只在第二次启动时才出错」的 bug，假传输永远测不出来，因为假传输不会在请求中间
+改自己的状态。修法与回归测试见 `test/sync_token_rebase_test.dart`。
+
+第 4 层做过反向验证：把 words 的 LWW 从 `>=` 改成 `>`，差分立刻报 10/13 轮不同；
+改回来回到 13/13 identical。**一个从不失败的测试不算测试。**

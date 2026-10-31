@@ -21,3 +21,16 @@ src-tauri/gen
 .shots
 
 server/data/
+
+# Flutter 工具链与运行期状态（本地，不入库）
+.flutter-sdk/
+.flutter-home/
+.gradle-home/
+.tmp-flutter.sh
+
+# 本地探针与 Windows 运行期输出（本地，不入库）
+.tmp-probe/
+.winrun/
+.winrun.out
+.winrun.err
+probe_ws.txt

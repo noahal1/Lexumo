@@ -1,0 +1,27 @@
+<!--
+    Cleartext HTTP is allowed for exactly three hosts, and no others.
+
+    Android 9 (API 28) flipped `usesCleartextTraffic` to false by default, which
+    means a plain `http://` socket throws rather than connects. The sync engine's
+    default server is `http://127.0.0.1:8787` (the self-hosted reference server),
+    so without this file a phone pointed at a local server fails every round with
+    what looks like `offline` — the same symptom as no network at all.
+
+    The alternative, `android:usesCleartextTraffic="true"` on the application,
+    would switch the protection off for every host including a future Supabase
+    domain. A domain-scoped exception keeps the guarantee everywhere it matters:
+
+      · `localhost` / `127.0.0.1` — a server running on the device itself.
+      · `10.0.2.2` — the Android emulator's alias for the host machine's
+        loopback, which is how you reach a dev server from the emulator.
+
+    A real deployment is `https://` and needs none of this. See
+    `docs/flutter-design.md` §7 for the sync setup.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
