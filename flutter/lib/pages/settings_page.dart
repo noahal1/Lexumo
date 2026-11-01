@@ -8,8 +8,9 @@
 ///
 /// One section of the web page described a subsystem this build does not have:
 /// the sync client, which is rendered as a static panel that says so (see
-/// [_SyncSection]). The dictionary lookup cache is omitted outright rather than
-/// faked with dead controls.
+/// [_SyncSection]). The dictionary lookup cache is real now — `platform/
+/// translate.dart` keeps it on disk — so its section reports the entry count
+/// and offers to clear it.
 ///
 /// Export and import live under Data. They were absent until the Supabase work
 /// started, for the honest reason that nothing could write a file; see
@@ -20,22 +21,26 @@ library;
 import 'package:flutter/material.dart' hide Card;
 
 import '../app/scope.dart';
+import '../app/update_scope.dart';
 import '../data/store.dart' show findDuplicate;
 import '../data/sync_config.dart' show kDefaultServer;
 import '../data/backend_transport.dart';
 import '../data/sync_engine.dart';
 import '../data/sync_transport.dart';
 import '../data/transfer.dart';
+import '../data/update_service.dart';
 import '../design/tokens.dart';
 import '../domain/types.dart';
 import '../domain/utils.dart';
 import '../platform/file_dialogs.dart';
+import '../platform/translate.dart' show defaultLookup;
 import '../platform/tts.dart';
 import '../ui/controls.dart';
 import '../ui/density.dart';
 import '../ui/keyboard_hints.dart';
 import '../ui/lex_icon.dart';
 import '../ui/widgets.dart';
+import 'update_sheet.dart';
 
 /// One row of the shortcut sheet, in the same declaration order as
 /// `src/lib/shortcuts.ts`. Mirrored locally instead of importing
@@ -67,6 +72,13 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Unsubscribe from [appSpeech]'s voice-list changes; see [initState].
   VoidCallback? _offVoices;
 
+  /// How many words the dictionary cache holds, read on demand.
+  ///
+  /// Read in [initState] and again after a clear rather than on every build:
+  /// `cacheSize()` is cheap, but the number only changes when the user clears
+  /// it from this page.
+  int _cacheSize = 0;
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +90,7 @@ class _SettingsPageState extends State<SettingsPage> {
     });
     // Idempotent; a no-op when another page already warmed the engine.
     appSpeech.warmUp();
+    _cacheSize = defaultLookup.cacheSize();
   }
 
   @override
@@ -87,6 +100,17 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _patch(Settings Function(Settings s) fn) => context.store.updateSettings(fn);
+
+  /// Empty the dictionary cache and report the new size.
+  ///
+  /// The cache is disposable by design — every entry can be refetched — so this
+  /// asks for no confirmation. It exists because the entries are the one thing
+  /// the app writes to disk that the user never typed.
+  void _clearLookupCache() {
+    defaultLookup.clearCache();
+    setState(() => _cacheSize = defaultLookup.cacheSize());
+    context.toast(context.t('settings.cacheCleared'), ToastKind.ok);
+  }
 
   /// Language whose voices the picker should offer: the first list's source
   /// language, exactly as `SettingsPage.tsx:42` derived `studyLang`.
@@ -486,10 +510,27 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
                 _Divider(color: p.line),
-                // The web page's dictionary section managed a lookup cache that
-                // lived in `src/lib/translate.ts`. That client did not come
-                // across, so there is no cache to size or clear and the section
-                // is omitted rather than shown empty.
+                _Section(
+                  icon: Ic.book,
+                  title: context.t('settings.dictionary'),
+                  note: context.t('settings.translateCacheHint', {'n': _cacheSize}),
+                  children: [
+                    _Row(
+                      label: context.t('settings.translateCache'),
+                      hint: context.t('settings.translateCacheHint', {'n': _cacheSize}),
+                      control: LexButton(
+                        label: context.t('settings.clearCache'),
+                        kind: BtnKind.normal,
+                        size: BtnSize.sm,
+                        // Nothing to clear is a real state on a fresh install,
+                        // and a button that looks pressable but does nothing is
+                        // worse than one that looks unavailable.
+                        onPressed: _cacheSize == 0 ? null : _clearLookupCache,
+                      ),
+                    ),
+                  ],
+                ),
+                _Divider(color: p.line),
                 _SyncSection(autoSync: settings.autoSync, onAutoSync: (v) => _patch((s) => s.copyWith(autoSync: v))),
                 _Divider(color: p.line),
                 _Section(
@@ -558,6 +599,18 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ],
             ),
+          ),
+        ),
+        const SizedBox(height: Sp.x5),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 880),
+          child: Card(
+            // A stable handle for the widget tests: the card's own identity is
+            // private to this file, and matching on its button label would tie
+            // the tests to copy that is expected to change.
+            key: const ValueKey('update-card'),
+            padding: EdgeInsets.zero,
+            child: _UpdateSection(),
           ),
         ),
         const SizedBox(height: Sp.x5),
@@ -1514,6 +1567,161 @@ class _StatusPill extends StatelessWidget {
 }
 
 /* ------------------------------------------------------------------ */
+/* Updates                                                             */
+/* ------------------------------------------------------------------ */
+
+/// The updates card: one row that names the running build and one button that
+/// opens [showUpdateSheet].
+///
+/// It is a separate card rather than a section of the settings card because an
+/// update is not a preference — nothing here writes to the snapshot, and the
+/// row is the only place in the app that talks to the network on purpose. It
+/// also keeps the settings card's five sections about what the *app* does and
+/// this one about what *the app's copy* is.
+///
+/// When no [UpdateService] is mounted (a widget test, or a stripped build) the
+/// card still renders: it states the version it was compiled with and offers
+/// nothing else, which is honest and keeps the page's shape stable.
+class _UpdateSection extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final service = context.update;
+
+    return AnimatedBuilder(
+      animation: service?.state ?? const _Never(),
+      builder: (context, _) {
+        final state = service?.state.value;
+        final current = state?.current;
+        final versionText = current == null
+            ? context.t('settings.version')
+            : context.t('settings.updateHint', {
+                'version': current.name.toString(),
+                'build': '${current.build}',
+              });
+
+        final phase = state?.phase;
+        final busy = state?.isBusy ?? false;
+        final available = state?.available;
+
+        // The second line reports, it does not invite. "Up to date" after a
+        // check is worth saying once; a permanent "check for updates" hint
+        // would be a nag on a page the user opened to change the theme.
+        //
+        // The idle case is not the version again: the header above already
+        // names the build, and repeating it here would waste the one line that
+        // can carry a fact the header cannot — when the check runs by itself.
+        final hint = switch (phase) {
+          UpdatePhase.available => context.t('settings.updateAvailable', {
+              'version': available!.manifest.version.name.toString(),
+            }),
+          UpdatePhase.downloading => context.t('settings.updateDownloading', {
+              'percent': '${(state!.progress * 100).clamp(0, 100).round()}',
+            }),
+          UpdatePhase.verifying => context.t('settings.updateVerifying'),
+          UpdatePhase.ready => context.t('settings.updateReady'),
+          UpdatePhase.upToDate => context.t('settings.updateUpToDate'),
+          // The reason comes from the service, so it must be the service's
+          // reason. A fixed string here would report "no connection" for a bad
+          // digest and send the user to check their Wi-Fi for nothing.
+          UpdatePhase.failed => updateReasonText(context, state?.reason),
+          _ => context.t('settings.updateAutoHint'),
+        };
+
+        // `ready` still says Install, but the button opens the sheet rather
+        // than installing: the sheet is where the size, the notes and the
+        // permission warning live, and an install that starts from a list row
+        // with no confirmation is how someone installs a build they did not
+        // mean to. The label matches what the user gets, not what the click
+        // does.
+        final buttonLabel = switch (phase) {
+          UpdatePhase.available || UpdatePhase.ready => context.t('settings.updateInstall'),
+          UpdatePhase.downloading || UpdatePhase.verifying => context.t('settings.updateDownloading', {
+              'percent': '${(state!.progress * 100).clamp(0, 100).round()}',
+            }),
+          _ => context.t('settings.update'),
+        };
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Sp.x5, Sp.x4, Sp.x5, Sp.x3),
+              child: Row(
+                children: [
+                  LexIcon(Ic.refresh, size: 14, color: p.ink3),
+                  const SizedBox(width: Sp.x2),
+                  Expanded(
+                    child: Text(
+                      context.t('settings.update'),
+                      style: TextStyle(
+                        fontSize: Fs.sm,
+                        height: Lh.tight,
+                        fontWeight: FontWeight.w500,
+                        color: p.ink2,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    versionText,
+                    style: TextStyle(
+                      fontFamily: Fonts.mono,
+                      fontSize: Fs.xs,
+                      height: Lh.tight,
+                      color: p.ink3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(height: 1, color: p.line),
+            _Row(
+              // The header already names the build, so this line is where the
+              // *state* goes: the newest release, the download, the answer.
+              label: hint,
+              control: service == null
+                  ? const SizedBox.shrink()
+                  : LexButton(
+                      label: buttonLabel,
+                      kind: available != null || phase == UpdatePhase.ready
+                          ? BtnKind.primary
+                          : BtnKind.normal,
+                      size: BtnSize.sm,
+                      icon: available != null || phase == UpdatePhase.ready
+                          ? Ic.download
+                          : Ic.refresh,
+                      // Disabled while a check or download runs: the service
+                      // guards against re-entry, and a button that looks live
+                      // but does nothing is the worse lie.
+                      onPressed: busy ? null : () => showUpdateSheet(context),
+                    ),
+            ),
+            if (busy) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Sp.x5, 0, Sp.x5, Sp.x4),
+                child: ProgressBar(value: state?.progress ?? 0, thick: true),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// An empty [Listenable] for the service-less case, so the card can share one
+/// `AnimatedBuilder` shape with and without a service.
+class _Never implements Listenable {
+  const _Never();
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
+}
+
+/* ------------------------------------------------------------------ */
 /* About                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -1567,7 +1775,15 @@ class _AboutCard extends StatelessWidget {
                   runSpacing: Sp.x2,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    _Chip(text: '${context.t('settings.version')} 0.1.0'),
+                    // The running build, read from the platform rather than
+                    // typed here. `pubspec.yaml` is the one place a version is
+                    // written; a literal in this file was a second one that
+                    // would silently disagree with the manifest the updater
+                    // compares against.
+                    _Chip(
+                      text: '${context.t('settings.version')} '
+                          '${context.updateState?.current?.name ?? '—'}',
+                    ),
                     // The web build hardcoded its own stack names here rather
                     // than routing them through `t()` — they are proper nouns
                     // and read the same in both locales. The port states its

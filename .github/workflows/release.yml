@@ -1,0 +1,258 @@
+# Build, sign and publish a release APK from a tag.
+#
+# Why CI at all when `tool/release.sh` already does the build: the script's
+# keystore is a local secret, and the manifest it writes has to name the asset
+# URL that GitHub will actually serve. Doing both on a runner means the tag, the
+# asset name, and `update.json`'s `apk.url` are produced by one process that
+# cannot disagree with itself.
+#
+# What the runner does NOT do: `tool/build_apk.sh`. That script exists only
+# because this developer machine's `flutter build apk` loses HOME and cannot find
+# its Gradle distribution — a local workaround. A Linux runner has a normal
+# environment, so the plain `flutter build apk` works there. Keeping the
+# workaround out of CI keeps CI honest about what a clean machine can do.
+#
+# The keystore arrives base64-encoded in `ANDROID_KEYSTORE_BASE64`, with
+# `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`
+# beside it (Settings → Secrets and variables → Actions). Losing that keystore
+# means no installed copy can ever be updated again; back it up outside GitHub.
+#
+# This workflow never runs on a pull request and never publishes from a branch:
+# both gates matter, because a published asset is cached by GitHub's CDN and a
+# mistyped tag is stuck in every user's update check for the six-hour window.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (must already exist, e.g. v0.2.0+2)"
+        required: true
+        type: string
+      skip_publish:
+        description: "Build and attach the APK, but do not create the release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  # One release at a time. Two overlapping uploads to the same tag is the one
+  # way to end up with a manifest naming a file that was overwritten.
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.47.8"
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - name: Check the tag matches pubspec.yaml
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The tag and the version are typed in two places; a mismatch ships an
+          # APK whose own build number is lower than the release that contains
+          # it, so every user is offered an update they already have.
+          RAW=$(grep -E '^version:' flutter/pubspec.yaml | head -1 | sed 's/^version:[[:space:]]*//' | tr -d '\r')
+          NAME="${RAW%%+*}"
+          if [ "$NAME" = "$RAW" ]; then
+            echo "::error::flutter/pubspec.yaml version '$RAW' has no +build number"
+            exit 1
+          fi
+          CODE="${RAW#*+}"
+          EXPECTED="v${NAME}+${CODE}"
+          if [ "$EXPECTED" != "${TAG}" ]; then
+            echo "::error::tag '${TAG}' does not match flutter/pubspec.yaml '${RAW}' (expected '${EXPECTED}')"
+            exit 1
+          fi
+          echo "version=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "apk_name=lexumo-${NAME}-${CODE}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install the Flutter dependencies
+        working-directory: flutter
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: flutter
+        run: flutter analyze
+
+      - name: Test
+        working-directory: flutter
+        # `--reporter expanded` so a failure names the test instead of a dot.
+        run: flutter test --reporter expanded
+
+      - name: Write the signing properties
+        working-directory: flutter
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not set — an unsigned or debug-signed APK cannot update an installed copy"
+            exit 1
+          fi
+          # base64 -d, not a here-doc: the secret is one long line and any
+          # wrapping in it would corrupt the keystore silently.
+          printf '%s' "${KEYSTORE_BASE64}" | base64 -d > android/upload-keystore.jks
+          {
+            echo "storeFile=upload-keystore.jks"
+            echo "storePassword=${STORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > android/key.properties
+          # Prove the keystore opens before spending minutes on a build. A wrong
+          # password would otherwise surface as a Gradle signing error after the
+          # APK is already assembled.
+          keytool -list -keystore android/upload-keystore.jks \
+            -storepass "${STORE_PASSWORD}" -alias "${KEY_ALIAS}" > /dev/null
+
+      - name: Build the release APK
+        working-directory: flutter
+        shell: bash
+        run: |
+          set -euo pipefail
+          # `--dart-define` reaches both the Dart side and Gradle's
+          # `-Pdart-defines` pass-through, so the same two values end up
+          # compiled into the kernel *and* readable by anything that inspects
+          # the build config. They are what
+          # `PlatformAppInstaller.buildInfo` falls back to when the platform
+          # channel is unavailable.
+          #
+          # `--target-platform android-arm64`: the release APK is 20 MB instead
+          # of 51 MB. x86_64 would be dead weight on a phone — only an emulator
+          # wants it, and an emulator build is not a release.
+          flutter build apk --release \
+            --target-platform android-arm64 \
+            --dart-define="LEXUMO_VERSION=${{ steps.version.outputs.version }}" \
+            --dart-define="LEXUMO_BUILD=${{ steps.version.outputs.code }}"
+          ls -l build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Verify the APK is signed with the release key
+        working-directory: flutter
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The build falls back to the debug key when key.properties is absent;
+          # `apksigner verify` with the release certificate pins that this did
+          # not happen, since a debug-signed APK silently fails to install over
+          # the previous release.
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          BUNDLE_SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools"
+          APKSIGNER=$(find "$BUNDLE_SDK" -name apksigner -type f | sort | tail -1)
+          [ -n "$APKSIGNER" ] || { echo "::error::apksigner not found"; exit 1; }
+          "$APKSIGNER" verify --print-certs "$APK" | tee /tmp/certs.txt
+          if grep -qi "Android Debug" /tmp/certs.txt; then
+            echo "::error::the APK is debug-signed; check android/key.properties"
+            exit 1
+          fi
+
+      - name: Assemble the release files
+        working-directory: flutter
+        shell: bash
+        env:
+          NAME: ${{ steps.version.outputs.version }}
+          CODE: ${{ steps.version.outputs.code }}
+          APK_NAME: ${{ steps.version.outputs.apk_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/${APK_NAME}"
+          SIZE=$(stat -c%s "dist/${APK_NAME}")
+          SHA=$(sha256sum "dist/${APK_NAME}" | cut -d' ' -f1)
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}"
+          # Notes are optional and come from the tag's tree if present, so the
+          # runner writes the same manifest shape `tool/release.sh` does. A
+          # release published only by CI used to carry no notes at all, which is
+          # not just a missing section: the app hides "What's new" when the field
+          # is absent, so the user was offered an update with no reason given.
+          node -e '
+            const [name, code, url, size, sha] = process.argv.slice(1);
+            const fs = require("fs");
+            const manifest = {
+              version: name,
+              build: Number(code),
+              published: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+              apk: { url, size: Number(size), sha256: sha },
+            };
+            // Same shapes `tool/release.sh --notes-file` accepts: a JSON object
+            // of {lang: text}, or one plain body filed under Chinese.
+            const notesPath = "notes.json";
+            if (fs.existsSync(notesPath)) {
+              const raw = fs.readFileSync(notesPath, "utf8").trim();
+              if (raw) {
+                let notes = {};
+                try {
+                  const parsed = JSON.parse(raw);
+                  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) notes = parsed;
+                } catch (_) {
+                  notes = { zh: raw };
+                }
+                const clean = {};
+                for (const [k, v] of Object.entries(notes)) {
+                  if (typeof v === "string" && v.trim()) clean[k] = v.trim();
+                }
+                if (Object.keys(clean).length > 0) manifest.notes = clean;
+              }
+            }
+            fs.writeFileSync("dist/update.json", JSON.stringify(manifest, null, 2) + "\n");
+          ' "$NAME" "$CODE" "$URL" "$SIZE" "$SHA"
+          cat dist/update.json
+
+      - name: Publish the release
+        if: ${{ !inputs.skip_publish }}
+        working-directory: flutter
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NAME: ${{ steps.version.outputs.version }}
+          APK_NAME: ${{ steps.version.outputs.apk_name }}
+        run: |
+          set -euo pipefail
+          # `--clobber` on upload rather than a create-or-fail: a re-run of this
+          # workflow for the same tag must repair the release, not refuse to.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "dist/${APK_NAME}" dist/update.json --clobber
+          else
+            gh release create "$TAG" \
+              "dist/${APK_NAME}" \
+              dist/update.json \
+              --title "${NAME} (${{ steps.version.outputs.code }})" \
+              --generate-notes
+          fi
+          # The manifest's URL has to resolve before any user's update check
+          # sees it. A 404 here means a typo in the asset name, and it is much
+          # cheaper to fail the job than to debug it from a phone.
+          curl --fail --silent --show-error --location --head \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/update.json" \
+            > /dev/null
+          echo "published $TAG"

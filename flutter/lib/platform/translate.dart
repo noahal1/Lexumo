@@ -23,6 +23,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../data/app_dir.dart';
+
 /// A dictionary or machine-translation backend.
 enum ProviderId {
   youdao('youdao'),
@@ -195,6 +197,76 @@ class MemoryLookupStorage implements LookupStorage {
 
   @override
   void removeItem(String key) => _entries.remove(key);
+}
+
+/// A storage backed by one file, so a lookup survives a restart.
+///
+/// The web build used `localStorage` and got persistence for free. Without this
+/// the cache would only ever help within a single run of the app, which is the
+/// wrong shape for a dictionary: the point is that the second time you look up
+/// `serendipity` — tomorrow — it costs nothing.
+///
+/// Everything here is best-effort and synchronous, matching the interface the
+/// cache is written against. A disk that refuses the write (a sandbox, a full
+/// volume) leaves the in-memory copy authoritative for the session and costs a
+/// repeated network call next time, which is the same outcome as no cache at
+/// all — never an exception the editor has to handle.
+class FileLookupStorage implements LookupStorage {
+  FileLookupStorage(this.path);
+
+  final String path;
+
+  Map<String, String>? _entries;
+
+  /// Read once, then keep in memory: the cache calls [getItem] on every lookup
+  /// and re-reading a JSON file each time would put disk I/O on a keystroke path.
+  Map<String, String> get _map {
+    final Map<String, String>? cached = _entries;
+    if (cached != null) return cached;
+    final Map<String, String> loaded = <String, String>{};
+    try {
+      final File file = File(path);
+      if (file.existsSync()) {
+        final Object? raw = jsonDecode(file.readAsStringSync());
+        if (raw is Map) {
+          for (final MapEntry<Object?, Object?> entry in raw.entries) {
+            final Object? key = entry.key;
+            final Object? value = entry.value;
+            if (key is String && value is String) loaded[key] = value;
+          }
+        }
+      }
+    } on Object {
+      // A truncated or hand-edited file is not worth reporting: an empty cache
+      // is a valid starting state, and the next write repairs it.
+      loaded.clear();
+    }
+    return _entries = loaded;
+  }
+
+  void _flush() {
+    try {
+      final File file = File(path);
+      file.parent.createSync(recursive: true);
+      file.writeAsStringSync(jsonEncode(_map));
+    } on Object {
+      // Keep the in-memory copy; see the class comment.
+    }
+  }
+
+  @override
+  String? getItem(String key) => _map[key];
+
+  @override
+  void setItem(String key, String value) {
+    _map[key] = value;
+    _flush();
+  }
+
+  @override
+  void removeItem(String key) {
+    if (_map.remove(key) != null) _flush();
+  }
 }
 
 /// Injected time source. The cache TTL and the 429 cooldown both read it, so a
@@ -958,9 +1030,37 @@ class _Lookup implements Lookup {
 Lookup? _defaultLookup;
 
 /// The app-wide lookup, built lazily so importing this library opens no socket.
+///
+/// The cache is file-backed on a real install: a dictionary lookup costs a
+/// network round trip, and the second time the same word comes up — tomorrow,
+/// after a restart — it should cost nothing. Tests override this wholesale with
+/// [debugSetLookup], so the file is only ever touched by the shipping app.
 Lookup get defaultLookup => _defaultLookup ??= createLookup(
-      LookupDeps(adapters: defaultAdapters()),
+      LookupDeps(
+        adapters: defaultAdapters(),
+        cache: createLookupCache(
+          LookupCacheOptions(storage: FileLookupStorage(lookupCacheFile())),
+        ),
+      ),
     );
+
+/// Where the on-disk lookup cache lives.
+///
+/// A separate file from `lexumo.json` on purpose: the snapshot is the user's
+/// data and is backed up, synced and exported, while a dictionary cache is
+/// disposable and would only bloat every backup with payloads the user never
+/// typed. Losing it costs one network call per term.
+String lookupCacheFile() =>
+    '${AppDir.dataDir}${Platform.pathSeparator}lookup-cache.json';
+
+/// Replace the app-wide lookup, for tests.
+///
+/// The same seam as `debugSetSpeech` in `tts.dart`, and for the same reason:
+/// every widget that builds the editor would otherwise reach a live socket, and
+/// a page test that quietly skips its lookup path is worse than no test.
+void debugSetLookup(Lookup? replacement) {
+  _defaultLookup = replacement;
+}
 
 /// Module-level entry point for callers that do not want to thread an instance.
 Future<LookupResult> lookupTerm(String term, [LookupOptions options = const LookupOptions()]) =>

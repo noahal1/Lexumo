@@ -7,11 +7,13 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 ![Lexumo 界面](docs/app-ui.png)
 
 > **两套实现。** `src/` 是这里描述的 Tauri 2 + React 19 版本；`flutter/` 是同一套
-> 功能、同一套设计令牌在 Flutter 里的移植（Windows + Android，31,019 行 Dart，
-> 506 个测试）。两套并存，README 的其余部分描述的是 Tauri 版；Flutter 版的分层、
+> 功能、同一套设计令牌在 Flutter 里的移植（Windows + Android，36,152 行 Dart，
+> 592 个测试）。两套并存，README 的其余部分描述的是 Tauri 版；Flutter 版的分层、
 > 与 Web 版的每一处有意差异、以及构建方法记在 [`docs/flutter-design.md`](docs/flutter-design.md)。
 > 手机布局在 Flutter 版上单独量过一轮（触控目标 44dp、查询带两行、设置页溢出），
-> 记在同文档的「手机布局：一套桌面度量在三处失灵」。
+> 记在同文档的「手机布局：一套桌面度量在三处失灵」；发布与应用内升级的链路记在
+> 同文档的 7.6 节（`flutter/tool/release.sh` 一条命令出签名包与清单，
+> `.github/workflows/release.yml` 在打标签时发布）。
 > 想在真实 Supabase 项目上跑同步，见 [`docs/supabase-sync-plan.md`](docs/supabase-sync-plan.md)。
 
 > 界面截图。桌面窗口在 150% 缩放的测试机上会被系统二次缩放，为避免排版失真，此图直接取应用前端在 Chromium / WebView2 中渲染后的结果。

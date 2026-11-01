@@ -7,6 +7,8 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lexumo/platform/translate.dart';
@@ -884,6 +886,80 @@ void main() {
       expect(cache.size(), 0);
       cache.set('a', _result('a'));
       expect(cache.get('a'), isNotNull);
+    });
+  });
+
+  group('FileLookupStorage', () {
+    late Directory dir;
+
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('lexumo-lookup-');
+    });
+
+    tearDown(() async {
+      if (dir.existsSync()) await dir.delete(recursive: true);
+    });
+
+    String filePath() => '${dir.path}${Platform.pathSeparator}lookup-cache.json';
+
+    test('survives a new instance reading the same file', () {
+      FileLookupStorage(filePath()).setItem('lexumo.dict.v1', '{"a":1}');
+
+      // A second instance is what a restart looks like: nothing in memory.
+      final FileLookupStorage second = FileLookupStorage(filePath());
+      expect(second.getItem('lexumo.dict.v1'), '{"a":1}');
+      expect(second.getItem('missing'), isNull);
+    });
+
+    test('creates the parent directory rather than failing on a fresh install', () {
+      final String nested =
+          '${dir.path}${Platform.pathSeparator}not${Platform.pathSeparator}there'
+          '${Platform.pathSeparator}cache.json';
+      FileLookupStorage(nested).setItem('k', 'v');
+      expect(File(nested).existsSync(), isTrue);
+    });
+
+    test('treats a corrupt file as an empty cache and repairs it on the next write', () {
+      final File file = File(filePath());
+      file.writeAsStringSync('{not json at all');
+      final FileLookupStorage storage = FileLookupStorage(filePath());
+
+      expect(storage.getItem('anything'), isNull);
+      storage.setItem('k', 'v');
+      expect(storage.getItem('k'), 'v');
+      expect(jsonDecode(file.readAsStringSync()), <String, String>{'k': 'v'});
+    });
+
+    test('ignores non-string values in a hand-edited file', () {
+      File(filePath()).writeAsStringSync('{"good":"yes","bad":7}');
+      final FileLookupStorage storage = FileLookupStorage(filePath());
+      expect(storage.getItem('good'), 'yes');
+      expect(storage.getItem('bad'), isNull);
+    });
+
+    test('does not rewrite the file when nothing changed', () {
+      final FileLookupStorage storage = FileLookupStorage(filePath());
+      storage.setItem('k', 'v');
+      final DateTime firstWrite = File(filePath()).lastModifiedSync();
+
+      storage.removeItem('absent');
+      expect(File(filePath()).lastModifiedSync(), firstWrite);
+
+      storage.removeItem('k');
+      expect(storage.getItem('k'), isNull);
+    });
+
+    test('a lookup over file storage hits after a restart', () {
+      final LookupCacheOptions options = LookupCacheOptions(
+        storage: FileLookupStorage(filePath()),
+        clock: _Clock(0),
+      );
+      createLookupCache(options).set('en>zh-CN:apple', _result('苹果'));
+
+      final LookupResult? warm = createLookupCache(options).get('en>zh-CN:apple');
+      expect(warm, isNotNull);
+      expect(warm!.senses.single.meaning, '苹果');
+      expect(warm.fromCache, isTrue);
     });
   });
 

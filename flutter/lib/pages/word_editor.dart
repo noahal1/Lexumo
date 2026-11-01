@@ -7,13 +7,17 @@
 /// keystroke so the notice is there before the user commits.
 ///
 /// The web build carried two halves of a dictionary lookup here (term → meaning
-/// and meaning → term) plus a text-to-speech preview. Both were browser-only:
-/// `src/lib/translate.ts` is an HTTP client over Youdao / Google / MyMemory and
-/// `src/lib/tts.ts` is Web Speech. The Flutter port has neither a networking
-/// layer nor a speech layer, so the two lookup buttons keep their place, their
-/// label and their hint but stay disabled: a control that cannot do its job
-/// should look unavailable rather than silently do nothing. Nothing else in
-/// this dialog depends on them.
+/// and meaning → term) plus a text-to-speech preview. All three now work: the
+/// lookup client is `platform/translate.dart` (an HTTP client over Google /
+/// MyMemory / Youdao, with an on-disk cache) and speech is
+/// `platform/speak_word.dart`. Both buttons translate live, and a failed lookup
+/// says why instead of silently doing nothing.
+///
+/// Late answers are the subtle part. A lookup outlives the keystroke that
+/// started it, so a result is applied only when two things still hold: the
+/// request was not superseded ([_EditorModel.isCurrentForward]) and the field it
+/// was asked about still holds the same text. Without the second check a slow
+/// answer for "cat" would overwrite a definition the user has since retyped.
 library;
 
 import 'package:flutter/material.dart';
@@ -25,6 +29,7 @@ import '../design/tokens.dart';
 import '../domain/languages.dart';
 import '../domain/srs.dart' show STATUS_ORDER;
 import '../domain/types.dart';
+import '../platform/translate.dart';
 import '../ui/controls.dart';
 import '../ui/keyboard_hints.dart';
 import '../ui/lex_icon.dart';
@@ -70,7 +75,7 @@ class _EditorModel extends ChangeNotifier {
       : listId = word?.listId ?? defaultListId,
         status = word?.status ?? WordStatus.new_,
         favorite = word?.favorite ?? false,
-        _phonetic = word?.phonetic ?? '' {
+        phonetic = word?.phonetic ?? '' {
     term.text = word?.term ?? '';
     pos.text = word?.pos ?? '';
     definition.text = word?.definition ?? '';
@@ -109,11 +114,11 @@ class _EditorModel extends ChangeNotifier {
   String error = '';
   bool dismissOpen = false;
 
-  /// Read-only in this port: only the (unavailable) lookup ever set it, so it
-  /// survives as the value loaded from the word and is written back on save.
-  final String _phonetic;
-
-  String get phonetic => _phonetic;
+  /// The IPA the dictionary returned, or the value the word already had.
+  ///
+  /// There is no field for it in the dialog — it is a by-product of a lookup —
+  /// so it lives here rather than in a controller, and Save writes it back.
+  String phonetic;
 
   List<TextEditingController> get _controllers => <TextEditingController>[
         term,
@@ -147,6 +152,97 @@ class _EditorModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /* ---- lookup ---- */
+
+  /// What a lookup button is doing right now.
+  LookupPhase forwardPhase = LookupPhase.idle;
+  LookupFailure? forwardFailure;
+  LookupPhase reversePhase = LookupPhase.idle;
+  LookupFailure? reverseFailure;
+
+  /// Bumped on every request and again on dispose.
+  ///
+  /// Dart has no `AbortController`, and the web build's was only ever used to
+  /// answer "was this request superseded?" — so a counter carries the same
+  /// information: a result whose stamp no longer matches belongs to a request
+  /// that a newer click (or a closed dialog) has already replaced.
+  int _forwardStamp = 0;
+  int _reverseStamp = 0;
+  bool _disposed = false;
+
+  int beginForward() {
+    forwardPhase = LookupPhase.loading;
+    forwardFailure = null;
+    notifyListeners();
+    return ++_forwardStamp;
+  }
+
+  int beginReverse() {
+    reversePhase = LookupPhase.loading;
+    reverseFailure = null;
+    notifyListeners();
+    return ++_reverseStamp;
+  }
+
+  bool isCurrentForward(int stamp) => !_disposed && stamp == _forwardStamp;
+
+  bool isCurrentReverse(int stamp) => !_disposed && stamp == _reverseStamp;
+
+  void endForward(int stamp, LookupFailure? failure) {
+    if (!isCurrentForward(stamp)) return;
+    forwardPhase = failure == null ? LookupPhase.idle : LookupPhase.failed;
+    forwardFailure = failure;
+    notifyListeners();
+  }
+
+  void endReverse(int stamp, LookupFailure? failure) {
+    if (!isCurrentReverse(stamp)) return;
+    reversePhase = failure == null ? LookupPhase.idle : LookupPhase.failed;
+    reverseFailure = failure;
+    notifyListeners();
+  }
+
+  /// Write a lookup's payload into the draft.
+  ///
+  /// The example halves go in together or not at all: a translation only means
+  /// something under the sentence it came with, so it is never attached to a
+  /// sentence the user typed themselves — that would put two unrelated lines on
+  /// one card.
+  void applyLookup(LookupResult result) {
+    final String posText = posTags(result).join(' ');
+    final String primary = primaryMeaning(result);
+    final String secondary = alternativeMeaning(result);
+    if (posText.isNotEmpty) pos.text = posText;
+    if (primary.isNotEmpty) definition.text = primary;
+    if (secondary.isNotEmpty) definition2.text = secondary;
+    if (result.examples.isNotEmpty) {
+      final DictExample sample = result.examples.first;
+      if (sample.en.isNotEmpty) {
+        example.text = sample.en;
+        final String? zh = sample.zh;
+        if (zh != null && zh.isNotEmpty) exampleZh.text = zh;
+      }
+    }
+    if (result.phonetic.isNotEmpty) phonetic = result.phonetic;
+    error = '';
+    notifyListeners();
+  }
+
+  /// Write the word a reverse lookup found, leaving the meaning alone.
+  void applyReverse(LookupResult result) {
+    final String found = primaryMeaning(result).trim();
+    if (found.isEmpty) return;
+    term.text = found;
+    error = '';
+    notifyListeners();
+  }
+
+  /// Invalidate every request in flight, so a late answer is dropped.
+  void cancelLookups() {
+    _forwardStamp++;
+    _reverseStamp++;
+  }
+
   void setDismissOpen(bool value) {
     if (dismissOpen == value) return;
     dismissOpen = value;
@@ -172,6 +268,11 @@ class _EditorModel extends ChangeNotifier {
 
   @override
   void dispose() {
+    // A lookup in flight resolves into a disposed model otherwise: the future
+    // outlives the dialog, and `notifyListeners` on a disposed ChangeNotifier
+    // throws. Bumping the stamps makes every pending result a no-op.
+    _disposed = true;
+    cancelLookups();
     for (final controller in _controllers) {
       controller.removeListener(notifyListeners);
       controller.dispose();
@@ -180,6 +281,132 @@ class _EditorModel extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Lookup                                                              */
+/* ------------------------------------------------------------------ */
+
+/// What one lookup button is doing.
+enum LookupPhase { idle, loading, failed }
+
+/// Run the forward lookup: term → meaning.
+///
+/// Only the button calls this. Nothing runs on typing or on blur — a lookup
+/// costs a network round trip and rewrites fields the user may be half-way
+/// through, so it waits to be asked. That makes every call an explicit
+/// overwrite, which is why `force` is set: a click is also how a stale cached
+/// entry gets refreshed.
+Future<void> _runLookup(
+  BuildContext context,
+  _EditorModel model,
+  String from,
+  String to,
+) async {
+  final String query = model.term.text.trim();
+  if (query.isEmpty) return;
+  final _Translate t = context.t;
+  // Retrying after a failure means the user is overriding the 90-second
+  // cooldown a 429 put on every provider. Without this the retry button can
+  // only fail for a minute and a half, which reads as a broken button.
+  //
+  // This does not let anyone hammer a provider: a provider that is still
+  // limiting answers 429 again and re-arms its own cooldown. The window exists
+  // to avoid pointless requests, not to enforce the provider's limit.
+  if (model.forwardPhase == LookupPhase.failed) resetProviderCooldown();
+  final int stamp = model.beginForward();
+  try {
+    final LookupResult result = await defaultLookup.lookupTerm(
+      query,
+      LookupOptions(from: from, to: to, force: true),
+    );
+    // Two independent reasons to drop an answer, and both happen in practice.
+    // The stamp catches "a newer click superseded this one"; the term check
+    // catches "the user kept typing" — a slow answer for `cat` must not land in
+    // a draft that is now about `catalogue`, because the meaning it would write
+    // belongs to a different word and the user has no reason to expect it.
+    if (!model.isCurrentForward(stamp)) return;
+    if (model.term.text.trim() != query) {
+      model.endForward(stamp, null);
+      return;
+    }
+    model.applyLookup(result);
+    model.endForward(stamp, null);
+    if (!result.fromCache && context.mounted) {
+      context.toast(t('words.translationApplied'), ToastKind.ok);
+    }
+  } on Object catch (e) {
+    if (!model.isCurrentForward(stamp)) return;
+    model.endForward(
+      stamp,
+      e is LookupError ? e.reason : LookupFailure.offline,
+    );
+  }
+}
+
+/// Run the reverse lookup: meaning → term.
+///
+/// This is what makes a wordbook usable the way people actually fill one in —
+/// you know "苹果" and want "りんご", so typing the meaning first is the natural
+/// order. The pair is simply swapped.
+///
+/// The engine order matters here in a way it does not forward: Youdao
+/// translates *out of* Chinese as machine translation and renders a bare noun as
+/// a polite sentence (`苹果` → `りんごです`), which nobody would add to a
+/// wordbook. Google returns the lemma and MyMemory a close variant, so both are
+/// pushed ahead of Youdao.
+Future<void> _runReverse(
+  BuildContext context,
+  _EditorModel model,
+  String from,
+  String to,
+) async {
+  final String query = model.definition.text.trim();
+  if (query.isEmpty) return;
+  final _Translate t = context.t;
+  // Same reason as the forward pass: retrying is an override, not a new idea.
+  if (model.reversePhase == LookupPhase.failed) resetProviderCooldown();
+  final int stamp = model.beginReverse();
+  try {
+    final LookupResult result = await defaultLookup.lookupTerm(
+      query,
+      LookupOptions(
+        // Swapped on purpose: the gloss is in the list's *meaning* language and
+        // the word wanted is in its *learning* language.
+        from: to,
+        to: from,
+        force: true,
+        prefer: const <ProviderId>[ProviderId.google, ProviderId.myMemory],
+      ),
+    );
+    if (!model.isCurrentReverse(stamp)) return;
+    // Same guard in the other direction: the gloss is the query, so if it has
+    // been retyped the answer is for a meaning the draft no longer has.
+    if (model.definition.text.trim() != query) {
+      model.endReverse(stamp, null);
+      return;
+    }
+    model.applyReverse(result);
+    model.endReverse(stamp, null);
+    if (!result.fromCache && context.mounted) {
+      context.toast(t('words.reverseApplied'), ToastKind.ok);
+    }
+  } on Object catch (e) {
+    if (!model.isCurrentReverse(stamp)) return;
+    model.endReverse(
+      stamp,
+      e is LookupError ? e.reason : LookupFailure.offline,
+    );
+  }
+}
+
+/// The line under a lookup button when it failed.
+String _lookupFailureText(_Translate t, LookupFailure? failure) =>
+    switch (failure) {
+      LookupFailure.rateLimited => t('words.translationRateLimited'),
+      LookupFailure.notFound => t('words.translationNotFound'),
+      LookupFailure.offline => t('words.translationOffline'),
+      null => t('words.translationFailed'),
+    };
 
 /* ------------------------------------------------------------------ */
 /* Save / close                                                        */
@@ -289,6 +516,8 @@ class _EditorBody extends StatelessWidget {
         final String pairLabel =
             '${langName(list?.sourceLang ?? 'en', uiLang)} → '
             '${langName(list?.targetLang ?? 'zh-CN', uiLang)}';
+        final String fromLang = list?.sourceLang ?? 'en';
+        final String toLang = list?.targetLang ?? 'zh-CN';
 
         final String trimmed = model.term.text.trim();
         final Word? duplicate =
@@ -316,9 +545,9 @@ class _EditorBody extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  _termField(context, t),
+                  _termField(context, t, fromLang, toLang),
                   const SizedBox(height: Sp.x4),
-                  _definitionsRow(context, t, pairLabel),
+                  _definitionsRow(context, t, pairLabel, fromLang, toLang),
                   if (showDuplicate) ...<Widget>[
                     const SizedBox(height: Sp.x4),
                     _duplicateNotice(context, t),
@@ -343,8 +572,16 @@ class _EditorBody extends StatelessWidget {
   }
 
   /* ---- term ---- */
-  Widget _termField(BuildContext context, _Translate t) {
+  Widget _termField(
+    BuildContext context,
+    _Translate t,
+    String fromLang,
+    String toLang,
+  ) {
     final p = Palette.of(context);
+    final bool canReverse =
+        model.definition.text.trim().isNotEmpty &&
+        model.reversePhase != LookupPhase.loading;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -353,15 +590,25 @@ class _EditorBody extends StatelessWidget {
           children: <Widget>[
             Expanded(child: _label(p, t('words.term'))),
             // The other half of the pair. It sits on the term field because
-            // that is the field it would fill, and it stays disabled until
-            // there is a meaning to search with — and, in this port, because
-            // there is no dictionary client behind it.
-            LexButton(
-              label: t('words.reverseTranslate'),
-              icon: Ic.undo,
-              kind: BtnKind.quiet,
-              size: BtnSize.sm,
-              onPressed: null,
+            // that is the field it fills, and it stays disabled until there is
+            // a meaning to search with — searching an empty string is a request
+            // the dictionary answers with an error.
+            Tooltip(
+              message: t('words.reverseHint'),
+              waitDuration: const Duration(milliseconds: 500),
+              child: LexButton(
+                label: model.reversePhase == LookupPhase.loading
+                    ? t('words.translating')
+                    : t('words.reverseTranslate'),
+                icon: model.reversePhase == LookupPhase.loading
+                    ? Ic.refresh
+                    : Ic.undo,
+                kind: BtnKind.quiet,
+                size: BtnSize.sm,
+                onPressed: canReverse
+                    ? () => _runReverse(context, model, fromLang, toLang)
+                    : null,
+              ),
             ),
           ],
         ),
@@ -400,6 +647,15 @@ class _EditorBody extends StatelessWidget {
             style: TextStyle(fontSize: Fs.xs, height: Lh.snug, color: p.danger),
           ),
         ],
+        // A failed reverse lookup reports under the field it would have filled,
+        // not in a toast: the message is the answer to the button just pressed.
+        if (model.reversePhase == LookupPhase.failed) ...<Widget>[
+          const SizedBox(height: Sp.x1),
+          Text(
+            _lookupFailureText(t, model.reverseFailure),
+            style: TextStyle(fontSize: Fs.xs, height: Lh.snug, color: p.danger),
+          ),
+        ],
       ],
     );
   }
@@ -409,6 +665,8 @@ class _EditorBody extends StatelessWidget {
     BuildContext context,
     _Translate t,
     String pairLabel,
+    String fromLang,
+    String toLang,
   ) {
     final p = Palette.of(context);
     return Row(
@@ -427,12 +685,28 @@ class _EditorBody extends StatelessWidget {
                     style: TextStyle(fontSize: Fs.xs, height: Lh.snug, color: p.ink3),
                   ),
                   const SizedBox(width: Sp.x2),
-                  LexButton(
-                    label: t('words.translate'),
-                    icon: Ic.sparkles,
-                    kind: BtnKind.quiet,
-                    size: BtnSize.sm,
-                    onPressed: null,
+                  Tooltip(
+                    message: t('words.translateHint'),
+                    waitDuration: const Duration(milliseconds: 500),
+                    child: LexButton(
+                      label: model.forwardPhase == LookupPhase.loading
+                          ? t('words.translating')
+                          : model.forwardPhase == LookupPhase.failed
+                              ? t('words.retranslate')
+                              : t('words.translate'),
+                      icon: model.forwardPhase == LookupPhase.loading
+                          ? Ic.refresh
+                          : Ic.sparkles,
+                      kind: BtnKind.quiet,
+                      size: BtnSize.sm,
+                      // Nothing to look up until there is a term — and a click
+                      // mid-flight would only race the one already running.
+                      onPressed:
+                          model.term.text.trim().isEmpty ||
+                              model.forwardPhase == LookupPhase.loading
+                          ? null
+                          : () => _runLookup(context, model, fromLang, toLang),
+                    ),
                   ),
                 ],
               ),
@@ -459,6 +733,17 @@ class _EditorBody extends StatelessWidget {
                   ),
                 ],
               ),
+              if (model.forwardPhase == LookupPhase.failed) ...<Widget>[
+                const SizedBox(height: Sp.x1),
+                Text(
+                  _lookupFailureText(t, model.forwardFailure),
+                  style: TextStyle(
+                    fontSize: Fs.xs,
+                    height: Lh.snug,
+                    color: p.danger,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

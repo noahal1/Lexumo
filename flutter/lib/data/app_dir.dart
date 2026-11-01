@@ -49,6 +49,27 @@ abstract final class AppDir {
   /// leaves a recoverable copy rather than a half-written primary.
   static String get backupFile => '$dataFile.bak';
 
+  /// Where a downloaded update is staged.
+  ///
+  /// Deliberately *not* inside [dataDir] on Android: that folder is the durable
+  /// one, it is included in the backup, and a 20 MB APK is the least durable
+  /// thing the app will ever write. Android wants it in the cache, and the
+  /// `FileProvider` in `file_paths.xml` exposes exactly `<cacheDir>/updates/`,
+  /// so writing anywhere else would mean copying the file again before the
+  /// installer could read it.
+  ///
+  /// On desktop this folder never receives anything — the platform reports
+  /// "download only" and the sheet opens the releases page instead.
+  static String get updateDir {
+    final sep = Platform.pathSeparator;
+    if (Platform.isAndroid || Platform.isIOS) {
+      // Flutter's Android embedder points TMPDIR at the app's cache dir.
+      final cache = Platform.environment['TMPDIR'];
+      if (cache != null && cache.isNotEmpty) return '$cache${sep}updates';
+    }
+    return '$dataDir${sep}updates';
+  }
+
   static String _resolve() {
     final sep = Platform.pathSeparator;
 

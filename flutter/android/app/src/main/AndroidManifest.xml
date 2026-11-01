@@ -11,6 +11,26 @@
          Normal permission: granted at install, no runtime prompt. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- Lets this app open the system package installer for an APK it
+         downloaded itself (in-app self-update).
+
+         A capability declaration, not a runtime prompt: it makes the app
+         eligible to be granted "install unknown apps", which the user grants
+         per app in Settings on API 26+. Without it in the merged manifest the
+         install intent fails outright, no matter what the user toggles, and it
+         fails as a bare security exception from a context that has already
+         dropped the Download UI — the worst place to debug from.
+
+         Storage permissions are deliberately absent, and this feature is the
+         reason: the APK is written to the app's own cache and lent to the
+         installer through the FileProvider below, which needs no permission at
+         all. `WRITE_EXTERNAL_STORAGE` was the pre-scoped-storage way to hand an
+         APK across a process boundary, and it is both unnecessary now and a
+         review flag; from API 33 the storage permissions are deprecated and
+         ignored, so declaring them would buy nothing while still asking the
+         user to trust the app with their files. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+
     <application
         android:label="lexumo"
         android:name="${applicationName}"
@@ -43,6 +63,37 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Lends one directory of our private cache to the package installer.
+
+             From API 24 a `file://` Uri in an outgoing Intent throws
+             `FileUriExposedException`: the platform decided that handing another
+             app a raw path leaks the whole directory it sits in, since the
+             receiving app can walk upward from it. There is no flag or manifest
+             entry that makes `file://` legal again, and the old escape hatch
+             (`WRITE_EXTERNAL_STORAGE` + a world-readable directory) is gone with
+             scoped storage. A content provider is the sanctioned replacement: the
+             receiver gets a revocable, read-only handle to exactly one file.
+
+             `exported="false"` is what makes that safe — the provider is
+             reachable only through a `FLAG_GRANT_READ_URI_PERMISSION` grant we
+             hand out ourselves, never by an app that guesses the authority.
+             `grantUriPermissions="true"` is what allows those per-Uri grants to
+             exist at all; without it the installer's `openInputStream` fails with
+             a SecurityException and reports the download as corrupt.
+
+             The exposed directory is declared in `res/xml/file_paths.xml` and is
+             `<cacheDir>/updates/` only — see the comment there for the roots that
+             were considered and rejected. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="dev.lexumo.lexumo.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -53,6 +104,22 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Declares that this app talks to an APK viewer/installer, so the
+             package installer is visible to us from API 30 on.
+
+             `startActivity` is not supposed to be filtered by package
+             visibility, and relying on its `ActivityNotFoundException` is what
+             the install path actually does. This entry is belt-and-braces: the
+             same declaration is what makes `resolveActivity` / a future
+             "is an installer present?" probe answer truthfully, and a `<queries>`
+             entry costs neither a permission nor a prompt. Being unable to see
+             the installer would not fail loudly — it would look like "this device
+             has no installer", which is the single most misleading answer this
+             feature could give. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/vnd.android.package-archive"/>
         </intent>
     </queries>
 </manifest>

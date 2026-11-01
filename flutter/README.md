@@ -18,9 +18,10 @@
 cd flutter
 
 ../.flutter-sdk/flutterc analyze     # No issues found!
-../.flutter-sdk/flutterc test        # 506 passed, 6 skipped
+../.flutter-sdk/flutterc test        # 574 passed, 6 skipped
 
 ./tool/build_apk.sh                  # release APK → dist/lexumo-android-release.apk
+./tool/release.sh                    # 签名 APK + dist/update.json（发布用）
 ./tool/reinstall.sh                  # 装到模拟器并校验
 ```
 
@@ -40,13 +41,17 @@ cd flutter
 
 ```
 lib/
-  main.dart          入口：Store 初始化 → StoreScope → I18nScope → ToastHost → MaterialApp
+  main.dart          入口：Store 初始化 → UpdateService → 作用域树 → MaterialApp
   app/               scope（InheritedWidget 层）/ shell（三档布局 + 快捷键）/ toast
+                     / update_scope.dart（升级服务的 InheritedNotifier）
   design/            tokens.dart（全部令牌）/ theme.dart（ThemeData 构建）
   domain/            纯逻辑，无 Flutter 依赖：srs / session / quiz / word_index / seed …
+                     / version.dart（SemVer 比较）/ update_manifest.dart（清单解析）
   data/              store（全部写操作的唯一入口）/ snapshot_store / 同步四件套 / transfer
-  pages/             words / word_editor / flashcards / quiz / session_result / stats / settings
-  platform/          文件选择（Android 走平台通道）/ TTS / 发音 / 翻译
+                     / update_service.dart（升级状态机）
+  pages/             words / word_editor / flashcards / quiz / session_result / stats
+                     / settings / update_sheet（升级弹窗）
+  platform/          文件选择（Android 走平台通道）/ TTS / 发音 / 翻译 / 安装
   ui/                controls（LexButton/LexInput/LexSelect…）/ widgets（PageShell 等）
                      / density.dart / keyboard_hints.dart / lex_icon.dart
 ```
@@ -76,6 +81,39 @@ lib/
 数字取「设计能容忍的最大值」而不是某一次量到的值，所以字体度量浮动半个像素不会
 让测试变成绊线。理由与修之前的数字见 `../docs/flutter-design.md`。
 
+## 发布与升级
+
+两条命令，都从 `flutter/` 下跑：
+
+```bash
+./tool/build_apk.sh     # 未签名配置下的 release 包（本地自用）
+./tool/release.sh       # 签名包 + dist/update.json，发布用
+```
+
+第一次发布前还要跑一次 `./tool/setup_signing.sh`：它把 keystore 复制进 `android/`、
+用 `read -s` 收密码（不进 shell 历史）、**先拿 keytool 验一遍再写**
+`android/key.properties`。密码错或 alias 错时它不写文件——写下去的错配置要等五分钟
+构建才失败，而现象看起来像签名坏了。
+
+`release.sh` 读 `pubspec.yaml` 的 `version:` 作为唯一版本来源，写进
+`android/local.properties`（Gradle 从那里读）并同时经 `-Pdart-defines` 注入应用，
+然后从磁盘上真实的 APK 算 `sha256` 与大小写进清单。它**不发网络请求**，发布那一步是
+它打印出来的 `gh release create`。没有 `android/key.properties` 时它直接失败，
+不回落 debug 签名——debug 密钥随机器变，装过 debug 包的人就再也无法覆盖升级。
+
+打 `v*` 标签会触发 `.github/workflows/release.yml`：analyze + 全量测试 → 校验标签与
+`pubspec.yaml` 一致 → 用四个 secret 解出 keystore → 构建 → `apksigner verify` 且拒绝
+debug 证书 → 生成清单 → 发布 release 资产。需要的 secret：
+`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、
+`ANDROID_KEY_PASSWORD`。
+
+更新说明可选，两条路都收：在 `flutter/notes.json` 里写 `{"zh": "…", "en": "…"}`，或者
+直接写一段中文正文（整段归到 zh），`release.sh --notes-file` 与 CI 用同一种解析。没有这个
+文件时清单里就没有 `notes`，应用会把「更新内容」整段省掉，而不是画一个空的标题。
+
+应用内升级的链路、三条判断（进度信字节不信安装器、唯一成功证据是 build 变了、
+取消不是失败）记在 `../docs/flutter-design.md` 的 7.6 节。
+
 ## 测试
 
 ```bash
@@ -83,7 +121,7 @@ lib/
 ../.flutter-sdk/flutterc test test/mobile_layout_test.dart   # 手机布局三条预算
 ```
 
-506 个通过、6 个跳过（那 6 条要真 Postgres 桥接，见
+574 个通过、6 个跳过（那 6 条要真 Postgres 桥接，见
 `../docs/supabase-sync-plan.md`）。四层验证各自抓不到什么，记在
 `../docs/flutter-design.md` 末节：
 
@@ -96,6 +134,7 @@ lib/
 
 ## 已知缺口
 
-按优先级列在 `../docs/flutter-design.md` 第 8 节。最实在的四条：真 Supabase 项目上
-没跑过；没有自绘标题栏（走系统原生的）；没有拖拽导入；查词翻译未移植，编辑器里
-那两个按钮现在是禁用的占位。
+按优先级列在 `../docs/flutter-design.md` 第 8 节。最实在的四条：签名密钥与第一次发布
+还没做（在那之前装上的都是 debug 签名包，互相不能覆盖升级）；真 Supabase 项目上没跑过；
+没有自绘标题栏（走系统原生的）；没有拖拽导入。另外查词翻译的**引擎**已经移植完并测试
+到位（`lib/platform/translate.dart`），只是编辑器里那两个按钮还没接上，仍是禁用占位。

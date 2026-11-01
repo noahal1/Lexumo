@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Which directories the FileProvider may hand out, and nothing more.
+
+    The single entry is `<cacheDir>/updates/`. The in-app updater can put the
+    downloaded APK there itself, and when it does not — the Dart side resolves
+    its own download folder, which on Android is the app's *persistent*
+    directory — `AppChannel.installApk` copies the file into this directory
+    before minting the Uri. Either way the installer, which runs in another
+    process and cannot open our private files, is lent exactly one directory:
+    a cache directory needs no permission, is not backed up, and holding a
+    throwaway APK there is what the cache is for.
+
+    Three roots that were deliberately not added:
+
+      · `root-path` — would expose the entire app-private tree (`databases/`
+        included). It is the shortest way to make FileProvider "just work" and
+        the fastest way to fail a Play review and to leak the word database to
+        anything that can call the provider.
+      · `files-path` — the tempting shortcut once the download lands in the
+        persistent directory, but it would hand out that whole tree (exports,
+        `lexumo.json`, the sync database) for the sake of one APK. Copying the
+        APK into the cache instead keeps the exposed surface at one directory.
+      · `external-path` — on API 29+ scoped storage makes the app's external
+        directory a worse place to write than the cache, and pre-29 it meant
+        asking for storage permissions. The updater should not need any.
+
+    A path not listed here makes `FileProvider.getUriForFile` throw. The Kotlin
+    side treats that as "stage it where the provider can reach it", and answers
+    `noHandler` if even that fails — a wrong path fails loudly at the boundary
+    instead of silently producing a Uri the installer cannot open.
+-->
+<paths>
+    <cache-path name="updates" path="updates/"/>
+</paths>
