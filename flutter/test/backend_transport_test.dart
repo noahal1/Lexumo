@@ -14,8 +14,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lexumo/data/backend_transport.dart';
-import 'package:lexumo/data/sync_transport.dart';
+import 'package:lexumo/data/services/backend_transport.dart';
+import 'package:lexumo/data/services/sync_transport.dart';
 
 /// A local server that records what arrived and answers with a fixed body.
 class _Recorder {

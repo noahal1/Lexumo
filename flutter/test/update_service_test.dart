@@ -19,10 +19,10 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/data/update_service.dart';
-import 'package:lexumo/domain/update_manifest.dart';
-import 'package:lexumo/domain/version.dart';
-import 'package:lexumo/platform/app_installer.dart';
+import 'package:lexumo/data/repositories/update_service.dart';
+import 'package:lexumo/domain/models/update_manifest.dart';
+import 'package:lexumo/domain/models/version.dart';
+import 'package:lexumo/data/services/app_installer.dart';
 
 /// Bytes of the fake APK, and their real digest.
 const String kApkBody = 'PK\u0003\u0004 fake apk payload';

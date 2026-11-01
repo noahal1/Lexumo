@@ -18,7 +18,7 @@
 cd flutter
 
 ../.flutter-sdk/flutterc analyze     # No issues found!
-../.flutter-sdk/flutterc test        # 611 passed, 6 skipped
+../.flutter-sdk/flutterc test        # 764 passed, 6 skipped
 
 ./tool/build_apk.sh                  # release APK → dist/lexumo-android-release.apk
 ./tool/release.sh                    # 签名 APK + dist/update.json（发布用）
@@ -42,34 +42,54 @@ cd flutter
 ```
 lib/
   main.dart          入口：Store 初始化 → UpdateService → 作用域树 → MaterialApp
-  app/               scope（InheritedWidget 层）/ shell（三档布局 + 快捷键）/ toast
+  app/               组合根（不是第四层）：scope.dart（InheritedWidget 层 + DI 装配）
                      / update_scope.dart（升级服务的 InheritedNotifier）
-  design/            tokens.dart（全部令牌）/ theme.dart（ThemeData 构建）
-  domain/            纯逻辑，无 Flutter 依赖：srs / session / quiz / word_index / seed …
-                     / version.dart（SemVer 比较）/ update_manifest.dart（清单解析）
-  data/              store（全部写操作的唯一入口）/ snapshot_store / 同步四件套 / transfer
-                     / update_service.dart（升级状态机）
-  pages/             words / word_editor / flashcards / quiz / session_result / stats
-                     / settings / update_sheet（升级弹窗）
-  platform/          文件选择（Android 走平台通道）/ TTS / 发音 / 翻译 / 安装
-  ui/                controls（LexButton/LexInput/LexSelect…）/ widgets（PageShell 等）
-                     / density.dart / keyboard_hints.dart / lex_icon.dart
+  data/              数据层
+    models/          journal（写操作记账）/ wire / sync_config / sync_merge
+    repositories/    store.dart（全部写操作的唯一入口）/ sync_engine / update_service
+    services/        无状态外部适配：snapshot_store / transfer / 三种 transport
+                     / translate / tts / speech / app_dir / app_installer / file_dialogs
+  domain/            纯逻辑，无 Flutter 依赖
+    models/          types / srs / session / quiz / languages / seed / utils
+                     / version（SemVer 比较）/ update_manifest（清单解析）
+    use_cases/       day_stats / word_query（索引、筛选、汇总）
+  ui/                表现层
+    core/            theme / tokens / i18n/（en, zh_cn）
+      widgets/       controls（LexButton/LexInput/LexSelect…）/ widgets（PageShell 等）
+                     / density / keyboard_hints / lex_icon / icon_paths / toast
+      view_model.dart / context_feedback.dart   三层之间的契约
+    features/        按功能切：words / flashcards / quiz / stats / settings / update / shell
+      <feature>/
+        view_models/ ChangeNotifier：状态 + 意图，不 import material
+        views/       只画界面：读状态、发意图，不含业务判断
 ```
 
-两条贯穿全局的规矩，改代码前先看它们：
+三条贯穿全局的规矩，改代码前先看它们：
 
-1. **写操作只有一个入口。** 所有提交走 `data/store.dart`，不可变快照，UI 只读
-   `context.data`。加一个写操作意味着同时加一条 journal 记账。
-2. **平台差异按平台判断，不按宽度判断。** 快捷键提示（`ui/keyboard_hints.dart`）
-   与触控密度（`ui/density.dart`）都是这么做的：窄化的桌面窗口仍然由键盘和鼠标驱动，
-   横屏平板很宽却只有手指——宽度会把这两种情况都答错。参数的默认值取
+1. **写操作只有一个入口。** 所有提交走 `data/repositories/store.dart`，不可变快照，
+   UI 只读 `context.data`。加一个写操作意味着同时加一条 journal 记账。
+2. **平台差异按平台判断，不按宽度判断。** 快捷键提示（`ui/core/widgets/keyboard_hints.dart`）
+   与触控密度（`ui/core/widgets/density.dart`）都是这么做的：窄化的桌面窗口仍然由键盘和
+   鼠标驱动，横屏平板很宽却只有手指——宽度会把这两种情况都答错。参数的默认值取
    `defaultTargetPlatform`，测试可以显式传入钉住答案。
+3. **界面不含业务判断。** 每个功能分成 `view_models/` 与 `views/`：`ChangeNotifier`
+   持有状态、暴露意图，`build()` 只做布局。这条界线是可执行的——view model 只允许
+   import `package:flutter/foundation.dart`，不 import `material`/`widgets`，所以它
+   不需要 `BuildContext` 就能构造。凡是 view model 自己做不到的事（翻译、弹 toast、
+   弹确认框、跳页），都经 `ui/core/view_model.dart` 的 `Feedback` 端口传进去；生产环境
+   由 `ContextFeedback` 实现，测试用 `test/support/fake_feedback.dart` 记录调用。所以
+   「删除一个词 → 先问 → 再给可撤销的 toast」这类逻辑在 `test/view_model_test.dart` 里
+   直接断言，不用 pump 一棵树。
+
+   注意 `Feedback` 与 `package:flutter/widgets.dart` 自带的 `Feedback`（触感/提示音）
+   重名：**同时** import `widgets.dart` 且写出这个类型名的文件必须写
+   `import 'package:flutter/widgets.dart' hide Feedback;`。
 
 ## 手机布局
 
 令牌里的控件高度 36 / 32 是鼠标量出来的。手机上的规则是：
 
-- **触控目标地板 44dp**（`Layout.tap`，经 `ui/density.dart` 的 `context.controlH` 取到），
+- **触控目标地板 44dp**（`Layout.tap`，经 `ui/core/widgets/density.dart` 的 `context.controlH` 取到），
   带文字的按钮整体长大，纯图标按钮只长大命中盒（`TapTarget`），绘制形状不变。
 - `TapTarget` 必须放在 `GestureDetector` **内部**，且外层 detector 要
   `HitTestBehavior.opaque`，否则命中区没动、或者环是死的。
@@ -80,6 +100,12 @@ lib/
 首屏预算（顶栏 ≤ 84dp、第一行单词 ≤ 320dp、查询带 ≤ 120dp）。
 数字取「设计能容忍的最大值」而不是某一次量到的值，所以字体度量浮动半个像素不会
 让测试变成绊线。理由与修之前的数字见 `../docs/flutter-design.md`。
+
+411dp 竖屏只走到三套布局模式里的一套，所以另一套里的小屏问题它看不见：
+`test/responsive_layout_test.dart` 把六个界面在五个视口（320、360、横屏 866×411、
+平板 800、桌面 1280）与两个字号（1.3×、2.0×）下各扫一遍，断言不抛布局异常。
+手机布局那组是「够不够用」，这组是「还有没有别的模式」——两者的判据都是
+`takeException()` 为 null，因为溢出的内容等于看不见的内容，没有容忍区间。
 
 ## 发布与升级
 
@@ -120,9 +146,10 @@ CI 读同一个文件。没有这个文件时清单里就没有 `notes`，应用
 ```bash
 ../.flutter-sdk/flutterc test                                # 全部
 ../.flutter-sdk/flutterc test test/mobile_layout_test.dart   # 手机布局三条预算
+../.flutter-sdk/flutterc test test/responsive_layout_test.dart # 五个视口 × 六个界面
 ```
 
-574 个通过、6 个跳过（那 6 条要真 Postgres 桥接，见
+764 个通过、6 个跳过（那 6 条要真 Postgres 桥接，见
 `../docs/supabase-sync-plan.md`）。四层验证各自抓不到什么，记在
 `../docs/flutter-design.md` 末节：
 
@@ -138,4 +165,4 @@ CI 读同一个文件。没有这个文件时清单里就没有 `notes`，应用
 按优先级列在 `../docs/flutter-design.md` 第 8 节。最实在的四条：签名密钥与第一次发布
 还没做（在那之前装上的都是 debug 签名包，互相不能覆盖升级）；真 Supabase 项目上没跑过；
 没有自绘标题栏（走系统原生的）；没有拖拽导入。另外查词翻译的**引擎**已经移植完并测试
-到位（`lib/platform/translate.dart`），只是编辑器里那两个按钮还没接上，仍是禁用占位。
+到位（`lib/data/services/translate.dart`），只是编辑器里那两个按钮还没接上，仍是禁用占位。

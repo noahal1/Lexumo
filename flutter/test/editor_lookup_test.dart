@@ -14,17 +14,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:lexumo/app/scope.dart';
-import 'package:lexumo/data/snapshot_store.dart';
-import 'package:lexumo/data/store.dart';
-import 'package:lexumo/design/theme.dart';
-import 'package:lexumo/design/tokens.dart';
-import 'package:lexumo/domain/seed.dart';
-import 'package:lexumo/domain/types.dart';
-import 'package:lexumo/i18n/i18n.dart';
-import 'package:lexumo/pages/word_editor.dart';
-import 'package:lexumo/platform/translate.dart';
-import 'package:lexumo/platform/tts.dart';
-import 'package:lexumo/ui/controls.dart';
+import 'package:lexumo/data/services/snapshot_store.dart';
+import 'package:lexumo/data/repositories/store.dart';
+import 'package:lexumo/ui/core/theme.dart';
+import 'package:lexumo/ui/core/tokens.dart';
+import 'package:lexumo/domain/models/seed.dart';
+import 'package:lexumo/domain/models/types.dart';
+import 'package:lexumo/ui/core/i18n/i18n.dart';
+import 'package:lexumo/ui/features/words/views/word_editor.dart';
+import 'package:lexumo/data/services/translate.dart';
+import 'package:lexumo/data/services/tts.dart';
+import 'package:lexumo/ui/core/widgets/controls.dart';
 
 import 'support/fake_lookup.dart';
 import 'support/fake_tts.dart';

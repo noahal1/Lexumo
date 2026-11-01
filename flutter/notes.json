@@ -1,4 +1,4 @@
 {
-  "zh": "修好了手机上「显示不全」和「分行奇怪」的几处。状态筛选条的最后一个标签不再被卡片边缘切掉；测验页的方向选择移进卡片，副标题不再从中间断开；统计页标题不再被窗口选择器挤成两行；设置页的倍速读数不再把 × 挤到下一行；手机上的搜索提示换成能放下的短句。",
-  "en": "Fixed the places where the phone build cut things off or broke lines in the wrong spot. The last status filter is no longer sliced by the card edge; the quiz direction picker moved into the card so the subtitle no longer breaks mid-phrase; the stats heading is no longer squeezed into two lines by the window picker; the settings speed readout keeps its × on the same line; the search hint on a phone is now short enough to fit."
+  "zh": "添加词语时「释义」两个字不再竖着排成两行，窗口变窄时两个释义框改为上下排列。侧栏收窄成图标栏时，底部三个按钮不再被挤出栏外。状态筛选条与测验页的方向选择在放不下时可以横向滑动，不再被切掉一半。",
+  "en": "The definition label no longer stacks its two characters vertically when adding a word, and the two definition fields now sit one above the other on a narrow window. The three footer buttons stay inside the sidebar when it collapses to the icon rail. The status filter strip and the quiz direction picker scroll sideways when they run out of room instead of being cut in half."
 }

@@ -11,7 +11,7 @@ library;
 
 import 'dart:async';
 
-import 'package:lexumo/platform/translate.dart';
+import 'package:lexumo/data/services/translate.dart';
 
 /// Records every query and answers from a script.
 class FakeLookup implements Lookup {

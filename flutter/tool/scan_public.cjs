@@ -56,7 +56,7 @@ function realUses(src, name) {
   return n;
 }
 
-const skip = new Set(['lib/i18n/zh_cn.dart', 'lib/i18n/en.dart', 'lib/ui/icon_paths.dart']);
+const skip = new Set(['lib/ui/core/i18n/zh_cn.dart', 'lib/ui/core/i18n/en.dart', 'lib/ui/core/widgets/icon_paths.dart']);
 
 const declRe = /^(?:abstract |sealed |final |base )*(?:class|mixin|enum|extension|typedef) ([A-Za-z_][A-Za-z0-9_]*)|^(?:Future<[^>]*>|void|bool|int|double|String|Widget|List<[^>]*>|Map<[^>]*>|[A-Z][A-Za-z0-9_]*\??) ([a-z_][A-Za-z0-9_]*)\(/gm;
 

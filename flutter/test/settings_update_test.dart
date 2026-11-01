@@ -32,26 +32,26 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:lexumo/app/scope.dart';
 import 'package:lexumo/app/update_scope.dart';
-import 'package:lexumo/data/snapshot_store.dart';
-import 'package:lexumo/data/store.dart';
-import 'package:lexumo/data/sync_config.dart';
-import 'package:lexumo/data/sync_engine.dart';
-import 'package:lexumo/data/sync_transport.dart';
-import 'package:lexumo/data/update_service.dart';
-import 'package:lexumo/design/theme.dart';
-import 'package:lexumo/design/tokens.dart';
-import 'package:lexumo/domain/seed.dart';
-import 'package:lexumo/domain/update_manifest.dart';
-import 'package:lexumo/domain/version.dart';
-import 'package:lexumo/i18n/i18n.dart';
-import 'package:lexumo/pages/settings_page.dart';
-import 'package:lexumo/platform/app_installer.dart';
-import 'package:lexumo/platform/tts.dart';
-import 'package:lexumo/ui/controls.dart';
-import 'package:lexumo/ui/lex_icon.dart';
+import 'package:lexumo/data/services/snapshot_store.dart';
+import 'package:lexumo/data/repositories/store.dart';
+import 'package:lexumo/data/models/sync_config.dart';
+import 'package:lexumo/data/repositories/sync_engine.dart';
+import 'package:lexumo/data/services/sync_transport.dart';
+import 'package:lexumo/data/repositories/update_service.dart';
+import 'package:lexumo/ui/core/theme.dart';
+import 'package:lexumo/ui/core/tokens.dart';
+import 'package:lexumo/domain/models/seed.dart';
+import 'package:lexumo/domain/models/update_manifest.dart';
+import 'package:lexumo/domain/models/version.dart';
+import 'package:lexumo/ui/core/i18n/i18n.dart';
+import 'package:lexumo/ui/features/settings/views/settings_page.dart';
+import 'package:lexumo/data/services/app_installer.dart';
+import 'package:lexumo/data/services/tts.dart';
+import 'package:lexumo/ui/core/widgets/controls.dart';
+import 'package:lexumo/ui/core/widgets/lex_icon.dart';
 // `settings_page.dart` also hides Material's Card in favour of the app's own,
 // so the two trees agree on what a card is.
-import 'package:lexumo/ui/widgets.dart' show ProgressBar;
+import 'package:lexumo/ui/core/widgets/widgets.dart' show ProgressBar;
 
 import 'support/fake_tts.dart';
 

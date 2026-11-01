@@ -10,7 +10,7 @@
 // It is a tool, not a test: it needs the network and the providers' goodwill.
 import 'dart:io';
 
-import 'package:lexumo/platform/translate.dart';
+import 'package:lexumo/data/services/translate.dart';
 
 Future<void> main(List<String> args) async {
   final List<String> terms = args.isEmpty ? <String>['candid', 'zephyr'] : args;

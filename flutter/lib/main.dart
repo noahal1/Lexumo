@@ -29,22 +29,22 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'app/scope.dart';
-import 'app/shell.dart';
-import 'app/toast.dart';
 import 'app/update_scope.dart';
-import 'data/app_dir.dart';
-import 'data/backend_transport.dart';
-import 'data/snapshot_store.dart';
-import 'data/store.dart';
-import 'data/sync_config.dart';
-import 'data/sync_engine.dart';
-import 'data/update_service.dart';
-import 'design/theme.dart';
-import 'design/tokens.dart';
-import 'domain/seed.dart';
-import 'domain/types.dart';
-import 'i18n/i18n.dart';
-import 'platform/app_installer.dart';
+import 'data/models/sync_config.dart';
+import 'data/repositories/store.dart';
+import 'data/repositories/sync_engine.dart';
+import 'data/repositories/update_service.dart';
+import 'data/services/app_dir.dart';
+import 'data/services/app_installer.dart';
+import 'data/services/backend_transport.dart';
+import 'data/services/snapshot_store.dart';
+import 'domain/models/seed.dart';
+import 'domain/models/types.dart';
+import 'ui/core/i18n/i18n.dart';
+import 'ui/core/theme.dart';
+import 'ui/core/tokens.dart';
+import 'ui/core/widgets/toast.dart';
+import 'ui/features/shell/views/app_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

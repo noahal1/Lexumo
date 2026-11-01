@@ -20,11 +20,11 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/data/snapshot_store.dart';
-import 'package:lexumo/data/store.dart';
-import 'package:lexumo/data/sync_merge.dart' as sm;
-import 'package:lexumo/data/wire.dart';
-import 'package:lexumo/domain/types.dart';
+import 'package:lexumo/data/services/snapshot_store.dart';
+import 'package:lexumo/data/repositories/store.dart';
+import 'package:lexumo/data/models/sync_merge.dart' as sm;
+import 'package:lexumo/data/models/wire.dart';
+import 'package:lexumo/domain/models/types.dart';
 
 const int T0 = 1700000000000;
 

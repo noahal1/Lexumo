@@ -12,7 +12,7 @@ library;
 
 import 'package:flutter/widgets.dart';
 
-import '../data/update_service.dart';
+import '../data/repositories/update_service.dart';
 
 /// Bridges [UpdateService.state] to [ChangeNotifier].
 class UpdateNotifier extends ChangeNotifier {

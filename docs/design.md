@@ -209,7 +209,7 @@ above land differently. What stays identical is the numbers and the reasons.
 
 - **`Layout.tap` is 44dp and `context.controlH` is how you get it.** Reading
   `Layout.controlH` (36) directly is a desktop decision leaking onto a phone.
-  `flutter/lib/ui/density.dart` adds `isTouchPlatform()`, an extension with
+  `flutter/lib/ui/core/widgets/density.dart` adds `isTouchPlatform()`, an extension with
   `controlH` / `controlHSm` / `iconTarget`, and a `TapTarget` wrapper. It
   decides by **platform, not width**: a narrowed desktop window is still driven
   by a mouse, and a landscape tablet is still driven by a thumb. `Layout.tap`

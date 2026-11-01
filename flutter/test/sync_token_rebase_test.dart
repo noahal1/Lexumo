@@ -16,12 +16,12 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/data/snapshot_store.dart';
-import 'package:lexumo/data/store.dart';
-import 'package:lexumo/data/sync_config.dart';
-import 'package:lexumo/data/sync_engine.dart';
-import 'package:lexumo/data/sync_transport.dart';
-import 'package:lexumo/domain/types.dart';
+import 'package:lexumo/data/services/snapshot_store.dart';
+import 'package:lexumo/data/repositories/store.dart';
+import 'package:lexumo/data/models/sync_config.dart';
+import 'package:lexumo/data/repositories/sync_engine.dart';
+import 'package:lexumo/data/services/sync_transport.dart';
+import 'package:lexumo/domain/models/types.dart';
 
 const int T0 = 1700000000000;
 

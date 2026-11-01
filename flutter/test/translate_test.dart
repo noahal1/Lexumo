@@ -11,7 +11,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lexumo/platform/translate.dart';
+import 'package:lexumo/data/services/translate.dart';
 
 /* --------------------------------------------------------------- fixtures */
 

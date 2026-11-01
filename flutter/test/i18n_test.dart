@@ -11,10 +11,10 @@
 library;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lexumo/domain/types.dart';
-import 'package:lexumo/i18n/en.dart';
-import 'package:lexumo/i18n/i18n.dart';
-import 'package:lexumo/i18n/zh_cn.dart';
+import 'package:lexumo/domain/models/types.dart';
+import 'package:lexumo/ui/core/i18n/en.dart';
+import 'package:lexumo/ui/core/i18n/i18n.dart';
+import 'package:lexumo/ui/core/i18n/zh_cn.dart';
 
 /// `{name}` placeholders in [value], as a sorted list for comparison.
 List<String> placeholdersOf(String value) {

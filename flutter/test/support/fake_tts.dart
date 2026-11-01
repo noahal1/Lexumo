@@ -14,7 +14,7 @@
 library;
 
 import 'package:flutter/foundation.dart' show VoidCallback;
-import 'package:lexumo/platform/tts.dart';
+import 'package:lexumo/data/services/tts.dart';
 
 /// Records nothing, fails nothing, needs no platform channel.
 class SilentTtsEngine implements TtsEngine {

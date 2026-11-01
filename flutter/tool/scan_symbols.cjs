@@ -44,7 +44,7 @@ function scan(file, declPattern, label) {
 }
 
 // tokens.dart: `static const double x1 = 4;` style + `static const String ui`
-scan('lib/design/tokens.dart', /static const (?:double|String|int|Duration)? ?([A-Za-z_][A-Za-z0-9_]*)/g, 'tokens constants');
+scan('lib/ui/core/tokens.dart', /static const (?:double|String|int|Duration)? ?([A-Za-z_][A-Za-z0-9_]*)/g, 'tokens constants');
 
 // lex_icon.dart: `static const String words = '...';` inside abstract final class Ic
-scan('lib/ui/lex_icon.dart', /static const ([A-Za-z_][A-Za-z0-9_]*) =/g, 'Ic icon names');
+scan('lib/ui/core/widgets/lex_icon.dart', /static const ([A-Za-z_][A-Za-z0-9_]*) =/g, 'Ic icon names');

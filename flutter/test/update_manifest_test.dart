@@ -11,8 +11,8 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/domain/update_manifest.dart';
-import 'package:lexumo/domain/version.dart';
+import 'package:lexumo/domain/models/update_manifest.dart';
+import 'package:lexumo/domain/models/version.dart';
 
 /// A well-formed 64-hex digest; the value is irrelevant, only its shape is.
 const String kSha =

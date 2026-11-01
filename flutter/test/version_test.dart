@@ -15,7 +15,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/domain/version.dart';
+import 'package:lexumo/domain/models/version.dart';
 
 void main() {
   group('SemVer.tryParse', () {

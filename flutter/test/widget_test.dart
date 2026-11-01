@@ -16,12 +16,12 @@ import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:lexumo/app/scope.dart';
-import 'package:lexumo/design/theme.dart';
-import 'package:lexumo/design/tokens.dart';
-import 'package:lexumo/domain/types.dart';
-import 'package:lexumo/i18n/i18n.dart';
-import 'package:lexumo/ui/controls.dart';
-import 'package:lexumo/ui/widgets.dart';
+import 'package:lexumo/ui/core/theme.dart';
+import 'package:lexumo/ui/core/tokens.dart';
+import 'package:lexumo/domain/models/types.dart';
+import 'package:lexumo/ui/core/i18n/i18n.dart';
+import 'package:lexumo/ui/core/widgets/controls.dart';
+import 'package:lexumo/ui/core/widgets/widgets.dart';
 
 /// Pumps [child] inside everything a control reads: a material app, the real
 /// theme (so `Palette.of` resolves through the extension), and an i18n scope.

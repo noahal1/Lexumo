@@ -14,15 +14,15 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/domain/day_stats.dart';
-import 'package:lexumo/domain/languages.dart';
-import 'package:lexumo/domain/quiz.dart';
-import 'package:lexumo/domain/seed.dart';
-import 'package:lexumo/domain/session.dart';
-import 'package:lexumo/domain/srs.dart';
-import 'package:lexumo/domain/types.dart';
-import 'package:lexumo/domain/utils.dart';
-import 'package:lexumo/domain/word_index.dart';
+import 'package:lexumo/domain/use_cases/day_stats.dart';
+import 'package:lexumo/domain/models/languages.dart';
+import 'package:lexumo/domain/models/quiz.dart';
+import 'package:lexumo/domain/models/seed.dart';
+import 'package:lexumo/domain/models/session.dart';
+import 'package:lexumo/domain/models/srs.dart';
+import 'package:lexumo/domain/models/types.dart';
+import 'package:lexumo/domain/models/utils.dart';
+import 'package:lexumo/domain/use_cases/word_query.dart';
 
 /* ------------------------------------------------------------------ */
 /* Shared fixtures — the same ones the vitest suites use               */

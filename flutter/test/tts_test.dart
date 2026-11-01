@@ -1,6 +1,6 @@
 // Tests for the speech seam.
 //
-// The point of `lib/platform/tts.dart` is that everything above it is testable
+// The point of `lib/data/services/tts.dart` is that everything above it is testable
 // without a platform channel, so these tests drive [Speech] through a fake
 // [TtsEngine] and assert on what the engine was asked to do. The things worth
 // pinning down are the ones where the port had to make a decision the web
@@ -15,7 +15,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/platform/tts.dart';
+import 'package:lexumo/data/services/tts.dart';
 
 /// Records everything the service asks for, and can be made to fail.
 class FakeEngine implements TtsEngine {

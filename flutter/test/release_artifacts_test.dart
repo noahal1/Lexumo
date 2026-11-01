@@ -18,8 +18,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/domain/update_manifest.dart';
-import 'package:lexumo/domain/version.dart';
+import 'package:lexumo/domain/models/update_manifest.dart';
+import 'package:lexumo/domain/models/version.dart';
 
 final Directory _dist = Directory('dist');
 final File _manifest = File('dist/update.json');

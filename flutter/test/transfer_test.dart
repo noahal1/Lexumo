@@ -11,8 +11,8 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/data/transfer.dart';
-import 'package:lexumo/domain/types.dart';
+import 'package:lexumo/data/services/transfer.dart';
+import 'package:lexumo/domain/models/types.dart';
 
 const String listId = DEFAULT_LIST_ID;
 

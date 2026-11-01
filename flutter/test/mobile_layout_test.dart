@@ -23,21 +23,21 @@ import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:lexumo/app/scope.dart';
-import 'package:lexumo/app/shell.dart';
-import 'package:lexumo/data/snapshot_store.dart';
-import 'package:lexumo/data/store.dart';
-import 'package:lexumo/design/theme.dart';
-import 'package:lexumo/design/tokens.dart';
-import 'package:lexumo/domain/seed.dart';
-import 'package:lexumo/i18n/i18n.dart';
-import 'package:lexumo/pages/flashcards_page.dart';
-import 'package:lexumo/pages/quiz_page.dart';
-import 'package:lexumo/pages/settings_page.dart';
-import 'package:lexumo/pages/stats_page.dart';
-import 'package:lexumo/pages/words_page.dart';
-import 'package:lexumo/platform/tts.dart';
-import 'package:lexumo/ui/controls.dart';
-import 'package:lexumo/ui/widgets.dart';
+import 'package:lexumo/ui/features/shell/views/app_shell.dart';
+import 'package:lexumo/data/services/snapshot_store.dart';
+import 'package:lexumo/data/repositories/store.dart';
+import 'package:lexumo/ui/core/theme.dart';
+import 'package:lexumo/ui/core/tokens.dart';
+import 'package:lexumo/domain/models/seed.dart';
+import 'package:lexumo/ui/core/i18n/i18n.dart';
+import 'package:lexumo/ui/features/flashcards/views/flashcards_page.dart';
+import 'package:lexumo/ui/features/quiz/views/quiz_page.dart';
+import 'package:lexumo/ui/features/settings/views/settings_page.dart';
+import 'package:lexumo/ui/features/stats/views/stats_page.dart';
+import 'package:lexumo/ui/features/words/views/words_page.dart';
+import 'package:lexumo/data/services/tts.dart';
+import 'package:lexumo/ui/core/widgets/controls.dart';
+import 'package:lexumo/ui/core/widgets/widgets.dart';
 
 import 'support/fake_tts.dart';
 

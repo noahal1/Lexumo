@@ -89,13 +89,13 @@ TS 版把 `SyncConfig{server, email, token, rev, lastSyncAt}` 存 localStorage�
 
 Flutter 版必须同样分开，原因是 **`Settings` 会被 `collectChanges` 打包上传**。token 落进 `AppData.settings` 等于把自己的令牌同步给服务器。
 
-约定：`flutter/lib/data/sync_config.dart` 存 `sync.json`，与 `lexumo.json` 并列，同样走原子写。
+约定：`flutter/lib/data/models/sync_config.dart` 存 `sync.json`，与 `lexumo.json` 并列，同样走原子写。
 
 ## 6. 三步路线（全部完成）
 
 ### 第一步：导出/导入（✅ 已完成）
 
-纯 Dart 文件 I/O，无网络。移植 `src/lib/transfer.ts`（302 行）→ `flutter/lib/data/transfer.dart`
+纯 Dart 文件 I/O，无网络。移植 `src/lib/transfer.ts`（302 行）→ `flutter/lib/data/services/transfer.dart`
 （394 行），`test/transfer_test.dart` 21 条测试对应 TS 的 21 个 `it`。
 
 为什么先做这个：
@@ -107,7 +107,7 @@ Flutter 版必须同样分开，原因是 **`Settings` 会被 `collectChanges` �
 **一个实测结论改了设计**：`file_selector` 的 `getSaveLocation` 在 Android 上不可用
 ——它只能选「已存在的文件」，不能指定新文件的保存位置，而导出恰恰需要后者。
 所以 Android 侧走平台通道直调 `ACTION_CREATE_DOCUMENT` / `ACTION_OPEN_DOCUMENT`
-（`flutter/lib/platform/file_dialogs.dart` + `MainActivity.kt`），桌面端仍用
+（`flutter/lib/data/services/file_dialogs.dart` + `MainActivity.kt`），桌面端仍用
 `file_selector`。这是整个移植里唯一需要写原生代码的地方。
 
 **已在 Android 真机（模拟器）验证**：导出 JSON 落盘 17,844 B，内容为
@@ -121,9 +121,9 @@ Flutter 版必须同样分开，原因是 **`Settings` 会被 `collectChanges` �
 
 ### 第二步：合并逻辑（✅ 已完成）
 
-- `flutter/lib/data/wire.dart`（539 行）← `src/lib/wire.ts`（311 行）：`decodeChangeSet` /
+- `flutter/lib/data/models/wire.dart`（539 行）← `src/lib/wire.ts`（311 行）：`decodeChangeSet` /
   `encodeChangeSet` / `encodeAppData`，17 条测试
-- `flutter/lib/data/sync_merge.dart`（316 行）← `src/lib/syncMerge.ts`（262 行）：
+- `flutter/lib/data/models/sync_merge.dart`（316 行）← `src/lib/syncMerge.ts`（262 行）：
   `collectChanges` / `hasChanges` / `applyRemote` / `applyRound`，36 条测试
 
 合计 53 条测试，正好等于 TS 的 `it` 总数（wire 17 + syncMerge 23 + syncRound 13）。
@@ -149,9 +149,9 @@ Flutter 版必须同样分开，原因是 **`Settings` 会被 `collectChanges` �
    只因为 `cleanSettings` 总会填满每个字段。Dart 版直接取 `incoming.settings`，
    这是唯一一处有意的行为分歧，已用测试 `replaces the whole settings record` 钉住。
 
-**已就绪的前置**：`flutter/lib/data/journal.dart`（217 行）已移植完成，含 `touch` /
+**已就绪的前置**：`flutter/lib/data/models/journal.dart`（217 行）已移植完成，含 `touch` /
 `bury` / `touchSettings` / `purgeWords` / `settle` / `pendingTotal`。`Store.applyMerged`
-（`store.dart:527`）也已就位。
+（`store.dart:538`）也已就位。
 
 ### 第三步：接 Supabase（✅ 已完成）
 
@@ -162,11 +162,11 @@ Flutter 版必须同样分开，原因是 **`Settings` 会被 `collectChanges` �
 
 | 文件 | 行数 | 作用 |
 | --- | --- | --- |
-| `flutter/lib/data/sync_transport.dart` | 167 | `SyncTransport` 抽象 + `SyncError` 七种失败 + `CredentialAware` 可选接口 |
-| `flutter/lib/data/backend_transport.dart` | 162 | 按服务器 URL 在两条传输之间路由，`SyncEngine` 不知道有两个实现 |
-| `flutter/lib/data/supabase_transport.dart` | 320 | GoTrue（signup / password / refresh）+ PostgREST `rpc/sync`；401 时换一次 token 并重试 |
-| `flutter/lib/data/sync_config.dart` | 195 | 会话持久化到 `sync.json`，含 `anonKey` / `refreshToken` |
-| `flutter/lib/data/sync_engine.dart` | 486 | 登录/注册/退出、轮询、防抖、首轮；Supabase 的 token 刷新回调也在这里接线 |
+| `flutter/lib/data/services/sync_transport.dart` | 167 | `SyncTransport` 抽象 + `SyncError` 七种失败 + `CredentialAware` 可选接口 |
+| `flutter/lib/data/services/backend_transport.dart` | 162 | 按服务器 URL 在两条传输之间路由，`SyncEngine` 不知道有两个实现 |
+| `flutter/lib/data/services/supabase_transport.dart` | 320 | GoTrue（signup / password / refresh）+ PostgREST `rpc/sync`；401 时换一次 token 并重试 |
+| `flutter/lib/data/models/sync_config.dart` | 195 | 会话持久化到 `sync.json`，含 `anonKey` / `refreshToken` |
+| `flutter/lib/data/repositories/sync_engine.dart` | 486 | 登录/注册/退出、轮询、防抖、首轮；Supabase 的 token 刷新回调也在这里接线 |
 
 **服务端**
 

@@ -9,10 +9,16 @@ library;
 
 import 'package:flutter/widgets.dart';
 
-import '../data/store.dart';
-import '../data/sync_engine.dart';
-import '../domain/types.dart';
-import '../i18n/i18n.dart';
+import '../data/repositories/store.dart';
+import '../data/repositories/sync_engine.dart';
+import '../domain/models/types.dart';
+import '../ui/core/i18n/i18n.dart';
+// [ToastKind] is declared in `ui/core/view_model.dart`: the view-model layer
+// has to name it and must not import `app/`. Imported for this file's own use
+// and re-exported so every existing `import '.../app/scope.dart'` keeps
+// resolving it.
+export '../ui/core/view_model.dart' show ToastKind;
+import '../ui/core/view_model.dart' show ToastKind;
 
 /// Bridges [Store]'s listener list to [ChangeNotifier], so `InheritedNotifier`
 /// can drive rebuilds without the store having to know about Flutter.
@@ -90,9 +96,6 @@ class ToastScope extends InheritedWidget {
   @override
   bool updateShouldNotify(ToastScope old) => old.show != show;
 }
-
-/// `ok` / `err` / `info`, mirroring the web `ToastKind`.
-enum ToastKind { ok, err, info }
 
 /// Lets a page ask the shell to switch pages — the Flutter equivalent of the
 /// web build's `router.navigate('quiz')`.

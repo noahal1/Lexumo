@@ -14,7 +14,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lexumo/design/tokens.dart';
+import 'package:lexumo/ui/core/tokens.dart';
 
 void main() {
   group('Sp scale', () {

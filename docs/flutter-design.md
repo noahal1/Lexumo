@@ -4,7 +4,7 @@
 **不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
 Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
 
-工程规模：`lib/` 与 `test/` 共 36,426 行 Dart，611 个测试通过（另有 6 条需要真 Postgres
+工程规模：`lib/` 与 `test/` 共 41,212 行 Dart，764 个测试通过（另有 6 条需要真 Postgres
 桥接的 E2E 默认 skip），`flutter analyze` 零问题。
 
 ---
@@ -20,7 +20,7 @@ Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果�
 上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
 React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 
-这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，611 个测试覆盖纯逻辑与
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，764 个测试覆盖纯逻辑与
 共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
 
 ---
@@ -28,85 +28,116 @@ React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 ## 2. 目录结构与职责
 
 ```
-flutter/lib/                        53 个文件，24,188 行（test/ 另有 32 个文件 11,964 行）
+flutter/lib/                        63 个文件，26,619 行（test/ 另有 39 个文件 14,200 行）
   main.dart            入口：Store 初始化 → UpdateService → 作用域树 → MaterialApp
-  app/
+  app/                 组合根：谁在什么时候构造谁
     scope.dart         InheritedWidget 层：StoreNotifier / StoreScope / I18nScope / ToastScope / NavScope
-    shell.dart         应用外壳：三档布局（wide / rail / mobile）+ 快捷键 + 页面切换
-    toast.dart         轻提示，含堆叠、自动消失、动作按钮
     update_scope.dart  更新服务的 InheritedNotifier：UpdateNotifier / UpdateScope
-  design/
-    tokens.dart        全部设计令牌（Palette / Sp / R / Fs / Lh / Fonts / Motion / Layout / Shadows）
-    theme.dart         ThemeData 构建，把 Palette 塞进 ThemeExtension
+  data/                数据层：外部世界与持久化
+    models/
+      journal.dart     变更日志：pending / tombstones 记账（217 行）
+      wire.dart        协议编解码：encode/decodeChangeSet、encodeAppData（539 行）
+      sync_merge.dart  合并：collectChanges / applyRemote / applyRound（316 行）
+      sync_config.dart 凭证与 rev 持久化到 sync.json（195 行）
+    repositories/      仓库：唯一写入口 + 缓存/重试/合并策略
+      store.dart       全部写操作的唯一入口，不可变提交（561 行）
+      sync_engine.dart 会话、轮次、轮询、状态广播（486 行）
+      update_service.dart 升级状态机：检查/下载/校验/安装（788 行）
+    services/          服务：无状态地包住一项外部能力
+      snapshot_store.dart Persistence 接口 + 文件实现 + MemoryStore（测试用）
+      app_dir.dart     数据目录解析，含 updateDir（APK 暂存目录）
+      transfer.dart    导出 JSON / CSV / Anki 与导入解析（394 行）
+      sync_transport.dart SyncTransport 接口 + IoTransport（自建协议）+ CredentialAware（167 行）
+      supabase_transport.dart  GoTrue 登录刷新 + PostgREST 调 RPC（320 行）
+      backend_transport.dart   按 URL 形状在两个后端间分派（162 行）
+      tts.dart         朗读服务：TtsEngine 接缝 + Speech + 语速/音色换算（500 行）
+      speech.dart      speakWord / speakTerm：朗读 + 计数，页面唯一入口
+      translate.dart   查词客户端：三个适配器 + 磁盘缓存 + 429 冷却（1145 行）
+      file_dialogs.dart 文件选择/保存接缝：Android 走平台通道，桌面走 file_selector（167 行）
+      app_installer.dart 安装接缝：通道 dev.lexumo.lexumo/app + FakeAppInstaller（341 行）
   domain/              纯逻辑，无 Flutter 依赖
-    types.dart         AppData / Word / WordList / ReviewLog / Settings / Tombstones / PendingChanges
-    srs.dart           间隔重复：applyGrade / statusForInterval / previewGrades
-    session.dart       会话状态机：current / record / skip / undo / reset
-    quiz.dart          出题：buildQuiz / quizShortfall / quizEligibleWords
-    word_index.dart    索引与查询：buildWordIndex / queryWords / summarize
-    seed.dart          示例词库
-    day_stats.dart     今日复习数、连续天数（49 行）
-    languages.dart     70 种语言选项
-    utils.dart         uid / startOfDay / dayKeyOfTs / normalizeTerm / jsRound …
-    version.dart       SemVer + ReleaseVersion：解析与比较（229 行）
-    update_manifest.dart ReleaseManifest / ApkArtifact / UpdateCheck（266 行）
-  data/
-    store.dart         全部写操作的唯一入口，不可变提交（561 行）
-    snapshot_store.dart  Persistence 接口 + 文件实现 + MemoryStore（测试用）
-    journal.dart       变更日志：pending / tombstones 记账（217 行）
-    app_dir.dart       数据目录解析，含 updateDir（APK 暂存目录）
-    transfer.dart      导出 JSON / CSV / Anki 与导入解析（394 行）
-    wire.dart          协议编解码：encode/decodeChangeSet、encodeAppData（539 行）
-    sync_merge.dart    合并：collectChanges / applyRemote / applyRound（316 行）
-    sync_transport.dart SyncTransport 接口 + IoTransport（自建协议）+ CredentialAware（167 行）
-    supabase_transport.dart  GoTrue 登录刷新 + PostgREST 调 RPC（320 行）
-    backend_transport.dart   按 URL 形状在两个后端间分派（162 行）
-    sync_engine.dart   会话、轮次、轮询、状态广播（486 行）
-    sync_config.dart   凭证与 rev 持久化到 sync.json（195 行）
-    update_service.dart 升级状态机：检查/下载/校验/安装（782 行）
-  i18n/
-    i18n.dart          I18n 运行时：dict / t(key, vars) / has(key)
-    zh_cn.dart         384 条键
-    en.dart            同键英文（键集由 i18n_test 强制一致）
-  platform/
-    tts.dart           朗读服务：TtsEngine 接缝 + Speech + 语速/音色换算（500 行）
-    speak_word.dart    speakWord / speakTerm：朗读 + 计数，页面唯一入口
-    translate.dart     查词客户端：三个适配器 + 磁盘缓存 + 429 冷却（1145 行）
-    file_dialogs.dart  文件选择/保存接缝：Android 走平台通道，桌面走 file_selector（167 行）
-    app_installer.dart 安装接缝：通道 dev.lexumo.lexumo/app + FakeAppInstaller（341 行）
+    models/
+      types.dart       AppData / Word / WordList / ReviewLog / Settings / Tombstones / PendingChanges
+      srs.dart         间隔重复：applyGrade / statusForInterval / previewGrades
+      session.dart     会话状态机：current / record / skip / undo / reset
+      quiz.dart        出题：buildQuiz / quizShortfall / quizEligibleWords
+      seed.dart        示例词库
+      languages.dart   70 种语言选项
+      utils.dart       uid / startOfDay / dayKeyOfTs / normalizeTerm / jsRound …
+      version.dart     SemVer + ReleaseVersion：解析与比较（229 行）
+      update_manifest.dart ReleaseManifest / ApkArtifact / UpdateCheck（266 行）
+    use_cases/         用例：跨模型的一段业务，值得单独测
+      word_query.dart  索引与查询：buildWordIndex / queryWords / summarize（317 行）
+      day_stats.dart   今日复习数、连续天数（49 行）
+  ui/                  界面层：按功能分包，每个功能有 view_models 与 views
+    core/
+      view_model.dart  MVVM 契约：ViewModel 基类 + Feedback 端口 + ToastKind
+      context_feedback.dart Feedback 的 BuildContext 实现（唯一的适配器）
+      theme.dart       ThemeData 构建，把 Palette 塞进 ThemeExtension
+      tokens.dart      全部设计令牌（Palette / Sp / R / Fs / Lh / Fonts / Motion / Layout / Shadows）
+      i18n/
+        i18n.dart      I18n 运行时：dict / t(key, vars) / has(key)
+        zh_cn.dart     384 条键
+        en.dart        同键英文（键集由 i18n_test 强制一致）
+      widgets/
+        widgets.dart   PageShell / Segmented / EmptyState / ProgressBar / Ring / StatusChip / StatTile / ShortcutRow / Kbd / Card
+        controls.dart  LexButton / LexInput / LexTextArea / LexSelect / showLexModal / confirmLex / ContentCenter / LexField
+        density.dart   触控密度：isTouchPlatform / TouchDensity extension / TapTarget
+        lex_icon.dart  图标系统：Ic 常量 + LexIcon
+        icon_paths.dart SVG path 数据
+        keyboard_hints.dart showKeyboardHints()：按平台判断是否显示键帽（32 行）
+        toast.dart     轻提示，含堆叠、自动消失、动作按钮
+    features/
+      words/
+        view_models/words_view_model.dart          列表 + 筛选 + 批量操作（477 行）
+        view_models/word_editor_view_model.dart    新建/编辑词的草稿与查词（486 行）
+        views/words_page.dart                     只画，不含判断（2031 行）
+        views/word_editor.dart                    只画（767 行）
+      flashcards/
+        view_models/flashcards_view_model.dart     会话 / 翻面 / 评分 / 撤销（582 行）
+        views/flashcards_page.dart                 只画（1387 行）
+        views/session_result.dart                  会话结果卡（两个学习页共用）
+      quiz/
+        view_models/quiz_view_model.dart           一轮测验 / 答案 / 错题（364 行）
+        views/quiz_page.dart                       只画（1018 行）
+      stats/
+        view_models/stats_view_model.dart          图表数据推导（276 行）
+        views/stats_page.dart                      只画（899 行）
+      settings/
+        view_models/settings_view_model.dart       设置项、词典缓存、同步表单
+        views/settings_page.dart                   只画
+      update/
+        view_models/update_view_model.dart         升级卡状态（393 行）
+        views/update_sheet.dart                    只画（384 行）
+      shell/
+        view_models/shell_view_model.dart          三档布局 + 页面切换（198 行）
+        views/app_shell.dart                       只画（798 行）
   third_party/
     flutter_tts/       flutter_tts 4.2.5 的原样拷贝，只改 Windows 的 C++（见 7.2）
-  ui/
-    widgets.dart       PageShell / Segmented / EmptyState / ProgressBar / Ring / StatusChip / StatTile / ShortcutRow / Kbd / Card
-    controls.dart      LexButton / LexInput / LexTextArea / LexSelect / showLexModal / confirmLex / ContentCenter / LexField
-    density.dart       触控密度：isTouchPlatform / TouchDensity extension / TapTarget
-    lex_icon.dart      图标系统：Ic 常量 + LexIcon
-    icon_paths.dart    SVG path 数据
-    keyboard_hints.dart  showKeyboardHints()：按平台判断是否显示键帽（32 行）
-  pages/
-    words_page.dart        词库列表 + 筛选 + 批量操作（2181 行）
-    word_editor.dart       新建/编辑词（1026 行）
-    flashcards_page.dart   闪卡复习会话（1632 行）
-    quiz_page.dart         测验（1156 行）
-    stats_page.dart        统计（932 行）
-    settings_page.dart     设置，含更新卡与词典缓存（2022 行）
-    update_sheet.dart      升级弹窗（457 行）
-    session_result.dart    会话结果卡（两个学习页共用）
 ```
 
-**分层纪律**：`domain/` 不 import Flutter，因此可以脱离 widget 树测试；`ui/` 不知道页面；
-`pages/` 只通过 `context.data` / `context.store` 读写数据，不直接碰文件。
+**分层纪律**：`domain/` 不 import Flutter，因此可以脱离 widget 树测试；`data/` 只依赖
+`domain/`；`ui/features/*/views/` 只读 `view_models/` 暴露的 getter 与回调，自己不做业务
+判断；`view_models/` 只 import `package:flutter/foundation.dart`——不碰 `material`/`widgets`，
+所以能脱离 widget 树测试；`app/` 是唯一知道「谁在什么时候构造谁」的地方。
 
-`platform/` 是唯一碰宿主机能力的地方，四个文件各管一件事：朗读、查词、文件选择、
-安装（数据目录在 `data/` 里，因为它是持久化的一部分）。这几件事在 Web 版里分别是
-Web Speech API、一次 `fetch`、`<input type="file">`、localStorage——都是浏览器白送的，
-这里都要自己写。
+MVVM 的那条线由两个文件钉住：`ui/core/view_model.dart` 定义 `ViewModel` 基类（`update()`
+在已 dispose 时静默丢弃，避免写操作落在已弹出的页面上时抛 `A ChangeNotifier was used
+after being disposed`）和 `Feedback` 端口（`t` / `toast` / `confirm` / `goTo`——页面需要的
+四件外部事情）；`ui/core/context_feedback.dart` 是它唯一的 `BuildContext` 实现，用
+`getInheritedWidgetOfExactType` 而不是 `dependOnInheritedWidgetOfExactType`，这样 view
+model 不会注册一个会重建自己所在 widget 的依赖。
+
+`platform/` 这个目录已经不存在了：朗读、查词、文件选择、安装本来就是「包住一项外部能力
+的无状态服务」，现在都在 `data/services/` 里；数据目录也在那里，因为它是持久化的一部分。
+这几件事在 Web 版里分别是 Web Speech API、一次 `fetch`、`<input type="file">`、
+localStorage——都是浏览器白送的，这里都要自己写。
 
 ---
 
 ## 3. 设计令牌如何落到 Flutter
 
-`src/styles/tokens.css` 的每一个值都在 `lib/design/tokens.dart` 里有对应常量，
+`src/styles/tokens.css` 的每一个值都在 `lib/ui/core/tokens.dart` 里有对应常量，
 命名按语义而非数值：
 
 | CSS 变量 | Dart | 说明 |
@@ -151,11 +182,63 @@ React 那边是 `useSyncExternalStore` + 不可变快照。Flutter 这边同样�
 构造新对象**。好处是没有隐藏的状态共享，坏处是 `copyWith` 调用很多——`domain/types.dart`
 里的 `Word.copyWith` 因此支持 `clearSrs` 这样的显式清除标记。
 
+### 页面状态搬进 view model
+
+页面原来自己 `setState` 管一切，结果每一页都是一个两千行的 `State`，业务判断和
+`Column` 挤在同一个 `build()` 里。现在每个功能多一个 `view_models/` 目录，页面只剩
+「读 getter、发意图、摆 widget」：
+
+```dart
+class _WordsPageState extends State<WordsPage> {
+  late final WordsViewModel _vm;
+
+  @override
+  void initState() {
+    super.initState();
+    _vm = WordsViewModel(
+      store: context.store,
+      feedback: ContextFeedback(context),
+      speak: (Word word) => speakWord(context, word),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: _vm,
+        builder: (BuildContext context, Widget? _) => ...,
+      );
+}
+```
+
+三条约束把这条线钉住，缺一条就会退化回原来那种写法：
+
+1. **view model 只 import `package:flutter/foundation.dart`**。不碰 `material`、不碰
+   `widgets`、拿不到 `BuildContext`、`MediaQuery`、`Navigator`。它要往外说话只有
+   `Feedback` 这一个端口（`t` / `toast` / `confirm` / `goTo`），生产实现是
+   `ContextFeedback`，测试实现是 `FakeFeedback`。副作用是每个功能现在都能在**没有
+   widget 树**的情况下测——`view_model_test.dart`、`word_editor_view_model_test.dart`
+   等六个文件就是这么来的。
+2. **写操作还是只有一个入口**。view model 不碰文件、不碰 `Persistence`，它拿到的是
+   `Store`，所以「所有写操作都走 `store.dart`，新增写操作等于新增一条 journal」这条
+   纪律没有被 MVVM 削弱。
+3. **`update()` 在已 dispose 时静默丢弃**。一次保存是 220ms 防抖的，用户完全可能按下
+   保存后立刻退出这一页；`ChangeNotifier` 在 dispose 之后再 `notifyListeners()` 会抛
+   `A ChangeNotifier was used after being disposed`，而这个异常会落在一次无关的
+   异步回调里，堆栈指向持久化层，很难查。基类直接把它吞掉。
+
+文本框和焦点节点**留在 view 里**，不进 view model：搜索框的 buffer 带着光标、选区、
+输入法组词状态，它必须在「一次不由它引起的重建」中存活；放进 view model 就得每次
+`notifyListeners()` 后重新对齐光标。词编辑页因此多了一个 `_EditorBuffers`，它订阅
+view model 并把草稿推回 7 个 `TextEditingController`——**必须在构造函数末尾订阅，
+不能在 `build()` 里同步**，否则 `controller.text = ...` 会在帧中途标记
+`AnimatedBuilder` 需要重建，直接抛
+`setState() or markNeedsBuild() called during build`。
+
 ---
 
 ## 5. 页面实现要点
 
-### 词库页（`words_page.dart`，2181 行）
+### 词库页（`words_page.dart`，2031 行 + `words_view_model.dart` 477 行）
 最复杂的一页：搜索框、五个状态筛选（全部/新词/复习中/学习中/已掌握）、排序、
 收藏筛选、批量选择模式、行内收藏/朗读/删除、空状态。批量模式下底部浮出一条操作栏。
 
@@ -174,29 +257,29 @@ React 那边是 `useSyncExternalStore` + 不可变快照。Flutter 这边同样�
 `test/words_layout_test.dart` 用几何断言锁住这三点（释义在词条下方、释义列宽占行宽
 一半以上、窄屏不溢出），因为截图只能证明「看起来对了」，不能证明「为什么对了」。
 
-### 闪卡页（`flashcards_page.dart`，1632 行）
-会话状态机来自 `domain/session.dart`。卡片翻面是两段式 Y 轴旋转（`Matrix4.rotateY`），
+### 闪卡页（`flashcards_page.dart`，1387 行 + `flashcards_view_model.dart` 582 行）
+会话状态机来自 `domain/models/session.dart`。卡片翻面是两段式 Y 轴旋转（`Matrix4.rotateY`），
 键盘：空格翻面、1/2/3 评分、←/→ 跳过、Ctrl+Z 撤销。右侧面板显示快捷键与进度。
 会话结束复用 `session_result.dart`。
 
-### 测验页（`quiz_page.dart`，1156 行）
+### 测验页（`quiz_page.dart`，1018 行 + `quiz_view_model.dart` 364 行）
 四个选项自适应排成 1/2/4 列（240px 最小宽度）。答完即时反馈：正确项描边 accent，
 错选项描边 cinnabar，其余降到 55% 不透明度。键盘 A–D / 1–4 选择，Enter 下一题。
 
-### 统计页（`stats_page.dart`，932 行）
+### 统计页（`stats_page.dart`，899 行 + `stats_view_model.dart` 276 行）
 目标环 + 六个统计块 + 状态分布条 + 今日待复习列表。全部数值来自
-`domain/word_index.dart` 的 `summarize()`，页面本身不做计算。
+`domain/use_cases/word_query.dart` 的 `summarize()`，页面本身不做计算。
 
-### 设置页（`settings_page.dart`，2022 行）
+### 设置页（`settings_page.dart`，1822 行 + `settings_view_model.dart` 627 行）
 六块：外观（主题三选、界面语言二选）、学习（每日目标、新卡上限、复习顺序）、
 音频（语速、自动发音、音色选择与试听）、词典（缓存条数与清空）、同步（登录态、
 服务器地址、Supabase anon key、自动同步开关、立即同步、退出登录）、数据（计数、
 导出 JSON / CSV、导入、清空）。
-写操作全部经 `store.updateSettings`；导出/导入走 `data/transfer.dart` 与
-`platform/file_dialogs.dart`，同步走 `data/sync_engine.dart`。
+写操作全部经 `store.updateSettings`；导出/导入走 `data/services/transfer.dart` 与
+`data/services/file_dialogs.dart`，同步走 `data/repositories/sync_engine.dart`。
 
 词典那一块只有一行「N 条 / 清空」，看着单薄，但两个细节是有意的：条数在
-`initState` 里读一次、清空后再读一次，而不是每次 build 都调 `cacheSize()`；缓存为 0
+view model 构造时读一次、清空后再读一次，而不是每次 build 都调 `cacheSize()`；缓存为 0
 时按钮置灰——新装的机器上「无可清」是真实状态，一个看着能按却什么都不做的按钮比
 一个看着不可用的更糟。
 
@@ -237,7 +320,7 @@ Supabase 项目时才出现**，且每次 build 重算而不是存字段，否�
 
    实现细节与四层验证见 `docs/supabase-sync-plan.md`。
 
-3. **导出/导入已补上**。`lib/data/transfer.dart` 移植了原版 `src/lib/transfer.ts`
+3. **导出/导入已补上**。`lib/data/services/transfer.dart` 移植了原版 `src/lib/transfer.ts`
    （302 行）的全部三条导出与三条导入：JSON 备份、CSV 表格、Anki TXT。检测顺序
    与原版一致且**顺序即逻辑**——先试 JSON（首格是 `{word` 的 CSV 比损坏 JSON 更
    可能，所以解析失败会继续往下走）、再看首行有没有 `\t`（Anki 优先于逗号，因为
@@ -246,7 +329,7 @@ Supabase 项目时才出现**，且每次 build 重算而不是存字段，否�
    CRLF（否则 Excel 读中文是乱码），空字符串按「缺失」处理（否则空白单元格会变成
    `pos: ""` 的空标签）。
    
-   文件选择走 `lib/platform/file_dialogs.dart`，**Android 用平台通道直接调
+   文件选择走 `lib/data/services/file_dialogs.dart`，**Android 用平台通道直接调
    `ACTION_CREATE_DOCUMENT` / `ACTION_OPEN_DOCUMENT`，不是 `file_selector`**。
    原因是实测发现 `file_selector` 的 `getSaveLocation` 在 Android 上不可用，
    它只能选「已存在的文件」不能指定新文件的保存位置——而导出恰恰需要后者。
@@ -264,13 +347,13 @@ Supabase 项目时才出现**，且每次 build 重算而不是存字段，否�
 5. **没有浏览器版本**。原版 `isDesktopShell()` 让窗口条在浏览器里不渲染。Flutter 这份
    只有 Windows / Android 两个 target。
 6. **移动端不显示快捷键**。原版所有键帽提示在手机上都还在——手机没有键盘，那些
-   `Ctrl` / `Enter` / `空格` 既按不到，又白占横向空间。`lib/ui/keyboard_hints.dart` 的
+   `Ctrl` / `Enter` / `空格` 既按不到，又白占横向空间。`lib/ui/core/widgets/keyboard_hints.dart` 的
    `showKeyboardHints()` 按**平台**判断（`TargetPlatform.windows/macOS/linux` 为真，
    android/iOS/fuchsia 为假），不是按窗口宽度：窄化的桌面窗口仍然由键盘驱动，
    而横屏平板很宽却没有键盘——宽度会把这两种情况都答错。页面里统一走
-   `context.showsKeyHints`，共 13 处调用点（`shell.dart:375`、`flashcards_page.dart`
-   6 处、`quiz_page.dart` 4 处、`settings_page.dart:1835`、`words_page.dart:1916`、
-   `word_editor.dart:551`）。`test/keyboard_hints_test.dart` 的 11 条测试在桌面与
+   `context.showsKeyHints`，共 14 处调用点（`app_shell.dart:401`、`flashcards_page.dart`
+   6 处、`quiz_page.dart` 4 处、`settings_page.dart:1635`、`words_page.dart:1717`、
+   `word_editor.dart:265`）。`test/keyboard_hints_test.dart` 的 11 条测试在桌面与
    Android 两个分支上分别 pump 页面，断言键帽出现/消失。
 
 ### 手机布局：一套桌面度量在三处失灵
@@ -281,10 +364,10 @@ Supabase 项目时才出现**，且每次 build 重算而不是存字段，否�
 **一、控制高度 36/32 是鼠标量的，指尖不认。** 审计在 411×866 下量出词库一页
 **54 个** `GestureDetector` 小于 44dp，其中 44 个是 32×32 的图标按钮
 （`_RowAction`、`_QbarIconButton`、`_ListTab` 的加号）。`Layout.tap = 44.0` 这个令牌
-一直存在，**但全项目只有 `lib/ui/widgets.dart:64` 的底部留白用过它一次**——
+一直存在，**但全项目只有 `lib/ui/core/widgets/widgets.dart:64` 的底部留白用过它一次**——
 定义了却没接线，等于没有。
 
-修法是新增 `lib/ui/density.dart`，按**平台**而不是宽度判断（与
+修法是新增 `lib/ui/core/widgets/density.dart`，按**平台**而不是宽度判断（与
 `keyboard_hints.dart` 同一个理由：窄化的桌面窗口仍是鼠标，横屏平板仍是手指）：
 
 ```dart
@@ -365,6 +448,11 @@ bool isTouchPlatform({TargetPlatform? platform}) => switch (p) {
 看不见的那一类：不抛异常、不占首屏、够 44，却**画到了屏幕外或者断在荒唐的位置**。
 它们的来历与三个真身见下一节。
 
+再后来才发现更根本的一件事：**上面这些全部只在 411dp 竖屏下量过，而 411dp 只走到
+`AppShell` 三套布局模式里的一套**。补的 `test/responsive_layout_test.dart` 扫五个视口
+× 六个界面 × 两个字号，第一次跑就抓到三处溢出和一处内禀尺寸异常——见
+「一套度量在另外两种布局模式下失灵」。
+
 数字全部取「设计能容忍的最大值」而不是「这一次量到的值」，因为字体度量浮动半个
 像素不该让断言变成绊线。`test/settings_layout_test.dart` 另有 4 条管住两个手绘控件
 （`_LexSwitch`、`_RateSlider`）——它们不在 `LexButton` / `LexSelect` 里，所以
@@ -405,7 +493,7 @@ chip 从卡片边缘切掉一半。**「切一半」与「这个 chip 不存在�
 | --- | --- | --- |
 | 状态筛选条右溢 21.8dp | `_SegButton` 侧向 padding 12dp × 5 | 触控平台收到 4dp，**并加 `minWidth: Layout.tap`** |
 | 测验副标题断在「用主动回忆检验」后 | 选择器站在 `_TopBar` 里 | 触控平台把选择器移进卡片，方向 chip 随之删掉 |
-| 统计卡标题断在「近」后 | `_HeadCard` 的 `Row[Expanded, trailing]` | `LayoutBuilder`，内宽 < 520 时上下堆叠 |
+| 统计卡标题断在「近」后 | `_HeadCard` 的 `Row[Expanded, trailing]` | `LayoutBuilder`，内宽 < 520 时上下堆叠（**只在这一头有 `trailing` 时才建**，理由见下一节） |
 | `0.95×` 断成两行 | `SizedBox(width: 52)` | 去掉固定宽，`maxLines: 1, softWrap: false` |
 | 搜索占位被省略号 | 一行里塞了搜索+排序+收藏 | 触控平台换短文案（129dp 装不下 149dp） |
 | 词典段同一句话印两遍 | `_Section.note` 与 `_Row.hint` 同源 | 删掉 `note`，只留行内那句 |
@@ -433,6 +521,105 @@ chip 从卡片边缘切掉一半。**「切一半」与「这个 chip 不存在�
 foundation 的 debug 变量已复位，用 `addTearDown` 会让测试因为「它本来想保护的那件事」
 而失败。
 
+### 一套度量在另外两种布局模式下失灵
+
+上面三轮的视口全是 411dp 竖屏。但 `AppShell` 有三套布局模式，**411dp 只走到其中一套**：
+
+| 宽度 | 模式 | 谁来画侧栏 |
+| --- | --- | --- |
+| ≤ 720（`Layout.mobileBreakpoint`） | mobile | 底栏 tab |
+| 720 – 1000（`Layout.railBreakpoint`） | rail | 64dp 图标栏 |
+| > 1000 | full | 248dp 完整侧栏 |
+
+所以 411dp 的测试**在结构上不可能**发现 rail 里的事，无论加多少条断言。补的
+`test/responsive_layout_test.dart` 把六个界面在五个视口（320×568、360×640、
+横屏 866×411、平板 800×1280、桌面 1280×800）和两个字号（1.3×、2.0×）下各扫一遍，
+判据仍然是 `takeException()` 为 null。**第一次跑就抓到三处 `RenderFlex overflowed`
+和一处 `LayoutBuilder` 内禀尺寸异常，全部是线上真能碰到的组合。**
+
+**一、rail 底部三个按钮挤在 47dp 里（右溢 85dp）。** 64dp 的 rail 减去
+`EdgeInsets.symmetric(horizontal: Sp.x2)` 的两侧 8dp、再减 1dp 右边框，内宽正好
+47dp；底部那排是三个 `_SidebarButton`，每个被 `TapTarget` 撑到 44dp（触控地板），
+3×44 = 132，132 − 47 = **85**，与报错数字分毫不差。Web 版早就踩过并写下了结论
+（`src/styles/global.css:397-404`：「The footer buttons cannot sit side by side in a
+64px rail — stack them」，`.app.rail .sidebar-actions { flex-direction: column }`），
+**Flutter 这边没把这条规则搬过来**。修法是 rail 分支改用
+`Column(mainAxisSize: MainAxisSize.min)` 竖排，非 rail 分支保持横排——两套模式本来就
+该有两种排法，硬用一套才是病根。
+
+**二、平板是「宽 + 触控」，状态条挤爆（右溢 13dp）。** 词库查询带的宽屏分支给状态条
+`Expanded(flex: 4)` 而不给滚动；同时平板 `isTouch` 为真，每个 chip 有
+`minWidth: Layout.tap` 的 44dp 地板，缩不下去。**窄屏分支本来就有
+`SingleChildScrollView`，宽屏分支没有**——因为写宽屏分支时默认「宽就够了」。修法是宽屏
+分支也套横向滚动：宽不等于装得下，触控地板在宽屏同样生效。
+
+**三、2.0× 字号下测验方向选择器挤爆（右溢 83dp）。** 两个标签在 2× 下量出约 388dp，
+而 `Column` 加 `padding: EdgeInsets.all(Sp.x7)` 后只剩 305dp。**字号不是宽度也不是
+平台**，前两轮的任何视口都碰不到它。修法同样是套横向滚动。
+
+**四、`LayoutBuilder` 不能回答内禀高度（这一处不是溢出，是整套版面直接失败）。**
+统计页在 1280dp 下抛
+`LayoutBuilder does not support returning intrinsic dimensions`，后面跟着一串
+`RenderBox was not laid out`——按 skill 的说法那串全是级联噪音，真正的第一句是它。
+链路是：`_Split` 用 `IntrinsicHeight` 让并排两张卡等高 → 它向内层要内禀高度 →
+`_HeadCard` 里恰好有个 `LayoutBuilder`（为「内宽 < 520 时把 trailing 挪到下一行」而建）
+→ builder 答不出来。**报错点名的 widget 是 builder，病灶却在 `_Split`**，
+这也是为什么必须顺着栈往上看。
+
+修法不是拆 `IntrinsicHeight`（等高是设计意图），而是让 `_HeadCard` **在没有
+`trailing` 时不建 builder**——没有要排的东西就没有要决策的布局，`_Split` 里那两张卡
+正好都没有 trailing，builder 于是不在路径上。这条约束写进了 `_Split` 的文档注释：
+**它的子树里不许出现 `LayoutBuilder`**。
+
+**这四处都做了变异测试**：把修法逐个改回去，`responsive_layout_test.dart` 分别报出
+2、1、1、1 条失败，改回来即全绿——所以每条断言都真的在管那件事，不是恰好通过。
+
+第五组断言管的是「别用改坏别处的方式修好这里」：rail 必须**还是 64dp**。把宽度从
+`Layout.sidebarRailW` 改成 `null`（让内容撑开）测试立刻红；改成 `100.0` 报出
+`Expected: <64.0> Actual: <100.0>`。这条按 `kSidebarKey` 找 widget，不用
+`find.byType(AnimatedContainer).first`——后者在树上一有改动就会默默开始量另一个东西，
+是那种「一直绿着，但量的已经不是它」的测试。
+
+顺带记一个测试写法：`tester.takeException()` 只给一句话，把
+`FlutterErrorDetails` 的 widget 链（`error-causing widget` + `file:line` +
+`constraints:` + `size:`）全丢了。要那串信息得自己接管
+`FlutterError.onError` 并 `print(d.toString())`；且 `FlutterExceptionHandler` 这个类型
+从 `package:flutter_test` 里**不可命名**，变量只能声明成
+`final void Function(FlutterErrorDetails)? old = FlutterError.onError;`。
+
+**五、不抛异常的挤压（这一处是用户报上来的，不是测试扫出来的）。**
+「添加词语」弹窗里 `释义` 两个字竖着排成两行，整个头部行看着也不对。它不抛任何异常：
+标签套在 `Expanded` 里，所以它只是被**挤**，不是被裁。实测（411dp 手机，弹窗 620 定宽、
+左右各 24 内边距 → 内宽 331，两列各 159.5）：
+
+| 宽度 | 标签拿到的盒子 | 行数 | 抛异常 |
+| --- | --- | --- | --- |
+| 411 | 0.0 × 42 | 2 | 是 |
+| 520 | 0.0 × 42 | 2 | 是 |
+| 540 | 4.8 × 42 | 2 | **否** |
+| 560 | 14.8 × 42 | 2 | **否** |
+| 580 | 24.8 × 42 | 2 | **否** |
+| 600 | 34.8 × 21 | 1 | 否 |
+
+**中间那三档是这类缺陷最危险的地方**：有异常时测试会红，而 540–580 三档只换行、
+一句话都不说。头部行里语言对标签占 134.8dp、`翻译` 按钮约 64dp、间距 8dp，
+合计 207dp 已经超过 159.5dp 的列宽，`Expanded` 只能把标签压到 0——而**宽度为 0 的
+`Text` 仍然会换行**，于是它没有消失，而是竖着印了出来。
+
+两处一起改才算修好，缺一处都还在：
+
+1. **标签不再 `Expanded`**，改成占内禀宽度；把语言对标签套进 `Flexible` 并加
+   `softWrap: false, overflow: TextOverflow.ellipsis`——该让路的是可选提示，不是字段名。
+2. **两列在窄处堆叠**。Web 版的 `.field-row` 在 ≤ 820px 就是单列
+   （`src/styles/global.css:2008`），移植时把这条规则丢了。弹窗本身封顶 560，
+   所以判断写在**实际拿到的宽度**上（`constraints.maxWidth < 520`）而不是窗口宽度上。
+
+这条的教训比修法重要：**「没抛异常」不等于「画对了」**。前四组溢出断言能抓到的只是
+「有内容看不见」，而挤压是「内容看得见、但排错了」。所以断言要落到标签自己的盒子上：
+内禀宽度、以及用 `getBoxesForSelection` 数出的**字形盒顶端有几个不同值**——那才是行数。
+现在 `responsive_layout_test.dart` 在 411/540/560/580/620/900 六档都钉了这两条，
+把两处修法都改回去时它报 6 条失败（含那三个静默档），只改回一处则互相兜住。
+
 ### 两端的数据是怎么走的
 
 同一份 Dart 代码编出两个 target，**默认**各存一份：
@@ -442,8 +629,8 @@ foundation 的 debug 变量已复位，用 `addTearDown` 会让测试因为「�
 | Android | `/data/user/0/dev.lexumo.lexumo/files/Lexumo/lexumo.json` | 应用私有目录 |
 | Windows | `%APPDATA%\Lexumo\lexumo.json` | 用户漫游目录 |
 
-`lib/data/app_dir.dart` 的 `_resolve()` 按 `Platform.isWindows` / `Platform.isAndroid`
-分派，各自落在本机文件系统上。`lib/data/snapshot_store.dart` 只做原子写
+`lib/data/services/app_dir.dart` 的 `_resolve()` 按 `Platform.isWindows` / `Platform.isAndroid`
+分派，各自落在本机文件系统上。`lib/data/services/snapshot_store.dart` 只做原子写
 （`lexumo.json.tmp` → flush → rename）、`.bak` 回退和容错读取——三个文件，全在本机。
 
 **但这不是终态**：登录之后两端会通过同步服务合并。所以准确的表述是「本机存储这一层
@@ -471,7 +658,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 
 ### TTS 已经补上（不再是缺口）
 
-`flutter_tts` 4.2.5 接进了 `lib/platform/tts.dart`，四件事值得记：
+`flutter_tts` 4.2.5 接进了 `lib/data/services/tts.dart`，四件事值得记：
 
 1. **语速刻度**。Web Speech 里 `1.0` 是正常速度，`flutter_tts` 把 `0.5` 当正常
    （Android 侧 `rate * 2`，Windows 侧 `SpeakingRate(rate + 0.5)`）。`Settings.ttsRate`
@@ -487,8 +674,9 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
    上判断「真的能用」要求语音列表非空，其它平台只要求通道通——因为 Windows 那份
    vendored 插件在引擎没激活时仍会应答每个方法，见 7.2。
 
-调用点：`words_page.dart:467`（行内发音）、`flashcards_page.dart:381/407`（显式朗读 /
-自动朗读，后者不计数）、`quiz_page.dart:143`（题干与复习行）、设置页音色下拉 + 试听。
+调用点：`words_page.dart:92`（行内发音）、`flashcards_page.dart:104/106`（显式朗读 /
+自动朗读，后者不计数）、`quiz_page.dart:95`（题干与复习行）、设置页音色下拉 + 试听。
+三处都是把闭包注入 view model，因为真正的 `speakWord` 要 `BuildContext` 读设置。
 `word.listenCount` 现在有触发点了——`speakWord` 每次调用都 `bumpListen`，
 `speakTerm`（自动朗读）不计数，与原版一致。
 
@@ -501,7 +689,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 ```bash
 cd flutter
 ../.flutter-sdk/flutterc analyze           # No issues found!
-../.flutter-sdk/flutterc test              # 611 passed, 6 skipped
+../.flutter-sdk/flutterc test              # 764 passed, 6 skipped
 ./tool/build_apk.sh                        # 出 release APK 到 dist/
 ./tool/build_windows.sh                    # 出 Windows release 包
 ./tool/release.sh                          # 出签名 APK + dist/update.json
@@ -847,7 +1035,7 @@ Gradle 的报错只会说"找不到某个文件"），用 `read -s` 收密码（
 CI 里**刻意不用** `tool/build_apk.sh`：那脚本只是本机 `HOME` 丢失的绕法，Linux runner
 上原生 `flutter build apk` 是对的，把它搬进 CI 会让 CI 对「干净机器能做什么」撒谎。
 
-应用内升级的链路（`lib/data/update_service.dart` + `lib/pages/update_sheet.dart`）：
+应用内升级的链路（`lib/data/repositories/update_service.dart` + `lib/ui/features/update/views/update_sheet.dart`）：
 
 ```
 启动 ─→ load()（读真版本，首帧前）─→ check()（六小时内不重复）

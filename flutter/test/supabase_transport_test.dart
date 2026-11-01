@@ -16,8 +16,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lexumo/data/sync_transport.dart';
-import 'package:lexumo/data/supabase_transport.dart';
+import 'package:lexumo/data/services/sync_transport.dart';
+import 'package:lexumo/data/services/supabase_transport.dart';
 
 /// One captured request plus a canned response.
 class _Call {

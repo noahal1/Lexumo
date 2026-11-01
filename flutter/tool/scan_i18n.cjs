@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = process.cwd();
-const dictFiles = ['lib/i18n/zh_cn.dart', 'lib/i18n/en.dart'];
+const dictFiles = ['lib/ui/core/i18n/zh_cn.dart', 'lib/ui/core/i18n/en.dart'];
 
 function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -37,8 +37,8 @@ function keysIn(file) {
   return out;
 }
 
-const zh = keysIn('lib/i18n/zh_cn.dart');
-const en = keysIn('lib/i18n/en.dart');
+const zh = keysIn('lib/ui/core/i18n/zh_cn.dart');
+const en = keysIn('lib/ui/core/i18n/en.dart');
 
 const dead = [];
 for (const key of zh) {

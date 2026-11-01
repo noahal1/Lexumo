@@ -16,8 +16,8 @@
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:lexumo/design/tokens.dart';
-import 'package:lexumo/ui/density.dart';
+import 'package:lexumo/ui/core/tokens.dart';
+import 'package:lexumo/ui/core/widgets/density.dart';
 
 void main() {
   group('isTouchPlatform', () {
