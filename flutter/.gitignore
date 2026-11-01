@@ -44,6 +44,12 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Gradle's own build cache: lock files, last-build timestamps and hashes. It is
+# machine state that regenerates on the next build, so committing it only adds
+# churn. Deliberately unanchored — the vendored plugin under third_party/ has an
+# android/ directory of its own, and that is where these files came from.
+.gradle/
+
 # Widget Preview related
 .widget_preview/
 

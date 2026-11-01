@@ -102,7 +102,6 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 ├── vite.config.ts              # @ → ./src，端口 1420，outDir dist
 ├── vitest.config.ts            # 测试配置：environment node，@ 别名，包含 .ts/.tsx
 ├── tsconfig.json               # 前端 TS 配置（strict，include: src）
-├── tsconfig.node.json          # vite/vitest 配置文件的 TS 配置
 ├── LICENSE.txt                 # GNU AGPL-3.0 全文
 ├── NOTICE                      # 上游署名与 AGPL-3.0 §7(b) 附加条款
 ├── THIRD-PARTY-LICENSES.md     # 第三方组件许可
