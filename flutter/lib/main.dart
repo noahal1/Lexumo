@@ -205,16 +205,32 @@ class _LexumoAppState extends State<LexumoApp> with WidgetsBindingObserver {
             i18n: i18n,
             child: _ThemeHost(
               mode: settings.theme,
-              child: ToastHost(
-                key: _toastKey,
-                child: MaterialApp(
-                  title: i18n.t('common.appName'),
-                  debugShowCheckedModeBanner: false,
-                  theme: buildTheme(Palette.light),
-                  darkTheme: buildTheme(Palette.dark),
-                  themeMode: _themeMode(settings.theme),
-                  home: const AppShell(),
+              child: MaterialApp(
+                title: i18n.t('common.appName'),
+                debugShowCheckedModeBanner: false,
+                theme: buildTheme(Palette.light),
+                darkTheme: buildTheme(Palette.dark),
+                themeMode: _themeMode(settings.theme),
+                // The toast stack goes in `builder`, never above `MaterialApp`.
+                //
+                // [ToastHost] draws a bare [Stack], and a `Stack` resolves its
+                // default `AlignmentDirectional.topStart` through the ambient
+                // [Directionality]. `MaterialApp` is what installs that; above
+                // it there is none, so layout threw
+                // `Null check operator used on a null value` inside
+                // `AlignmentDirectional.resolve` on the very first frame, no
+                // page was ever painted, and the app looked frozen showing
+                // whatever the window happened to hold.
+                //
+                // `builder` runs *inside* MaterialApp (Directionality,
+                // MediaQuery and Theme all present) but *around* the Navigator,
+                // so a toast still floats above every page and every dialog
+                // pushed on top of them.
+                builder: (BuildContext context, Widget? child) => ToastHost(
+                  key: _toastKey,
+                  child: child ?? const SizedBox.shrink(),
                 ),
+                home: const AppShell(),
               ),
             ),
           ),

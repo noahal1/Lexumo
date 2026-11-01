@@ -4,7 +4,7 @@
 **不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
 Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
 
-工程规模：`lib/` 与 `test/` 共 44,198 行 Dart，823 个测试通过（另有 6 条需要真 Postgres
+工程规模：`lib/` 与 `test/` 共 44,436 行 Dart，827 个测试通过（另有 6 条需要真 Postgres
 桥接的 E2E 默认 skip），`flutter analyze` 零问题。
 
 ---
@@ -20,7 +20,7 @@ Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果�
 上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
 React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 
-这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，823 个测试覆盖纯逻辑与
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，827 个测试覆盖纯逻辑与
 共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
 
 ---
@@ -28,7 +28,7 @@ React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 ## 2. 目录结构与职责
 
 ```
-flutter/lib/                        67 个文件，28,577 行（test/ 另有 44 个文件 15,621 行）
+flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 个文件 15,843 行）
   main.dart            入口：Store 初始化 → UpdateService → 作用域树 → MaterialApp
   app/                 组合根：谁在什么时候构造谁
     scope.dart         InheritedWidget 层：StoreNotifier / StoreScope / I18nScope / ToastScope / NavScope
@@ -574,7 +574,7 @@ foundation 的 debug 变量已复位，用 `addTearDown` 会让测试因为「�
 | > 1000 | full | 248dp 完整侧栏 |
 
 所以 411dp 的测试**在结构上不可能**发现 rail 里的事，无论加多少条断言。补的
-`test/responsive_layout_test.dart` 把六个界面在五个视口（320×568、360×640、
+`test/responsive_layout_test.dart` 把七个界面在五个视口（320×568、360×640、
 横屏 866×411、平板 800×1280、桌面 1280×800）和两个字号（1.3×、2.0×）下各扫一遍，
 判据仍然是 `takeException()` 为 null。**第一次跑就抓到三处 `RenderFlex overflowed`
 和一处 `LayoutBuilder` 内禀尺寸异常，全部是线上真能碰到的组合。**
@@ -715,6 +715,74 @@ toast 照样消失，看起来像撤销成功了。Web 版的做法是栈 `point
 几乎看不出的亮度差。现在由 `_Paper` 画：深色且非手机布局时，纸面左侧一道 2dp 的
 `p.edge` 内描边。
 
+### 0.2.4 上线的那个「卡在首页」：一个控件放错了层
+
+用户报的原话是「现在我的应用就在主页了 点啥都没有反应」。0.2.4+5 装上去之后，
+首页画得出来（那是上一帧留下的画面），但任何点击都没有响应，也不报错。
+
+根因在 `main.dart` 的一层嵌套，不在任何页面里：`ToastHost` 被包在 `MaterialApp`
+**外面**，而它 `build` 出来的是一个裸 `Stack`。`Stack` 的默认 `alignment` 是
+`AlignmentDirectional.topStart`，要解析它得有祖先 `Directionality`——而
+`Directionality` 正是 `MaterialApp` 装上去的。放在它上面就等于没有：
+
+```
+Null check operator used on a null value
+#0 AlignmentDirectional.resolve (painting/alignment.dart:651)
+#2 RenderStack.performLayout (rendering/stack.dart:684)
+#8 RendererBinding.drawFrame
+```
+
+首帧布局直接抛异常，于是**什么都没画**，窗口停在上一次的内容上。表现就是
+「画面还在，点不动」。
+
+这条错误比这次发布早得多：`887deef`、`5337cd5`、`cca6f19` 的嵌套一模一样，
+0.2.2/0.2.3 的 `toast.dart` 里也是同一个裸 `Stack`。**它一直在那儿，只是没人整屏点过。**
+
+修法是把 `ToastHost` 挪进 `MaterialApp.builder`：
+
+```dart
+builder: (BuildContext context, Widget? child) => ToastHost(
+  key: _toastKey,
+  child: child ?? const SizedBox.shrink(),
+),
+```
+
+`builder` 跑在 `MaterialApp` **内部**（`Directionality`、`MediaQuery`、`Theme` 都齐了），
+但**在 `Navigator` 之上**——所以 toast 依旧浮在所有页面和所有对话框上面，这正是当初
+把它提到外面想要的效果。放在外面不是"更外层所以更靠上"，而是"没有 Directionality
+所以首帧就死"。
+
+#### 为什么所有测试都没抓到
+
+这是这一轮最值得记的一点。事后的探针 `test/zz_probe_tap_test.dart` 用真的
+`AppShell` + 真的 Store/Scope/`MaterialApp`，在 411×866 上点 tab、点「开始复习」，
+**全部通过**——因为它把 `ToastHost` 放在了 `MaterialApp` **里面**，正好绕开了这个 bug。
+同理 `ToastHost(child: MaterialApp(...))` 那种写法也是对的（`MaterialApp` 在里面）。
+换句话说：**凡是手工重新拼过一遍树形的测试，都看不见 `main.dart` 自己那一层的嵌套错误。**
+
+所以补的回归测试 `test/app_mount_test.dart` 不拼树，它 pump 的就是 `LexumoApp`
+本身——那个 `build` 里装着嵌套关系的 widget。四条断言分两类：
+
+- 结构类：`ToastHost` 必须是 `MaterialApp` 的**后代**，永远不能是祖先（这条能直接指出
+  放错的方向，而不仅仅是"挂了"）；
+- 行为类：首帧不抛异常、首页真的画出来了、点 tab 真的换了页。
+
+这两类都需要。「没抛异常」单独不够——首帧失败只抛一次，之后只是安静地什么都不画，
+`takeException()` 拿到一次之后就再没有信号了；反过来只断言点击通过也不够，因为
+树里少一个页面时点击也可能"成功"地点在空气上。反向验证过：把嵌套改回去，四条全红。
+
+#### 教训
+
+`showModalBottomSheet`、`ToastHost`、主题注入、任何需要在**整个 app 之上**画东西的
+壳，都必须走 `MaterialApp.builder`（或 `materialApp` 之内的 `Overlay`），而不是包在
+`MaterialApp` 外面。包在外面的写法能编译、能过单测、甚至在桌面跑起来"看起来正常"
+（因为 `Focus`/路由都没坏），但缺 `Directionality`、`MediaQuery`、`Theme`、`Navigator`
+这一整套由 `MaterialApp` 提供的环境。
+
+另外记一条工作方法：这次是 `flutterc run -d windows --release` 在真窗口里跑，
+才拿到首帧那个 `Null check operator`。之前所有基于 `flutterc test` 的诊断都是不可信的，
+因为它们和出问题的树形不是同一个。**用户说不用测试、让我直接看真实应用，是对的。**
+
 ### 两端的数据是怎么走的
 
 同一份 Dart 代码编出两个 target，**默认**各存一份：
@@ -784,7 +852,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 ```bash
 cd flutter
 ../.flutter-sdk/flutterc analyze           # No issues found!
-../.flutter-sdk/flutterc test              # 823 passed, 6 skipped
+../.flutter-sdk/flutterc test              # 827 passed, 6 skipped
 ./tool/build_apk.sh                        # 出 release APK 到 dist/
 ./tool/build_windows.sh                    # 出 Windows release 包
 ./tool/release.sh                          # 出签名 APK + dist/update.json

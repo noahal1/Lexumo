@@ -18,7 +18,7 @@
 cd flutter
 
 ../.flutter-sdk/flutterc analyze     # No issues found!
-../.flutter-sdk/flutterc test        # 823 passed, 6 skipped
+../.flutter-sdk/flutterc test        # 827 passed, 6 skipped
 
 ./tool/build_apk.sh                  # release APK → dist/lexumo-android-release.apk
 ./tool/release.sh                    # 签名 APK + dist/update.json（发布用）
@@ -99,7 +99,7 @@ lib/
 - 查询带在手机上是两行（搜索+排序+收藏 / 状态+批量选择），不是三行。
 
 这些不靠看截图确认，`test/mobile_layout_test.dart` 用三条预算断言管住：
-六个界面在 411dp 下不抛布局异常、五个页面每个 `GestureDetector` 两维 ≥ 44dp、
+七个界面在 411dp 下不抛布局异常、五个页面每个 `GestureDetector` 两维 ≥ 44dp、
 首屏预算（顶栏 ≤ 84dp、第一行单词 ≤ 320dp、查询带 ≤ 120dp）。
 数字取「设计能容忍的最大值」而不是某一次量到的值，所以字体度量浮动半个像素不会
 让测试变成绊线。理由与修之前的数字见 `../docs/flutter-design.md`。
@@ -109,6 +109,15 @@ lib/
 平板 800、桌面 1280）与两个字号（1.3×、2.0×）下各扫一遍，断言不抛布局异常。
 手机布局那组是「够不够用」，这组是「还有没有别的模式」——两者的判据都是
 `takeException()` 为 null，因为溢出的内容等于看不见的内容，没有容忍区间。
+
+还有一类更隐蔽的：**树形装错了层**。0.2.4+5 上线后应用卡在首页、点什么都不响应，
+根因是 `main.dart` 把 `ToastHost` 包在 `MaterialApp` 外面，而它画的是裸 `Stack`，
+`Stack` 要从 `MaterialApp` 装的 `Directionality` 解析默认对齐——首帧布局就抛
+`Null check operator used on a null value`，什么都没画出来。所有 widget 测试都在手工
+拼树（把 `ToastHost` 放在 `MaterialApp` 里面），因此永远看不见 `main.dart` 自己的
+嵌套。`test/app_mount_test.dart` 为此不再拼树：它 pump 的就是 `LexumoApp` 本身，
+既断言 `ToastHost` 是 `MaterialApp` 的后代（结构），也断言首帧不抛、点 tab 真的换页
+（行为）。
 
 ## 发布与升级
 
@@ -149,10 +158,11 @@ CI 读同一个文件。没有这个文件时清单里就没有 `notes`，应用
 ```bash
 ../.flutter-sdk/flutterc test                                # 全部
 ../.flutter-sdk/flutterc test test/mobile_layout_test.dart   # 手机布局三条预算
-../.flutter-sdk/flutterc test test/responsive_layout_test.dart # 五个视口 × 六个界面
+../.flutter-sdk/flutterc test test/responsive_layout_test.dart # 五个视口 × 七个界面
+../.flutter-sdk/flutterc test test/app_mount_test.dart       # 真实 main.dart 的嵌套能挂载、能点
 ```
 
-823 个通过、6 个跳过（那 6 条要真 Postgres 桥接，见
+827 个通过、6 个跳过（那 6 条要真 Postgres 桥接，见
 `../docs/supabase-sync-plan.md`）。四层验证各自抓不到什么，记在
 `../docs/flutter-design.md` 末节：
 
