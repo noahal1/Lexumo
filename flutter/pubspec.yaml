@@ -1,7 +1,7 @@
 name: lexumo
 description: "Lexumo · 词砚 — a calm desktop vocabulary studio (Flutter)"
 publish_to: "none"
-version: 0.1.0+1
+version: 0.2.0
 
 environment:
   sdk: ">=3.13.0 <4.0.0"
