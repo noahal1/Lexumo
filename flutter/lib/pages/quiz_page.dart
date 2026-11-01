@@ -32,6 +32,7 @@ import '../domain/types.dart';
 import '../platform/speak_word.dart';
 import '../platform/tts.dart' show appSpeech;
 import '../ui/controls.dart';
+import '../ui/density.dart';
 import '../ui/keyboard_hints.dart';
 import '../ui/lex_icon.dart';
 import '../ui/widgets.dart';
@@ -396,27 +397,35 @@ class _QuizPageState extends State<QuizPage> {
           title: t('quiz.title'),
           subtitle: t('quiz.subtitle'),
           controller: widget.controller,
+          // The direction picker is 237dp wide. Standing in the bar it left
+          // 109dp for a 146dp subtitle, so "用主动回忆检验掌握程度" broke after
+          // "用主动回忆检验" on every phone. On touch it moves into the card
+          // below, which is where the choice actually belongs — it configures
+          // the round the card is about to start, and the card already names
+          // the direction in its own subtitle.
           actions: _phase == _Phase.active
               ? LexButton(
                   label: t('quiz.finish'),
                   kind: BtnKind.quiet,
                   onPressed: _requestFinish,
                 )
-              : Segmented<QuizDirection>(
-                  value: _direction,
-                  options: <SegOption<QuizDirection>>[
-                    SegOption<QuizDirection>(
-                      value: QuizDirection.termToDef,
-                      label: t('quiz.termToDef'),
+              : context.isTouch
+                  ? null
+                  : Segmented<QuizDirection>(
+                      value: _direction,
+                      options: <SegOption<QuizDirection>>[
+                        SegOption<QuizDirection>(
+                          value: QuizDirection.termToDef,
+                          label: t('quiz.termToDef'),
+                        ),
+                        SegOption<QuizDirection>(
+                          value: QuizDirection.defToTerm,
+                          label: t('quiz.defToTerm'),
+                        ),
+                      ],
+                      onChanged: (QuizDirection value) =>
+                          setState(() => _direction = value),
                     ),
-                    SegOption<QuizDirection>(
-                      value: QuizDirection.defToTerm,
-                      label: t('quiz.defToTerm'),
-                    ),
-                  ],
-                  onChanged: (QuizDirection value) =>
-                      setState(() => _direction = value),
-                ),
           children: body,
         ),
       ),
@@ -479,11 +488,32 @@ class _QuizPageState extends State<QuizPage> {
             style: TextStyle(fontSize: Fs.base, height: Lh.loose, color: p.ink2),
           ),
           const SizedBox(height: Sp.x4),
+          // On a phone the picker lives here rather than in the page bar; see
+          // the `actions` comment above. It replaces the direction chip, which
+          // said the same thing in less useful form — a chip reports, a picker
+          // changes.
+          if (context.isTouch) ...<Widget>[
+            Segmented<QuizDirection>(
+              value: _direction,
+              options: <SegOption<QuizDirection>>[
+                SegOption<QuizDirection>(
+                  value: QuizDirection.termToDef,
+                  label: t('quiz.termToDef'),
+                ),
+                SegOption<QuizDirection>(
+                  value: QuizDirection.defToTerm,
+                  label: t('quiz.defToTerm'),
+                ),
+              ],
+              onChanged: (QuizDirection value) => setState(() => _direction = value),
+            ),
+            const SizedBox(height: Sp.x4),
+          ],
           Wrap(
             spacing: Sp.x2,
             runSpacing: Sp.x2,
             children: <Widget>[
-              StatusChip(label: directionLabel, tone: 'meta'),
+              if (!context.isTouch) StatusChip(label: directionLabel, tone: 'meta'),
               StatusChip(
                 label: t('quiz.eligible', <String, Object>{'n': eligibleCount}),
                 tone: 'new',

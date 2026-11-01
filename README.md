@@ -8,7 +8,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 
 > **两套实现。** `src/` 是这里描述的 Tauri 2 + React 19 版本；`flutter/` 是同一套
 > 功能、同一套设计令牌在 Flutter 里的移植（Windows + Android，36,152 行 Dart，
-> 592 个测试）。两套并存，README 的其余部分描述的是 Tauri 版；Flutter 版的分层、
+> 611 个测试）。两套并存，README 的其余部分描述的是 Tauri 版；Flutter 版的分层、
 > 与 Web 版的每一处有意差异、以及构建方法记在 [`docs/flutter-design.md`](docs/flutter-design.md)。
 > 手机布局在 Flutter 版上单独量过一轮（触控目标 44dp、查询带两行、设置页溢出），
 > 记在同文档的「手机布局：一套桌面度量在三处失灵」；发布与应用内升级的链路记在

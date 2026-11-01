@@ -1,0 +1,4 @@
+{
+  "zh": "修好了手机上「显示不全」和「分行奇怪」的几处。状态筛选条的最后一个标签不再被卡片边缘切掉；测验页的方向选择移进卡片，副标题不再从中间断开；统计页标题不再被窗口选择器挤成两行；设置页的倍速读数不再把 × 挤到下一行；手机上的搜索提示换成能放下的短句。",
+  "en": "Fixed the places where the phone build cut things off or broke lines in the wrong spot. The last status filter is no longer sliced by the card edge; the quiz direction picker moved into the card so the subtitle no longer breaks mid-phrase; the stats heading is no longer squeezed into two lines by the window picker; the settings speed readout keeps its × on the same line; the search hint on a phone is now short enough to fit."
+}

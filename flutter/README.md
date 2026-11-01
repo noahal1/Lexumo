@@ -18,7 +18,7 @@
 cd flutter
 
 ../.flutter-sdk/flutterc analyze     # No issues found!
-../.flutter-sdk/flutterc test        # 592 passed, 6 skipped
+../.flutter-sdk/flutterc test        # 611 passed, 6 skipped
 
 ./tool/build_apk.sh                  # release APK → dist/lexumo-android-release.apk
 ./tool/release.sh                    # 签名 APK + dist/update.json（发布用）
@@ -107,9 +107,10 @@ debug 证书 → 生成清单 → 发布 release 资产。需要的 secret：
 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、
 `ANDROID_KEY_PASSWORD`。
 
-更新说明可选，两条路都收：在 `flutter/notes.json` 里写 `{"zh": "…", "en": "…"}`，或者
-直接写一段中文正文（整段归到 zh），`release.sh --notes-file` 与 CI 用同一种解析。没有这个
-文件时清单里就没有 `notes`，应用会把「更新内容」整段省掉，而不是画一个空的标题。
+更新说明可选：在 `flutter/notes.json` 里写 `{"zh": "…", "en": "…"}`，或者直接写一段
+中文正文（整段归到 zh）。这个文件存在时 `release.sh` 自动读它（`--notes-file` 只是覆盖），
+CI 读同一个文件。没有这个文件时清单里就没有 `notes`，应用会把「更新内容」整段省掉，
+而不是画一个空的标题。
 
 应用内升级的链路、三条判断（进度信字节不信安装器、唯一成功证据是 build 变了、
 取消不是失败）记在 `../docs/flutter-design.md` 的 7.6 节。

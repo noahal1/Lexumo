@@ -14,7 +14,8 @@
 #     build must know its own version before any platform channel answers;
 #   · the SHA-256 is computed from the bytes that were actually signed and copied,
 #     not from a rebuild;
-#   · `update.json` must be written *after* the hash, never before.
+#   · `update.json` must be written *after* the hash, never before;
+#   · the notes come from `notes.json`, the same file CI reads — see below.
 #
 # What this script does NOT do: talk to GitHub. It leaves `dist/update.json` and
 # the APK, and prints the `gh release create` line that uploads them. Keeping the
@@ -25,10 +26,17 @@
 #
 #   tool/release.sh                          # build + manifest for the current version
 #   tool/release.sh --allow-dirty            # ditto, ignoring uncommitted changes
-#   tool/release.sh --notes-file notes.md    # attach release notes (zh text)
+#   tool/release.sh --notes-file notes.md    # override flutter/notes.json
 #   tool/release.sh --min-supported 3        # force everyone below build 3 to update
 #   tool/release.sh --no-build               # only regenerate update.json from dist/
 #   tool/release.sh --tag v0.2.0+2           # override the git tag in the URL
+#
+# `flutter/notes.json` (optional, `{ "zh": "…", "en": "…" }` or one plain string
+# filed under Chinese) is read automatically when present and no --notes-file is
+# given. CI reads the same file, so the notes a release carries are the same
+# whether it was cut here or on a runner — and the manifest is what the in-app
+# update sheet shows, so notes that only exist on the GitHub page would tell
+# every user "有更新" with nothing to read.
 set -euo pipefail
 
 WS="C:/Users/noaha/prj/lingueez-web"
@@ -169,6 +177,15 @@ URL="https://github.com/${REPO}/releases/download/${TAG}/lexumo-${VERSION_NAME}-
 echo "release: apk $APK"
 echo "release:       $SIZE bytes"
 echo "release:       sha256 $SHA"
+
+if [ -z "$NOTES_FILE" ] && [ -f "notes.json" ]; then
+  # `notes.json` is what CI reads, so it is also what this script reads. Two
+  # ways of writing release notes would drift, and the one that drifted would
+  # be the one nobody looks at: the manifest is what the app shows in its
+  # update sheet, so a release whose notes only exist on the GitHub page would
+  # tell every user "有更新" with nothing to read.
+  NOTES_FILE="notes.json"
+fi
 
 if [ -n "$NOTES_FILE" ]; then
   [ -f "$NOTES_FILE" ] || die "notes file not found: $NOTES_FILE"

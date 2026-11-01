@@ -377,39 +377,60 @@ class _HeadCard extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(Sp.x5, Sp.x4, Sp.x5, Sp.x4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Column(
+            // A trailing control sits on the title's line on a wide window and
+            // takes the line below it on a phone. Side by side on a 363dp card
+            // the window picker is 224dp of the 323dp inside the padding, which
+            // left 85dp for a 128dp heading and a 159dp sub-line: "近 30 天复习"
+            // broke after "近" and the count broke mid-phrase. Stacking costs
+            // one line of height and gives both the width they need.
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final bool stacked = trailing != null && constraints.maxWidth < 520;
+                final Widget heading = Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: Fs.md,
+                        height: Lh.tight,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.005,
+                        color: p.ink,
+                      ),
+                    ),
+                    if (sub != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        sub!,
+                        style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink3),
+                      ),
+                    ],
+                  ],
+                );
+                if (stacked) {
+                  return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: Fs.md,
-                          height: Lh.tight,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.005,
-                          color: p.ink,
-                        ),
-                      ),
-                      if (sub != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          sub!,
-                          style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink3),
-                        ),
-                      ],
+                      heading,
+                      const SizedBox(height: Sp.x3),
+                      trailing!,
                     ],
-                  ),
-                ),
-                if (trailing != null) ...[
-                  const SizedBox(width: Sp.x3),
-                  trailing!,
-                ],
-              ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(child: heading),
+                    if (trailing != null) ...[
+                      const SizedBox(width: Sp.x3),
+                      trailing!,
+                    ],
+                  ],
+                );
+              },
             ),
           ),
           Container(height: 1, color: p.line),

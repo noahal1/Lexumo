@@ -796,7 +796,16 @@ class _QueryBar extends StatelessWidget {
     final search = _SearchField(
       controller: controller,
       focusNode: focusNode,
-      placeholder: context.t('words.searchPlaceholder'),
+      // On a phone the search field shares its row with the sort menu and the
+      // favourites toggle, which leaves 129dp for the hint — the full sentence
+      // needs 149dp and was being cut off mid-character. A hint that is
+      // ellipsised is worse than a shorter hint: the cut reads as a broken
+      // field, and the words it lost are the ones explaining what can be
+      // searched. The short form fits whole and still names both things people
+      // type. The full sentence is kept for the wide layout.
+      placeholder: context.isTouch
+          ? context.t('words.searchPlaceholderShort')
+          : context.t('words.searchPlaceholder'),
       onChanged: onQuery,
       onClear: () {
         controller.clear();

@@ -11,6 +11,7 @@
 
 // `Card` below means the app's own card from `ui/widgets.dart`; Material's
 // same-named widget is hidden so the name is unambiguous.
+import 'package:flutter/foundation.dart' show debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -119,20 +120,57 @@ void main() {
       expect(value, 'b');
     });
 
-    testWidgets('renders the per-option count when given one', (tester) async {
-      await pumpKit(
-        tester,
-        Segmented<String>(
-          value: 'a',
-          options: const [
-            SegOption(value: 'a', label: 'Alpha', count: 7),
-            SegOption(value: 'b', label: 'Beta'),
-          ],
-          onChanged: (_) {},
-        ),
-      );
+    testWidgets('renders the per-option count on a pointer platform', (tester) async {
+      // The count is a pointer affordance: on a phone the five status chips
+      // each carry one, the row stops fitting, and the label is what a
+      // fingertip gets. Pinning the platform is the only way to exercise both
+      // branches — the default under `flutter test` is Android, i.e. the
+      // branch that drops the number.
+      //
+      // The override is reset inside the body rather than in `addTearDown`:
+      // the framework asserts foundation debug variables are unset *before*
+      // tear-downs run, so a tear-down reset fails the test it was meant to
+      // protect.
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      try {
+        await pumpKit(
+          tester,
+          Segmented<String>(
+            value: 'a',
+            options: const [
+              SegOption(value: 'a', label: 'Alpha', count: 7),
+              SegOption(value: 'b', label: 'Beta'),
+            ],
+            onChanged: (_) {},
+          ),
+        );
 
-      expect(find.text('7'), findsOneWidget);
+        expect(find.text('7'), findsOneWidget);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testWidgets('drops the per-option count where a finger does the tapping', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        await pumpKit(
+          tester,
+          Segmented<String>(
+            value: 'a',
+            options: const [
+              SegOption(value: 'a', label: 'Alpha', count: 7),
+              SegOption(value: 'b', label: 'Beta'),
+            ],
+            onChanged: (_) {},
+          ),
+        );
+
+        expect(find.text('7'), findsNothing);
+        expect(find.text('Alpha'), findsOneWidget);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
   });
 

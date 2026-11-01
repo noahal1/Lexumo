@@ -19,6 +19,7 @@
 // fraction of a pixel.
 
 import 'package:flutter/material.dart' hide Card;
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:lexumo/app/scope.dart';
@@ -136,6 +137,152 @@ void main() {
           reason:
               '$name has ${short.length} tap targets below ${Layout.tap}dp: '
               '${short.toSet().join(', ')}',
+        );
+      });
+    }
+  });
+
+  group('nothing is cut off', () {
+    // Overflowing *by a pixel* is the shape this app's phone bugs take. A
+    // `Segmented` measures itself at its content width and its row scrolls, so
+    // a five-chip status filter ran 21.8dp past the card edge — the last chip
+    // was half drawn, which reads as "this app is broken", not as "scroll me".
+    // A `Text` in a `SizedBox(width: 52)` cut `0.95×` into two lines. Both were
+    // invisible to the overflow test above, because neither one throws: they
+    // clip.
+    for (final (name, screen) in kScreens) {
+      testWidgets('$name draws every box inside ${kPhone.width}dp', (
+        WidgetTester tester,
+      ) async {
+        await pumpPhone(tester, screen);
+
+        final List<String> past = <String>[];
+        // `FractionalTranslation` moves a child at paint time and leaves its
+        // layout box where it was. The stats chart parks its last axis label at
+        // the end of the track and shifts it left by its own width, so the
+        // layout box reads 366..415 while the glyphs are drawn at 317..366.
+        // Measuring layout boxes alone would report a defect that is not on
+        // screen, so the accumulated paint shift travels down the walk.
+        void visit(Element e, double shiftX) {
+          double selfShift = shiftX;
+          final Widget widget = e.widget;
+          if (widget is FractionalTranslation) {
+            final RenderObject? own = e.renderObject;
+            if (own is RenderBox && own.hasSize) {
+              // A `FractionalTranslation` paints nothing of its own; what it
+              // occupies on screen is its translated child. Reporting its raw
+              // layout box would flag the 415dp end of the stats chart's axis
+              // track, where nothing is actually drawn.
+              selfShift += widget.translation.dx * own.size.width;
+            }
+          }
+          final RenderObject? ro = e.renderObject;
+          if (ro is RenderBox && ro.hasSize && ro.attached) {
+            final double left =
+                ro.localToGlobal(Offset.zero).dx + selfShift;
+            final double right = left + ro.size.width;
+            // A horizontal scroller's child is allowed to be wider than the
+            // viewport — that is what scrolling is. The strip is judged by its
+            // clip, not by its child's extent.
+            final bool inScroller = e
+                .findAncestorWidgetOfExactType<SingleChildScrollView>()
+                ?.scrollDirection ==
+                Axis.horizontal;
+            // `Positioned` and `FractionalTranslation` draw nothing: their box
+            // is their child's box, and the child is judged on its own. The
+            // stats chart's last axis label sits in a `Positioned` at the track
+            // end and is translated left by its own width; flagging the wrapper
+            // would report the empty end of the track as clipped text.
+            final bool isWrapper =
+                widget is Positioned || widget is FractionalTranslation;
+            if (!inScroller && !isWrapper && right > kPhone.width + 0.5) {
+              past.add('${right.toStringAsFixed(1)}dp: ${e.widget.runtimeType}');
+            }
+          }
+          e.visitChildElements((Element child) => visit(child, selfShift));
+        }
+
+        for (final Element root in find.byType(Scaffold).evaluate()) {
+          visit(root, 0);
+        }
+        expect(
+          past,
+          isEmpty,
+          reason: '$name draws ${past.length} box(es) past the right edge: '
+              '${past.take(6).join(', ')}',
+        );
+      });
+
+      testWidgets('$name clips no text that had room to be drawn', (
+        WidgetTester tester,
+      ) async {
+        await pumpPhone(tester, screen);
+
+        final List<String> cut = <String>[];
+        for (final Element e in find.byType(RichText).evaluate()) {
+          final RenderObject? ro = e.renderObject;
+          if (ro is! RenderParagraph || !ro.hasSize) continue;
+          if (!ro.didExceedMaxLines) continue;
+          // A text field is a viewport onto text the user can scroll, so its
+          // hint being wider than the field is the field working: the server
+          // URL `http://127.0.0.1:8787` is 325dp of glyphs in a 287dp box and
+          // every character is still reachable. The hint is a sibling of the
+          // editable, not a child, so the check walks up to the field itself.
+          // Everything else that clips is a label the reader cannot finish.
+          final bool inField =
+              e.findAncestorWidgetOfExactType<TextField>() != null;
+          if (inField) continue;
+          cut.add(ro.text.toPlainText());
+        }
+        expect(
+          cut,
+          isEmpty,
+          reason: '$name clips ${cut.length} text run(s): '
+              '${cut.take(5).map((s) => '"$s"').join(', ')}',
+        );
+      });
+    }
+  });
+
+  group('wrapping is a last resort', () {
+    // Text that broke onto a second line while its own single-line width would
+    // have fit the column is never a choice — it means the column was squeezed
+    // by a sibling. The quiz subtitle had 109.5dp for a 145.8dp sentence because
+    // the 237.5dp direction picker stood in the page bar; the stats card title
+    // had 85.3dp for 128dp because a 224dp window picker sat beside it. Both
+    // read as broken layout, and neither throws.
+    for (final (name, screen) in kScreens) {
+      testWidgets('$name never breaks a line it could have kept', (
+        WidgetTester tester,
+      ) async {
+        await pumpPhone(tester, screen);
+
+        final List<String> squeezed = <String>[];
+        for (final Element e in find.byType(RichText).evaluate()) {
+          final RenderObject? ro = e.renderObject;
+          if (ro is! RenderParagraph || !ro.hasSize) continue;
+          if (ro.didExceedMaxLines) continue;
+          final double oneLine = ro.getMaxIntrinsicWidth(double.infinity);
+          // Half a dp of slack: the intrinsic width and the laid-out width are
+          // measured through different paths and disagree by a rounding step.
+          if (ro.size.width + 0.5 >= oneLine) continue;
+          if (ro.text.toPlainText().trim().isEmpty) continue;
+          // A paragraph is only "squeezed" if it actually wrapped.
+          if (ro.size.height <=
+              ro.getMinIntrinsicHeight(ro.size.width) + 0.5) {
+            continue;
+          }
+          squeezed.add(
+            '"${ro.text.toPlainText()}" '
+            '${ro.size.width.toStringAsFixed(0)}dp of '
+            '${oneLine.toStringAsFixed(0)}dp',
+          );
+        }
+        expect(
+          squeezed,
+          isEmpty,
+          reason: '$name squeezed ${squeezed.length} paragraph(s) narrower than '
+              'one line: ${squeezed.take(4).join('; ')}',
         );
       });
     }

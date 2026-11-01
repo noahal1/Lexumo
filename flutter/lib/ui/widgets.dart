@@ -240,14 +240,24 @@ class _SegButtonState<T> extends State<_SegButton<T>> {
           // One chip is a filter you tap repeatedly while reading a list, so it
           // is a real target rather than a label: it grows with the density the
           // same way a button does, but only in height — the sideways padding
-          // is where the five chips earn their fit on a phone, and they already
-          // scroll horizontally rather than shrink.
+          // is where the chips earn their fit on a phone.
           height: context.controlH,
           alignment: Alignment.center,
+          // Sideways air is where a phone pays for its chips. The five status
+          // labels measure 172dp; at 12dp a side the row is 292dp against the
+          // 236dp the query bar can spare once the search field and the select
+          // button have theirs, and the last chip was cut off at the card edge.
+          // At 4dp the labels fit, but "全部" then measures 36.5dp across — so
+          // the floor is enforced as a width too, not just a height. Both ends
+          // of the trade are real: a chip narrower than a fingertip is not a
+          // target, and a chip wider than the row is not a control.
           padding: EdgeInsets.symmetric(
-            horizontal: Sp.x3,
+            horizontal: context.isTouch ? Sp.x1 : Sp.x3,
             vertical: context.isTouch ? 0 : Sp.x2 - 2,
           ),
+          constraints: context.isTouch
+              ? const BoxConstraints(minWidth: Layout.tap)
+              : null,
           decoration: BoxDecoration(
             color: selected
                 ? p.surface
@@ -269,7 +279,14 @@ class _SegButtonState<T> extends State<_SegButton<T>> {
                   color: selected ? p.ink : p.ink2,
                 ),
               ),
-              if (widget.option.count != null) ...[
+              // The count is a wide-screen affordance. Five chips with a number
+              // apiece measure 396dp on a 411dp phone, so the last one was cut
+              // in half at the card's edge — the one thing a segmented control
+              // must never do, since the cut is indistinguishable from a chip
+              // that does not exist. The label alone measures 252dp and fits,
+              // and the number is still where it matters: the list below shows
+              // every word's status, and the footer counts the list.
+              if (widget.option.count != null && !context.isTouch) ...[
                 const SizedBox(width: Sp.x1),
                 Text(
                   '${widget.option.count}',

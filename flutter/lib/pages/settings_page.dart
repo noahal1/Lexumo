@@ -472,18 +472,24 @@ class _SettingsPageState extends State<SettingsPage> {
                             ),
                           ),
                           const SizedBox(width: Sp.x2),
-                          SizedBox(
-                            width: 52,
-                            child: Text(
-                              '${settings.ttsRate.toStringAsFixed(2)}×',
-                              textAlign: TextAlign.right,
-                              style: TextStyle(
-                                fontFamily: Fonts.mono,
-                                fontSize: Fs.sm,
-                                height: Lh.snug,
-                                color: p.ink2,
-                                fontFeatures: const [FontFeature.tabularFigures()],
-                              ),
+                          // 52 was the width of "0.95×" at the old 12dp size;
+                          // at the scale's `Fs.sm` it needs 66dp and wrapped,
+                          // leaving the `×` alone on a second line, which reads
+                          // as a stray bullet rather than a multiplier. Every
+                          // value in 0.50–1.50 is five characters in tabular
+                          // figures, so the natural width is constant and the
+                          // box was buying nothing.
+                          Text(
+                            '${settings.ttsRate.toStringAsFixed(2)}×',
+                            textAlign: TextAlign.right,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(
+                              fontFamily: Fonts.mono,
+                              fontSize: Fs.sm,
+                              height: Lh.snug,
+                              color: p.ink2,
+                              fontFeatures: const [FontFeature.tabularFigures()],
                             ),
                           ),
                         ],
@@ -513,7 +519,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 _Section(
                   icon: Ic.book,
                   title: context.t('settings.dictionary'),
-                  note: context.t('settings.translateCacheHint', {'n': _cacheSize}),
+                  // No `note` here. It carried the cache count, which the row
+                  // below already says — on a phone the two sat 60dp apart and
+                  // read as the same sentence printed twice, and the header
+                  // copy had only 145dp to work with, so it wrapped while the
+                  // row's copy did not.
                   children: [
                     _Row(
                       label: context.t('settings.translateCache'),

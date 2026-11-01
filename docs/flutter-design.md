@@ -4,7 +4,7 @@
 **不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
 Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
 
-工程规模：`lib/` 与 `test/` 共 36,152 行 Dart，592 个测试通过（另有 6 条需要真 Postgres
+工程规模：`lib/` 与 `test/` 共 36,426 行 Dart，611 个测试通过（另有 6 条需要真 Postgres
 桥接的 E2E 默认 skip），`flutter analyze` 零问题。
 
 ---
@@ -20,7 +20,7 @@ Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果�
 上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
 React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 
-这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，592 个测试覆盖纯逻辑与
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，611 个测试覆盖纯逻辑与
 共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
 
 ---
@@ -351,7 +351,7 @@ bool isTouchPlatform({TargetPlatform? platform}) => switch (p) {
 
 手机上的几何在这套环境里没法靠眼睛验：`adb` daemon 随 bash 进程树死亡、dev server
 的 origin 不在 capability 作用域内、模拟器截图重复拍出同一个文件（两个 md5 相同）。
-所以这一轮的判据是 `test/mobile_layout_test.dart`，**三条预算，不是三条快照**：
+所以这一轮的判据是 `test/mobile_layout_test.dart`，**五条预算，不是五条快照**：
 
 | 断言 | 预算 | 修之前 |
 | --- | --- | --- |
@@ -360,6 +360,10 @@ bool isTouchPlatform({TargetPlatform? platform}) => switch (p) {
 | 顶栏高 | ≤ 84dp | 87dp |
 | 第一行单词 top | ≤ 320dp | 358dp |
 | 查询带高 | ≤ 120dp | 164dp |
+
+后来补的两组（`nothing is cut off` 12 条、`wrapping is a last resort` 6 条）管的是上表
+看不见的那一类：不抛异常、不占首屏、够 44，却**画到了屏幕外或者断在荒唐的位置**。
+它们的来历与三个真身见下一节。
 
 数字全部取「设计能容忍的最大值」而不是「这一次量到的值」，因为字体度量浮动半个
 像素不该让断言变成绊线。`test/settings_layout_test.dart` 另有 4 条管住两个手绘控件
@@ -372,6 +376,62 @@ bool isTouchPlatform({TargetPlatform? platform}) => switch (p) {
 
 **「两端各存一份」只在本机存储这一层成立**——同步是显式的，要登录、要打开
 `autoSync`，开箱即用的默认状态仍然是各存一份。
+
+### 切掉的半截东西：手机上「显示不全」的三种真身
+
+上面那五条预算管的是**版面预算**，它们全都通过之后，用户还是报「有些地方显示不全，
+或者有分行，布局很奇怪」。原因是那一轮只在 411dp 下量了「有没有抛异常」「够不够 44」
+「首屏还剩多少」——**一个既不抛异常、又够 44、也不占首屏的东西照样可以坏掉**。三种坏法：
+
+**一、横向被裁。** `Segmented` 是 `Row(mainAxisSize: MainAxisSize.min)`，按内容宽排，
+外面套横向滚动。五个状态筛选各带一个计数，量出来 396dp，容器只给 363dp，最后一个
+chip 从卡片边缘切掉一半。**「切一半」与「这个 chip 不存在」在视觉上无法区分**，而
+`overflow` 断言看不见它——被滚动容器接住的溢出不抛异常。
+
+**二、被兄弟挤窄到断行。** 这是最像「布局很奇怪」的一种：每一句都正确换行了，
+但换的位置荒唐。测验页的方向选择器 237dp 站在 `_TopBar` 里，副标题只剩 109.5dp 而它
+需要 145.8dp，于是「用主动回忆检验掌握程度」每次都在「用主动回忆检验」后面断开；统计页
+`_HeadCard` 里 224dp 的窗口选择器把标题压到 85.3dp，「近 30 天复习」在「近」后断行。
+**判据不是「换行了」，是「本可以一行却换行」**：`getMaxIntrinsicWidth(∞) <= 实际宽度`
+还断成两行，就一定是被挤的。
+
+**三、被固定宽度裁成两行。** 设置页语速读数是 `SizedBox(width: 52)` 包着
+`'${rate.toStringAsFixed(2)}×'`——52 是旧 12dp 字号下的宽度，`Fs.sm` 下需要 66dp，于是
+`×` 被挤到第二行单独成行，读起来像一个孤立的符号。
+
+三处修法各不相同，因为三种坏法本来就不是一回事：
+
+| 症状 | 病灶 | 修法 |
+| --- | --- | --- |
+| 状态筛选条右溢 21.8dp | `_SegButton` 侧向 padding 12dp × 5 | 触控平台收到 4dp，**并加 `minWidth: Layout.tap`** |
+| 测验副标题断在「用主动回忆检验」后 | 选择器站在 `_TopBar` 里 | 触控平台把选择器移进卡片，方向 chip 随之删掉 |
+| 统计卡标题断在「近」后 | `_HeadCard` 的 `Row[Expanded, trailing]` | `LayoutBuilder`，内宽 < 520 时上下堆叠 |
+| `0.95×` 断成两行 | `SizedBox(width: 52)` | 去掉固定宽，`maxLines: 1, softWrap: false` |
+| 搜索占位被省略号 | 一行里塞了搜索+排序+收藏 | 触控平台换短文案（129dp 装不下 149dp） |
+| 词典段同一句话印两遍 | `_Section.note` 与 `_Row.hint` 同源 | 删掉 `note`，只留行内那句 |
+
+**第一行那条修法里有个坑值得记**：padding 从 12 收到 4 之后，「全部」这种两字 chip
+只剩 36.5dp 宽，`test/mobile_layout_test.dart` 的 44dp 全扫立刻抓到。所以「够宽能点」
+与「够窄能放」必须同时成立，**光靠 padding 是调不出来的**，得给 `_SegButton` 加
+`constraints: BoxConstraints(minWidth: Layout.tap)`。这条测试从「有 54 个不达标」变成
+「有 2 个 36.5×44」再变成空，每一步都是它自己报的。
+
+**探针要量绘制盒，不是布局盒。** 第一版回归测试把统计页判成「右溢 4dp」，追下去是
+`FractionalTranslation`：图表最后一个日期标签在布局上停在轨道末端 415dp，靠
+`FractionalTranslation(-1, 0)` 在绘制时左移到 366dp。**布局盒 415、实际画在 366**。
+测试里因此要沿元素树累加 `FractionalTranslation` 的平移量，并把 `Positioned` /
+`FractionalTranslation` 这类「自己不画任何东西」的包装层排除——否则会报出一个屏幕上
+并不存在的缺陷。同理，输入框里的长 URL（`http://127.0.0.1:8787`，287dp 盒子装 325dp
+字形）被判为裁剪是误报：`TextField` 是视口，内容可以横向滚，每个字符都还在。
+
+**这三类各补了一组回归**（`test/mobile_layout_test.dart` 从 14 条增到 32 条）：
+`nothing is cut off` 六屏各两条（绘制盒不越过 411dp；没有文本在有余量时被裁）、
+`wrapping is a last resort` 六屏各一条（没有段落在 `intrinsic ≤ 实际宽` 的情况下换行）。
+`test/widget_test.dart` 另补两条把 `Segmented` 的计数分支在 `windows` / `android`
+两个平台各钉一次——`flutter test` 默认报 android，不钉的话桌面分支永远不执行。
+**钉平台要用 `try/finally` 复位，不能用 `addTearDown`**：框架在 tear-down 之前就会断言
+foundation 的 debug 变量已复位，用 `addTearDown` 会让测试因为「它本来想保护的那件事」
+而失败。
 
 ### 两端的数据是怎么走的
 
@@ -441,7 +501,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 ```bash
 cd flutter
 ../.flutter-sdk/flutterc analyze           # No issues found!
-../.flutter-sdk/flutterc test              # 592 passed, 6 skipped
+../.flutter-sdk/flutterc test              # 611 passed, 6 skipped
 ./tool/build_apk.sh                        # 出 release APK 到 dist/
 ./tool/build_windows.sh                    # 出 Windows release 包
 ./tool/release.sh                          # 出签名 APK + dist/update.json
@@ -741,7 +801,9 @@ cd flutter
 脚本**不做网络动作**，发布那一步是它打印的 `gh release create`。
 
 更新说明是同一个可选的输入：`flutter/notes.json` 写 `{"zh": "…", "en": "…"}`，或者一段
-中文正文（整段归到 `zh`），`release.sh --notes-file` 与 CI 用同一套解析。没有这个文件时
+中文正文（整段归到 `zh`）。**这个文件存在时 `release.sh` 会自动读它**（`--notes-file`
+只是覆盖它），CI 也读同一个文件——两条出包路径共用一个来源，否则本机切出来的包会没有
+说明、而 runner 切出来的有。没有这个文件时
 清单里没有 `notes` 字段，而 `update_sheet.dart` 的 `_notes()` 在字段缺失时返回空列表——
 这是刻意的：一个空的「更新内容」标题比没有这一节更糟，它暗示有内容却没写。
 

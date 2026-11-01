@@ -81,6 +81,7 @@ const Map<String, String> enRaw = {
       'Translation of the sentence (press Translate to fetch it)',
   'words.notePlaceholder': 'Memory hook, root, confusables…',
   'words.searchPlaceholder': 'Search words, meanings, or notes…',
+  'words.searchPlaceholderShort': 'Search words or meanings…',
   'words.noResults': 'No matching words',
   'words.noResultsHint': 'Try another keyword or loosen the filters.',
   'words.matches': '{n} matches',

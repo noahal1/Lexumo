@@ -79,6 +79,7 @@ const Map<String, String> zhCnRaw = {
   'words.exampleZhPlaceholder': '例句的中文翻译（点「翻译」可从词典取回）',
   'words.notePlaceholder': '记忆线索、词根、易混词…',
   'words.searchPlaceholder': '搜索词语、释义或笔记…',
+  'words.searchPlaceholderShort': '搜索词语或释义…',
   'words.noResults': '没有匹配的词语',
   'words.noResultsHint': '换个关键词，或调整筛选条件试试。',
   'words.matches': '{n} 个匹配',
