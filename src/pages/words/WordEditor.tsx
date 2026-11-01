@@ -15,7 +15,7 @@ import {
 } from "@/lib/translate";
 import { STATUS_LABEL_KEY, STATUS_ORDER, type Word, type WordStatus } from "@/lib/types";
 
-export interface WordEditorProps {
+interface WordEditorProps {
   open: boolean;
   /** null → create mode. */
   word: Word | null;

@@ -13,14 +13,14 @@ import { Icon, type IconName } from "@/components/Icon";
 import { prefersReducedMotion } from "@/lib/motion";
 import { useT } from "@/i18n";
 
-export type ToastKind = "ok" | "err" | "info";
+type ToastKind = "ok" | "err" | "info";
 
-export interface ToastAction {
+interface ToastAction {
   label: string;
   onClick: () => void;
 }
 
-export interface ToastOptions {
+interface ToastOptions {
   /** Optional inline action, e.g. 撤销. */
   action?: ToastAction;
   /** Override the auto-dismiss delay in ms. */
@@ -35,7 +35,7 @@ interface ToastItem {
   duration: number;
 }
 
-export type ToastFn = (text: string, kind?: ToastKind, opts?: ToastOptions) => void;
+type ToastFn = (text: string, kind?: ToastKind, opts?: ToastOptions) => void;
 
 const ToastContext = createContext<ToastFn>(() => {});
 
@@ -95,7 +95,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
 
   return (
     <div
-      className={cx("toast", `toast-${kind}`, action && "toast-has-action", leaving && "is-leaving")}
+      className={cx("toast", `toast-${kind}`, action && "has-action", leaving && "is-leaving")}
       role={kind === "err" ? "alert" : "status"}
       aria-live={kind === "err" ? "assertive" : "polite"}
       onMouseEnter={() => setHeld(true)}

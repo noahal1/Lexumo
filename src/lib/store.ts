@@ -115,7 +115,7 @@ export interface Persistence {
   clear(): Promise<void>;
 }
 
-export interface StoreOptions {
+interface StoreOptions {
   persistence: Persistence;
   /** Injectable so tests can freeze time. */
   clock?: () => number;
@@ -141,7 +141,7 @@ export interface NewWordInput {
   favorite?: boolean;
 }
 
-export interface GradeResult {
+interface GradeResult {
   srs: SrsState;
   status: WordStatus;
   /** Id of the review log entry this grade appended, so it can be undone. */
@@ -588,10 +588,6 @@ export function useSettings(): Settings {
 /* ------------------------------------------------------------------ */
 /* Selectors (pure: take the snapshot, return a projection)            */
 /* ------------------------------------------------------------------ */
-
-export function wordsOfList(d: AppData, listId: string): Word[] {
-  return d.words.filter((w) => w.listId === listId);
-}
 
 export function dueWords(d: AppData, now = Date.now()): Word[] {
   return d.words.filter((w) => {

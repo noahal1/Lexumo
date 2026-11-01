@@ -26,7 +26,7 @@
 import { isMobileShell } from "@/lib/windowChrome";
 
 /** Returns true when it consumed the press, so nothing further should happen. */
-export type BackClaim = () => boolean;
+type BackClaim = () => boolean;
 
 const claims: BackClaim[] = [];
 

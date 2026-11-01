@@ -32,11 +32,9 @@
 
   /* ---- paper: the page ---- */
   --bg: #f9f7f3;
-  --bg-deep: #f3f1eb;
   --surface: #fefdfa;
   --surface-2: #f3f1eb;
   --surface-hover: #eeece5;
-  --surface-sunken: #eceae4;
 
   /* ---- rules ---- */
   --line: #e0ded7;
@@ -64,7 +62,6 @@
   --warn: #8b6119;
   --warn-soft: #f9ebd7;
   --ok: #2e684e;
-  --ok-soft: #deeee5;
 
   /* ---- chart series ---- */
   --info: #416791;
@@ -79,7 +76,6 @@
   --frame-ink-2: #acb1ad; /*  6.6:1 */
   --frame-ink-3: #9aa09b; /*  5.4:1 on the frame, 6.1:1 on a raised stone */
   --frame-accent: #82c8d4;
-  --frame-accent-soft: #264343;
   /* One warm note on the stone: the streak flame. */
   --frame-warm: #d8a86b;
 
@@ -109,7 +105,6 @@
   --fs-lg: 19px;
   --fs-xl: 24px;
   --fs-2xl: 30px;
-  --fs-3xl: 38px;
 
   /* One leading scale for the whole app. Entries above 1.2 are for reading;
      below it is for display type, where the line box should hug the glyphs. */
@@ -135,7 +130,6 @@
   --sp-8: 32px;
   --sp-10: 40px;
   --sp-12: 48px;
-  --sp-16: 64px;
 
   /* ---- radii: one per level, concentric ---- */
   --r-2xs: 2px;
@@ -162,7 +156,6 @@
   --dur-2: 180ms;
   --dur-3: 260ms;
   --dur-4: 420ms;
-  --dur-5: 620ms;
   --stagger: 16ms;
 
   /* ---- layout ---- */
@@ -191,11 +184,9 @@
   color-scheme: dark;
 
   --bg: #1d231f;
-  --bg-deep: #121614;
   --surface: #262c27;
   --surface-2: #2d342e;
   --surface-hover: #343b34;
-  --surface-sunken: #121613;
 
   --line: #2f3633;
   --line-strong: #4f5754;
@@ -218,7 +209,6 @@
   --warn: #dcb46e;
   --warn-soft: #3d2d14;
   --ok: #86c8ab;
-  --ok-soft: #1d3328;
 
   --info: #96bbe3;
   --info-soft: #232f3d;
@@ -233,7 +223,6 @@
   --frame-ink-2: #a2a6a1;
   --frame-ink-3: #757b76;
   --frame-accent: #7cc2d6;
-  --frame-accent-soft: #132b2c;
   --frame-warm: #dcae74;
 
   --shadow-overlay: 0 18px 44px -18px rgba(0, 0, 0, 0.8), 0 2px 10px rgba(0, 0, 0, 0.5);
@@ -244,12 +233,9 @@
   --edge: rgba(255, 255, 255, 0.055);
 }
 
-/* Old elevation names still referenced by a handful of rules; they resolve to
-   the two real elevations above. */
+/* Old elevation name still referenced by a handful of rules; it resolves to
+   the real elevation above. */
 :root,
 :root[data-theme="dark"] {
   --shadow-xs: none;
-  --shadow-sm: var(--shadow-pop);
-  --shadow-md: var(--shadow-pop);
-  --shadow-lg: var(--shadow-overlay);
 }

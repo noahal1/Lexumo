@@ -169,7 +169,7 @@ export function onVoicesChanged(cb: () => void): () => void {
   };
 }
 
-export interface SpeakOptions {
+interface SpeakOptions {
   lang?: string;
   rate?: number;
   voiceURI?: string;
@@ -250,8 +250,4 @@ export function stopSpeaking(): void {
     return;
   }
   if (hasNativeTts()) void nativeApi().then((tts) => tts.stop()).catch(() => {});
-}
-
-export function isSpeaking(): boolean {
-  return hasWebSpeech() ? window.speechSynthesis.speaking : false;
 }

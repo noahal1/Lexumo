@@ -25,13 +25,13 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type ProviderId = "youdao" | "youdao-web" | "mymemory" | "google";
 
-export interface DictSense {
+interface DictSense {
   /** Part of speech such as "adj." — empty when the provider has no tags. */
   pos: string;
   meaning: string;
 }
 
-export interface DictExample {
+interface DictExample {
   en: string;
   zh?: string;
 }
@@ -73,7 +73,7 @@ interface CacheRecord {
 type CacheMap = Record<string, CacheRecord>;
 
 /** The slice of `Storage` the cache needs; `null` keeps everything in memory. */
-export interface LookupStorage {
+interface LookupStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
@@ -87,17 +87,17 @@ export interface LookupClock {
   now(): number;
 }
 
-export const systemClock: LookupClock = { now: () => Date.now() };
+const systemClock: LookupClock = { now: () => Date.now() };
 
 /** Cache as seen by the orchestrator: TTL is already applied by `get`. */
-export interface LookupCache {
+interface LookupCache {
   get(key: string): LookupResult | null;
   set(key: string, result: LookupResult): void;
   size(): number;
   clear(): void;
 }
 
-export interface LookupCacheOptions {
+interface LookupCacheOptions {
   /** Defaults to `localStorage` when it exists, otherwise memory only. */
   storage?: LookupStorage | null;
   key?: string;
@@ -468,7 +468,7 @@ function isChineseTarget(to: string | undefined): boolean {
 }
 
 /** The desktop transport: a Rust command proxying Youdao (no CORS involved). */
-export function tauriAdapter(): LookupAdapter {
+function tauriAdapter(): LookupAdapter {
   return {
     id: "youdao",
     // `dict.youdao.com/jsonapi` always glosses into Chinese, whatever `to` the
@@ -524,7 +524,7 @@ function timeoutSignal(signal: AbortSignal | undefined, ms: number): AbortSignal
   return controller.signal;
 }
 
-export function youdaoWebAdapter(): LookupAdapter {
+function youdaoWebAdapter(): LookupAdapter {
   return {
     id: "youdao-web",
     canServe: () => true,
@@ -540,7 +540,7 @@ export function youdaoWebAdapter(): LookupAdapter {
   };
 }
 
-export function myMemoryAdapter(): LookupAdapter {
+function myMemoryAdapter(): LookupAdapter {
   return {
     id: "mymemory",
     canServe: () => true,
@@ -591,13 +591,13 @@ export function createTauriAdapters(): LookupAdapter[] {
  * The chain the app ships with. `isTauri()` is read here — once, at the edge —
  * and never inside the orchestrator.
  */
-export function defaultAdapters(): LookupAdapter[] {
+function defaultAdapters(): LookupAdapter[] {
   return isTauri() ? createTauriAdapters() : createBrowserAdapters();
 }
 
 /* ------------------------------------------------------------- lookup core */
 
-export interface LookupOptions {
+interface LookupOptions {
   from?: string;
   to?: string;
   /** Skip the cache and re-fetch (the "重新翻译" button). */
@@ -626,7 +626,7 @@ export interface Lookup {
   resetCooldown(): void;
 }
 
-export interface LookupDeps {
+interface LookupDeps {
   /** Fallback order, first to last. */
   adapters: LookupAdapter[];
   /** Defaults to a fresh cache bound to `clock`. */

@@ -109,7 +109,7 @@ export interface Tombstones {
 }
 
 /** Records that changed locally and still need to be pushed to the server. */
-export interface PendingChanges {
+interface PendingChanges {
   words: string[];
   lists: string[];
   logs: string[];

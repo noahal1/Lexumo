@@ -3,7 +3,7 @@
  * A pragmatic subset of the reference app's 105 languages, with
  * BCP-47 tags that Web Speech and Google Translate accept.
  */
-export interface LangOption {
+interface LangOption {
   code: string;
   zh: string;
   en: string;
@@ -88,8 +88,4 @@ export function langName(code: string, uiLang: string): string {
   const lang = BY_CODE.get(code);
   if (!lang) return code;
   return uiLang === "zh-CN" ? lang.zh : lang.en;
-}
-
-export function langShort(code: string): string {
-  return code.toUpperCase().replace("-CN", "").replace("-TW", "");
 }

@@ -122,7 +122,7 @@ export function nextStatus(earned: WordStatus, current: WordStatus): WordStatus 
 }
 
 /** The card fields the decision reads; mirrors the matching `Word` fields. */
-export interface CardState {
+interface CardState {
   srs: SrsState | null;
   status: WordStatus;
 }

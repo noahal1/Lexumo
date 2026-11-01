@@ -24,7 +24,7 @@ const CONFIG_KEY = "lexumo.sync.v1";
 /** Default server shown in the settings form. */
 export const DEFAULT_SERVER = "http://127.0.0.1:8787";
 
-export interface SyncConfig {
+interface SyncConfig {
   server: string;
   email: string;
   token: string;
@@ -33,7 +33,7 @@ export interface SyncConfig {
   lastSyncAt: number;
 }
 
-export type SyncState = "signed-out" | "idle" | "syncing" | "error";
+type SyncState = "signed-out" | "idle" | "syncing" | "error";
 
 export interface SyncStatus {
   state: SyncState;
@@ -86,10 +86,6 @@ function writeConfig(config: SyncConfig | null) {
   } catch {
     /* storage full / private mode — sync just won't survive a reload */
   }
-}
-
-export function getSyncConfig(): SyncConfig | null {
-  return readConfig();
 }
 
 export function isSignedIn(): boolean {
@@ -330,7 +326,6 @@ async function runSync(): Promise<boolean> {
 /* Auto sync                                                           */
 /* ------------------------------------------------------------------ */
 
-let timer: ReturnType<typeof setInterval> | null = null;
 let started = false;
 let soonTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -369,7 +364,7 @@ export function initSync(): void {
   // anything is pending: a device that is idle locally still has to learn about
   // another device's edits. The request is a normal round with an empty
   // `changes`, so the server contract is unchanged.
-  timer = setInterval(() => {
+  setInterval(() => {
     if (!isSignedIn()) return;
     if (!getData().settings.autoSync) return;
     void syncNow();
@@ -378,12 +373,4 @@ export function initSync(): void {
   setTimeout(() => {
     if (isSignedIn() && getData().settings.autoSync) void syncNow();
   }, 800);
-}
-
-export function stopSyncLoop(): void {
-  if (timer) clearInterval(timer);
-  if (soonTimer) clearTimeout(soonTimer);
-  timer = null;
-  soonTimer = null;
-  started = false;
 }

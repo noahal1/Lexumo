@@ -23,10 +23,10 @@
  * surfaced and no rejection escapes.
  */
 
-export type WindowAction = "minimize" | "maximize" | "close";
+type WindowAction = "minimize" | "maximize" | "close";
 
 /** True inside any Tauri shell — desktop or mobile. */
-export function isTauriShell(): boolean {
+function isTauriShell(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
@@ -61,15 +61,6 @@ export async function windowAction(action: WindowAction): Promise<void> {
     else await win.toggleMaximize();
   } catch {
     /* Nothing the user could do about it; see the note above. */
-  }
-}
-
-export async function isMaximized(): Promise<boolean> {
-  if (!isDesktopShell()) return false;
-  try {
-    return await (await currentWindow()).isMaximized();
-  } catch {
-    return false;
   }
 }
 

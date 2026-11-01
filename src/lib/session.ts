@@ -17,7 +17,7 @@ import type { Grade } from "./types";
  * side effect it performed outside this module — the flashcard page needs the
  * card id to restore the schedule it snapshotted before calling gradeWord.
  */
-export type Step =
+type Step =
   | { kind: "record"; id: string; correct: boolean }
   | { kind: "skip"; id: string };
 

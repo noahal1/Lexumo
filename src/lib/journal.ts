@@ -21,7 +21,7 @@
  */
 import type { AppData, ChangeSet } from "./types";
 
-export type RecordKind = "word" | "list" | "log";
+type RecordKind = "word" | "list" | "log";
 
 /** `pending` and `tombstones` use the same three buckets. */
 const BUCKET = {

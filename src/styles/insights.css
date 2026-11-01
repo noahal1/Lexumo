@@ -76,21 +76,6 @@
   flex: 1 1 160px;
 }
 
-.goal-num {
-  font-family: var(--font-display);
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  line-height: var(--lh-none);
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-.goal-of {
-  font-size: var(--fs-sm);
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-
 /* Numbers inside the goal ring. */
 .goal-ring-num {
   font-family: var(--font-display);
@@ -747,12 +732,6 @@
 .about-credit-name {
   font-size: var(--fs-sm);
   color: var(--ink-2);
-}
-
-.about-shortcuts {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
 }
 
 /* --------------------------------------------------------------------------

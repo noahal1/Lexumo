@@ -13,7 +13,7 @@
  * UI along.
  */
 
-export type ErrorKind = "render" | "store-write";
+type ErrorKind = "render" | "store-write";
 
 type Listener = (kind: ErrorKind, detail: unknown) => void;
 

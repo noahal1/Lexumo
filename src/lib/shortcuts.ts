@@ -46,7 +46,7 @@ export interface KeyEventLike {
 }
 
 /** Static description of a shortcut, shared by the binding and the help sheet. */
-export interface ShortcutDefinition {
+interface ShortcutDefinition {
   /** Stable id, e.g. "words.addWord". */
   id: string;
   /** Human-readable key caps, e.g. ["Ctrl", "1…5"]. */
@@ -158,7 +158,7 @@ let listening = false;
  * The app-wide registry. The first call installs the single document-level
  * `keydown` listener; every scope funnels through it.
  */
-export function getShortcutRegistry(): ShortcutRegistry {
+function getShortcutRegistry(): ShortcutRegistry {
   if (!singleton) {
     singleton = new ShortcutRegistry();
     if (!listening && typeof document !== "undefined") {
@@ -264,8 +264,6 @@ const definitions = {
 } satisfies Record<string, ShortcutDefinition>;
 
 export const SHORTCUTS = definitions;
-
-export type ShortcutName = keyof typeof SHORTCUTS;
 
 /** Rows for the shortcut sheet, in declaration order. */
 export const SHORTCUT_HELP: ShortcutDefinition[] = Object.values(SHORTCUTS).filter(

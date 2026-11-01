@@ -25,7 +25,7 @@ export interface QuizQuestion {
  * 没意义"三种情况在调用方看来一模一样，只能再数一遍词去猜。把原因做成
  * 返回值，判断就只留在这个模块里。
  */
-export type QuizShortfall =
+type QuizShortfall =
   | "empty-round"
   | "no-eligible-words"
   | "not-enough-words"

@@ -19,7 +19,7 @@ export type SortKey = "recent" | "alpha" | "due" | "status";
    re-exported so the index's callers and tests keep one import site. */
 export { statusRank };
 
-export interface WordIndex {
+interface WordIndex {
   /** Words of one list, in snapshot order. */
   byList: Map<string, Word[]>;
   /** Status tallies per list, including the "all" bucket. */
@@ -40,7 +40,7 @@ export interface WordQuery {
   lang?: string;
 }
 
-export interface StatsSummary {
+interface StatsSummary {
   total: number;
   statusCounts: Record<WordStatus, number>;
   mastered: number;

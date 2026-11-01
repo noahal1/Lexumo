@@ -12,7 +12,6 @@ import { Icon, type IconName } from "@/components/Icon";
 
 export { ConfirmDialog, Modal } from "@/components/Modal";
 export { ToastProvider, useToast } from "@/components/Toast";
-export type { ToastAction, ToastFn, ToastKind, ToastOptions } from "@/components/Toast";
 
 /* ------------------------------------------------------------------ */
 /* Page shell — every page uses this so headers stay consistent        */

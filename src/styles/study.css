@@ -342,9 +342,6 @@
   .fc-card {
     min-height: 0;
   }
-  .fc-stage {
-    padding-bottom: var(--sp-4);
-  }
 }
 
 /* Intro / empty / summary panels */
@@ -667,8 +664,4 @@
 
 .t-ok {
   color: var(--accent-ink);
-}
-
-.t-warn {
-  color: var(--warn);
 }
