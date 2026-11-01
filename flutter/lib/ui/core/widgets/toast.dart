@@ -5,6 +5,13 @@
 /// hovering could hold a message open. Here the same behaviour is a
 /// [StatefulWidget] per card: it arms a [Timer], pauses it on hover, and closes
 /// through a short slide-out so a message never blinks out mid-sentence.
+///
+/// Only the cards take pointer input, never the column around them — the web
+/// build puts `pointer-events: none` on the stack and `auto` on each toast, and
+/// the port has to say the same thing or the 撤销 action would be deletable
+/// decoration. A [Column] does not consume hits by itself, so leaving the
+/// `IgnorePointer` off the column is enough: empty space still falls through to
+/// the page underneath, and the cards become reachable.
 library;
 
 import 'dart:async';
@@ -105,25 +112,23 @@ class ToastHostState extends State<ToastHost> {
             left: 0,
             right: 0,
             bottom: 0,
-            child: IgnorePointer(
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(Sp.x4, 0, Sp.x4, Sp.x6),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final item in _items)
-                        Padding(
-                          padding: const EdgeInsets.only(top: Sp.x2),
-                          child: _ToastCard(
-                            key: ValueKey<int>(item.id),
-                            message: item,
-                            onDismiss: _dismiss,
-                          ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(Sp.x4, 0, Sp.x4, Sp.x6),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final item in _items)
+                      Padding(
+                        padding: const EdgeInsets.only(top: Sp.x2),
+                        child: _ToastCard(
+                          key: ValueKey<int>(item.id),
+                          message: item,
+                          onDismiss: _dismiss,
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -144,14 +149,35 @@ class _ToastCard extends StatefulWidget {
   State<_ToastCard> createState() => _ToastCardState();
 }
 
-class _ToastCardState extends State<_ToastCard> {
+class _ToastCardState extends State<_ToastCard>
+    with SingleTickerProviderStateMixin {
   Timer? _timer;
   bool _held = false;
+
+  /// Drives both halves of the movement: in on arrival, out on dismissal.
+  /// One controller, so an entrance and an exit can never overlap.
+  late final AnimationController _anim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 170),
+  );
 
   @override
   void initState() {
     super.initState();
     _arm();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reduced motion: no entrance, and the exit is instant. Read here rather
+    // than in [initState] because a `MediaQuery` lookup is only legal once the
+    // inherited widgets are available.
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      _anim.value = 1;
+    } else if (_anim.isDismissed) {
+      _anim.forward();
+    }
   }
 
   @override
@@ -163,6 +189,7 @@ class _ToastCardState extends State<_ToastCard> {
   @override
   void dispose() {
     _timer?.cancel();
+    _anim.dispose();
     super.dispose();
   }
 
@@ -174,10 +201,24 @@ class _ToastCardState extends State<_ToastCard> {
     _timer = Timer(Duration(milliseconds: ms), _close);
   }
 
-  void _close() {
+  /// Leave through a short exit instead of vanishing.
+  ///
+  /// The card is removed by the host, so the exit has to finish *before* the
+  /// host drops it — the same reason the web build keeps an `exitTimer` and
+  /// calls `onDismiss` 170 ms later. `_leaving` guards re-entry because the
+  /// dwell timer and a click can both land on the same frame.
+  Future<void> _close() async {
     _timer?.cancel();
+    if (_leaving) return;
+    _leaving = true;
+    if (!(MediaQuery.maybeOf(context)?.disableAnimations ?? false)) {
+      await _anim.reverse();
+    }
+    if (!mounted) return;
     widget.onDismiss(widget.message.id);
   }
+
+  bool _leaving = false;
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +235,10 @@ class _ToastCardState extends State<_ToastCard> {
       ToastKind.info => p.warn,
     };
 
-    return MouseRegion(
+    // In from below on arrival, back down on the way out: the web build's
+    // `toast-in` (translateY(10px)) and `toast-out`. Opacity and translation
+    // only, so the string is measurable and legible the whole way.
+    final Widget card = MouseRegion(
       onEnter: (_) {
         _held = true;
         _timer?.cancel();
@@ -248,6 +292,19 @@ class _ToastCardState extends State<_ToastCard> {
           ),
         ),
       ),
+    );
+
+    return AnimatedBuilder(
+      animation: _anim,
+      child: card,
+      builder: (BuildContext context, Widget? child) {
+        final double t = _anim.value;
+        if (t >= 1) return child!;
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(offset: Offset(0, (1 - t) * 10), child: child),
+        );
+      },
     );
   }
 }

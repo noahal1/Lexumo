@@ -4,7 +4,7 @@
 **不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
 Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
 
-工程规模：`lib/` 与 `test/` 共 41,212 行 Dart，764 个测试通过（另有 6 条需要真 Postgres
+工程规模：`lib/` 与 `test/` 共 44,198 行 Dart，823 个测试通过（另有 6 条需要真 Postgres
 桥接的 E2E 默认 skip），`flutter analyze` 零问题。
 
 ---
@@ -20,7 +20,7 @@ Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果�
 上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
 React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 
-这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，764 个测试覆盖纯逻辑与
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，823 个测试覆盖纯逻辑与
 共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
 
 ---
@@ -28,7 +28,7 @@ React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 ## 2. 目录结构与职责
 
 ```
-flutter/lib/                        63 个文件，26,619 行（test/ 另有 39 个文件 14,200 行）
+flutter/lib/                        67 个文件，28,577 行（test/ 另有 44 个文件 15,621 行）
   main.dart            入口：Store 初始化 → UpdateService → 作用域树 → MaterialApp
   app/                 组合根：谁在什么时候构造谁
     scope.dart         InheritedWidget 层：StoreNotifier / StoreScope / I18nScope / ToastScope / NavScope
@@ -73,11 +73,12 @@ flutter/lib/                        63 个文件，26,619 行（test/ 另有 39 
     core/
       view_model.dart  MVVM 契约：ViewModel 基类 + Feedback 端口 + ToastKind
       context_feedback.dart Feedback 的 BuildContext 实现（唯一的适配器）
+      system_ui.dart   系统栏：edgeToEdge + shellOverlayStyle（深色/浅色自适应图标）
       theme.dart       ThemeData 构建，把 Palette 塞进 ThemeExtension
       tokens.dart      全部设计令牌（Palette / Sp / R / Fs / Lh / Fonts / Motion / Layout / Shadows）
       i18n/
         i18n.dart      I18n 运行时：dict / t(key, vars) / has(key)
-        zh_cn.dart     384 条键
+        zh_cn.dart     411 条键
         en.dart        同键英文（键集由 i18n_test 强制一致）
       widgets/
         widgets.dart   PageShell / Segmented / EmptyState / ProgressBar / Ring / StatusChip / StatTile / ShortcutRow / Kbd / Card
@@ -86,8 +87,12 @@ flutter/lib/                        63 个文件，26,619 行（test/ 另有 39 
         lex_icon.dart  图标系统：Ic 常量 + LexIcon
         icon_paths.dart SVG path 数据
         keyboard_hints.dart showKeyboardHints()：按平台判断是否显示键帽（32 行）
-        toast.dart     轻提示，含堆叠、自动消失、动作按钮
+        toast.dart     轻提示：堆叠、悬停暂停、入场/退场（367 行）
+        entrance.dart   入场原语 FadeRise：一个控制器，延迟走 Interval（126 行）
     features/
+      home/
+        view_models/home_view_model.dart           首页聚合：今日目标 / 连续天数 / 近七天（306 行）
+        views/home_page.dart                       只画（982 行）
       words/
         view_models/words_view_model.dart          列表 + 筛选 + 批量操作（477 行）
         view_models/word_editor_view_model.dart    新建/编辑词的草稿与查词（486 行）
@@ -110,8 +115,8 @@ flutter/lib/                        63 个文件，26,619 行（test/ 另有 39 
         view_models/update_view_model.dart         升级卡状态（393 行）
         views/update_sheet.dart                    只画（384 行）
       shell/
-        view_models/shell_view_model.dart          三档布局 + 页面切换（198 行）
-        views/app_shell.dart                       只画（798 行）
+        view_models/shell_view_model.dart          三档布局 + 六页切换（198 行）
+        views/app_shell.dart                       只画（870 行）
   third_party/
     flutter_tts/       flutter_tts 4.2.5 的原样拷贝，只改 Windows 的 C++（见 7.2）
 ```
@@ -237,6 +242,43 @@ view model 并把草稿推回 7 个 `TextEditingController`——**必须在构�
 ---
 
 ## 5. 页面实现要点
+
+### 首页（`home_page.dart`，982 行 + `home_view_model.dart` 306 行）
+打开应用落在的那一页，回答的是「现在该做什么」，不是「一共有多少数据」——统计页
+已经在答后一个问题了，两页若都铺数字，就没有哪一页是入口。
+
+一页读完的四件事：一句问候带上还剩几张卡（`home.dueHeadline`，过完了换成
+`home.dueClear`）、今日目标环、连续天数与已掌握两个块、以及一个**唯一**的实心按钮
+「开始复习 · 7」。这一页**不做任何写操作**，四个入口全是跳页（复习→闪卡、测验→测验、
+添加→词库、查看→统计），所以它没有「做到一半失败」的状态，也不需要撤销。
+
+几个刻意的取舍：
+
+- **问候语不装卡片。** 卡片是一组「东西」的分组，而问候是页面在说话；把它放进框里，
+  它就从「现在该做什么」的答案退化成了又一个控件。
+- **一屏只有一个实心按钮。** 复习是主行动，其余三个是次级（描边/文字）。两个实心按钮
+  并排等于没有主行动。
+- **目标环只放一个环，不放统计页那三行说明。** 手机上这张卡内宽 232dp，120dp 的环
+  留给文字约 100dp——够一句短的，不够统计页的三行。首页陈述事实，解释留在统计页。
+- **七个界面的顺序**：`_screens`（`responsive_layout_test.dart`）与 `kScreens`
+  （`mobile_layout_test.dart`）里 `('home', …)` 排在最前，因为 `PageId` 的声明顺序
+  就是标签栏顺序与 Ctrl/Cmd+1…6 的编号，测试列表若用别的顺序，那份顺序就成了假的。
+
+首个把 `PageId` 从五页扩到六页的改动连带三处：`_digitKeys` 从五条扩到六条（它按
+`PageId.values` 索引，少一条会在 Ctrl+6 上抛区间错误）、`kShortcutHelp` 与设置页
+`_kShortcuts` 的 `Ctrl 1…5` 改成 `1…6`（设置页那是一份**故意镜像**的副本，反向
+import 会成环）、`Ic.home` 加进 `icon_paths.dart` 与 `lex_icon.dart`。标签栏同时补了
+两件事：`Shadows.tabbarFor(p.isDark)`（令牌写了却一直没接）、以及活动项的
+`AnimatedContainer` + 4% 图标缩放——只动 transform 与 opacity，不越界回弹。
+
+`_GoalAndTiles` 里有一处注释值得单独记：外面那个 `IntrinsicHeight(Row(...))` 让环和
+两块等高，而**它的子树里不能出现 `LayoutBuilder`**（内禀尺寸算不出来，第 6 节第五类
+缺陷就是这么来的），所以两块 `StatTile` 是直接构造的，没有各自的 `LayoutBuilder`。
+
+宽度判断放在实际拿到的 `constraints.maxWidth` 上：环与两块并排的门槛是 640（按内容列
+算，不是窗口），行动区竖排/横排是 480。手机上量到的数字：411dp 下
+「今天还有 7 张卡片在等你」占 312dp，可用 363dp，不折行；320dp 下六个标签各占
+25×14dp，最大的一行也没挤到相邻项。
 
 ### 词库页（`words_page.dart`，2031 行 + `words_view_model.dart` 477 行）
 最复杂的一页：搜索框、五个状态筛选（全部/新词/复习中/学习中/已掌握）、排序、
@@ -620,6 +662,59 @@ foundation 的 debug 变量已复位，用 `addTearDown` 会让测试因为「�
 现在 `responsive_layout_test.dart` 在 411/540/560/580/620/900 六档都钉了这两条，
 把两处修法都改回去时它报 6 条失败（含那三个静默档），只改回一处则互相兜住。
 
+### 动效：一个原语，三处接线
+
+Web 版有六个入场 keyframe（`fade-in`、`pop-in`、`rise`、`row-in`、`tile-in`、
+`bar-rise`，`src/styles/global.css:1798-1885`），彼此只差「走多远」。移植过来合成
+一个 `FadeRise`（`ui/core/widgets/entrance.dart`，126 行），于是「这块东西会不会
+入场」变成一个 grep 就能回答的问题，而下面三条约束只需要在一处守住：
+
+```dart
+FadeRise(child: ..., offset: 10, delay: Motion.stagger * i, duration: Motion.dur3)
+```
+
+1. **只动 transform 和 opacity**。给 `Padding`/`SizedBox` 做补间会让内容在行还被
+   测量的时候滑动，量出来的点击框和眼睛看到的那一行对不上。Web 版 `row-in` 的注释
+   写的正是这件事。
+2. **延迟是 `Interval`，不是 `Timer`**。一个 `Duration delay` 由一个
+   `AnimationController` 用 `Interval(delay / total, 1, curve:)` 消化掉。用 `Timer`
+   的话 `pumpAndSettle()` 会提前返回，然后 teardown 报「Timer is still pending」——
+   而 `entrance_test.dart` 里那条「a delayed block uses no timer, so settle
+   terminates」就是钉这个的。
+3. **尊重 `disableAnimations`**：在 `didChangeDependencies` 里读一次
+   `MediaQuery.maybeOf(context)?.disableAnimations`，为真就直接把控制器置到末态。
+
+接线的地方各自选了不同的位移，理由各不相同：
+
+| 位置 | offset | 理由 |
+| --- | --- | --- |
+| `PageShell` 的正文 | **0** | 只渐显。页面容器一旦有 transform 就会成为页内定位元素的包含块，粘性表头会跟着错位——Web 版 `.page-inner` 的注释是这个意思 |
+| 首页的四块 | 8 | 仪表盘是唯一「按顺序抵达」的页面：问候 → 数字 → 出口。超过四块不再加延迟，否则读起来像卡了 |
+| 词库的行 / 统计的格子 | 6 / 9 | 行和格子随下标递增，各自封顶 8 / 4 项（Web 版 `Math.min(index, 8) * 16ms`）。不封顶的话第 400 行要等六秒 |
+
+另外三件事顺带补上：`LexButton` 有了按下反馈（`AnimatedScale` 缩到 0.985，走的正是
+Web 的 `.btn:active`，用 `onTapDown`/`onTapCancel` 而不是 `onTap`，因为触摸屏没有
+hover，按下必须当场看得见）；侧栏底部三个图标按钮的悬浮底色改成淡入而不是直接跳变；
+收起/展开的箭头从「换一个图标」改成「同一个图标转 180°」，于是它**摆**过去而不是被
+替换。
+
+**一处真 bug 是这轮测试挖出来的**：`ToastHost` 原来把整个栈包在 `IgnorePointer` 里
+（为了「让点击穿透到页面」），结果连「撤销」按钮也一起穿过去了——点了没反应，而
+toast 照样消失，看起来像撤销成功了。Web 版的做法是栈 `pointer-events: none`、
+每张卡 `auto`（`global.css:1452-1463`），移植时把这条弄反了。修法是把
+`IgnorePointer` 整个去掉：`Column` 本身不吃点击，空白处照样穿透，只有卡片收下。
+`test/toast_test.dart`（9 条）从此覆盖这条路——之前所有测试都是拿假 `ToastScope`
+替掉真实 host，所以这条路径一次都没被跑过。
+
+判据也得改：`tester.takeException()` 抓不到一个「点不动」的按钮，因为不抛异常。
+那条断言只能落在**副作用**上——点完之后 `onAction` 到底有没有被调用。
+
+顺带补上 toast 自己的入场/退场（同一个控制器：进 170ms 从下往上 10dp，退反向走完
+再让宿主摘掉卡片），以及深色主题下石框/纸面之间那道亮边——`Palette.edge` 这个 token
+在 Dart 和 CSS 里都有，但移植后**从没被画过**，所以深色桌面上的分界线只剩一档
+几乎看不出的亮度差。现在由 `_Paper` 画：深色且非手机布局时，纸面左侧一道 2dp 的
+`p.edge` 内描边。
+
 ### 两端的数据是怎么走的
 
 同一份 Dart 代码编出两个 target，**默认**各存一份：
@@ -689,7 +784,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 ```bash
 cd flutter
 ../.flutter-sdk/flutterc analyze           # No issues found!
-../.flutter-sdk/flutterc test              # 764 passed, 6 skipped
+../.flutter-sdk/flutterc test              # 823 passed, 6 skipped
 ./tool/build_apk.sh                        # 出 release APK 到 dist/
 ./tool/build_windows.sh                    # 出 Windows release 包
 ./tool/release.sh                          # 出签名 APK + dist/update.json
@@ -723,6 +818,59 @@ sdk gphone16k x86 64 (mobile) • emulator-5554 • android-x64 • Android 17 (
 包名是 **`dev.lexumo.lexumo`**（`android/app/build.gradle.kts:19`）。不是
 `com.lexumo.app`——那是原 Tauri 版的 identifier。用错包名会让 `pm path` 永远返回空，
 很容易把「已经装上了」误判成「没装上」，`tool/*.sh` 里全都写对了这个值。
+
+#### 状态栏与手势条
+
+改之前**一处系统栏调用都没有**：`grep -r 'SystemChrome|SystemUiOverlay' lib` 是空的。
+于是 Android 画着默认的不透明状态栏，Flutter 视图从它下面开始，而 shell 的
+`SafeArea(bottom: false)` 又把它让出一次——状态栏那一圈既是系统画的、又被让了两遍。
+同时 `Theme.Light.NoTitleBar` 没声明刘海模式，带刘海的机器上刘海是直接切进信箱的。
+
+沉浸是**两半**，两半必须一致，缺一个就是「透明了但图标看不见」或「图标亮了但栏还在」：
+
+1. **`enableEdgeToEdge()`**（`lib/ui/core/system_ui.dart`）在 `main()` 里、
+   `runApp` **之前** `await`：`SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge)`，
+   然后先推一份临时样式。顺序要紧——不 await 就会与首帧抢平台通道，第一帧先带信箱
+   再跳一下。
+2. **`AnnotatedRegion<SystemUiOverlayStyle>`** 包住 shell 的 `Scaffold`，值来自
+   `shellOverlayStyle(tabBar: mobile, isDark: _vm.isDark)`。
+
+为什么用 `AnnotatedRegion` 而不是进程级的 `SystemChrome.setSystemUIOverlayStyle`：图标
+明暗取决于**这一页顶部是什么颜色**，而那是布局模式决定的（手机上顶上是 stone 导航，
+桌面上顶上也是 stone，只有底部手势条落在纸上）。把决定权放在画的那棵树上，跟着
+路由走，页面弹窗时也不会串色。
+
+两条边是**两个不同的判断**，这是这段最容易写错的地方：
+
+| 边 | 底下是什么 | 图标 |
+| --- | --- | --- |
+| 状态栏（上） | 永远是 stone（深色，两种主题里都是） | 永远浅色 |
+| 手势条（下） | 手机上是 stone 标签栏；桌面上是 paper（跟主题） | 有标签栏→浅色，否则跟主题 |
+
+所以 `statusIcons` 是常量 `Brightness.light`，`navIcons` 才是三元表达式。两处写反都会
+被 `test/system_ui_test.dart` 抓到：把 `navIcons` 写成常量 `Brightness.light` 挂 3 条，
+让 `statusIcons` 跟着 `isDark` 挂 3 条。这个测试还断言了 `enableEdgeToEdge` 真的发出了
+`SystemUiMode.edgeToEdge` 的通道调用——**注意 `SystemChrome` 把最近一次的样式缓存在静态
+字段里，传相同样式就直接不发通道**，所以两条独立的「第一次」测试无法同时成立，只能合成
+一条，并 `await pumpEventQueue()` 等微任务落下来。
+
+`shellOverlayStyle` 里的 `systemStatusBarContrastEnforced: false` /
+`systemNavigationBarContrastEnforced: false` 不是可选的：Android 10+ 会给透明栏自动加
+一层半透明遮罩「保护可读性」，不去掉的话 `Colors.transparent` 并不真的透明。
+
+Android 资源那一半（`android/app/src/main/res/`）：新建 `values/colors.xml`，其中
+`frame`（`#252C28`）是**整个工程唯一一处 Android 重复写设计令牌**——启动窗口由系统在
+Dart 起来之前绘制，只能读资源。`values/styles.xml` 与 `values-night/styles.xml` 的
+`LaunchTheme`/`NormalTheme` 都补了 `windowLayoutInDisplayCutoutMode=shortEdges`、
+`statusBarColor`/`navigationBarColor=@color/transparent`；`NormalTheme` 再加
+`windowLightStatusBar=false`、`windowLightNavigationBar=false`、两条 `enforce*Contrast=false`，
+并把 `windowBackground` 从 `?android:colorBackground` 换成 `@color/frame`——启动图和第一帧
+Flutter 因此是同一块表面，不会闪一下。
+
+**这一项没有在真机上验过**：本机 adb 起不来（`adb devices -l` 报
+`CreateProcess failure, error 2`），所以上面全部是断言与单测的结论，不是眼睛看到的结论。
+要在真机上确认，装包后看三件事：状态栏图标是浅色、内容画到状态栏下面而不是从它下面
+开始、手势条区域是 stone（手机）或纸色（桌面）而不是黑色条。
 
 ### 7.2 Windows
 

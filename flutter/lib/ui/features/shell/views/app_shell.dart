@@ -29,14 +29,16 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../../app/scope.dart';
+import '../../../core/context_feedback.dart';
+import '../../../core/system_ui.dart';
 import '../../../core/tokens.dart';
 import '../../../core/widgets/density.dart';
 import '../../../core/widgets/keyboard_hints.dart';
 import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
-import '../../../../app/scope.dart';
-import '../../../core/context_feedback.dart';
 import '../../flashcards/views/flashcards_page.dart';
+import '../../home/views/home_page.dart';
 import '../../quiz/views/quiz_page.dart';
 import '../../settings/views/settings_page.dart';
 import '../../stats/views/stats_page.dart';
@@ -59,6 +61,7 @@ const Key kSidebarKey = ValueKey<String>('app-sidebar');
 /// [LexIcon]. The switch is exhaustive, so a new destination cannot be added
 /// without giving it an icon.
 String _iconFor(PageId page) => switch (page) {
+      PageId.home => Ic.home,
       PageId.words => Ic.words,
       PageId.flashcards => Ic.cards,
       PageId.quiz => Ic.quiz,
@@ -76,7 +79,7 @@ class ShortcutHelp {
 /// The sheet's contents, in declaration order — the same list the web build
 /// rendered from `SHORTCUT_HELP`.
 const List<ShortcutHelp> kShortcutHelp = <ShortcutHelp>[
-  ShortcutHelp(<String>['Ctrl', '1…5'], 'shortcuts.pageSwitch'),
+  ShortcutHelp(<String>['Ctrl', '1…6'], 'shortcuts.pageSwitch'),
   ShortcutHelp(<String>['?'], 'shortcuts.help'),
   ShortcutHelp(<String>['/'], 'settings.shortcutSearch'),
   ShortcutHelp(<String>['n'], 'settings.shortcutAdd'),
@@ -87,14 +90,19 @@ const List<ShortcutHelp> kShortcutHelp = <ShortcutHelp>[
   ShortcutHelp(<String>['Esc'], 'shortcuts.closeModal'),
 ];
 
-/// The five digit keys behind Ctrl/Cmd+1…5, in page order. Spelled out because
+/// The digit keys behind Ctrl/Cmd+1…6, in page order. Spelled out because
 /// `LogicalKeyboardKey.digit1 + i` is not arithmetic the type allows.
+///
+/// Six entries for six destinations. The list is indexed by
+/// [PageId.values], so adding a destination without extending it would throw
+/// a range error on the first Ctrl+6 rather than silently doing nothing.
 const List<LogicalKeyboardKey> _digitKeys = <LogicalKeyboardKey>[
   LogicalKeyboardKey.digit1,
   LogicalKeyboardKey.digit2,
   LogicalKeyboardKey.digit3,
   LogicalKeyboardKey.digit4,
   LogicalKeyboardKey.digit5,
+  LogicalKeyboardKey.digit6,
 ];
 
 class AppShell extends StatefulWidget {
@@ -161,7 +169,7 @@ class _AppShellState extends State<AppShell> {
 
         return CallbackShortcuts(
           bindings: <ShortcutActivator, VoidCallback>{
-            // Ctrl/Cmd + 1…5. The digits are not contiguous logical key codes,
+            // Ctrl/Cmd + 1…6. The digits are not contiguous logical key codes,
             // so the table is spelled out rather than computed.
             for (var i = 0; i < PageId.values.length; i++) ...{
               SingleActivator(_digitKeys[i], control: true): () =>
@@ -176,34 +184,40 @@ class _AppShellState extends State<AppShell> {
           },
           child: Focus(
             autofocus: true,
-            child: Scaffold(
-              backgroundColor: Palette.of(context).frame,
-              body: SafeArea(
-                bottom: false,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (!mobile)
-                      _Sidebar(
-                        vm: _vm,
-                        rail: rail,
-                        narrow: narrow,
-                        onNavigate: _navigate,
-                        onHelp: () => showShortcutSheet(context),
+            // The window is edge-to-edge (`enableEdgeToEdge` in `main.dart`),
+            // so both system bars float over this widget and their glyph
+            // colours have to be republished from here. `shellOverlayStyle`
+            // takes the layout mode because the two edges sit on different
+            // materials: the top is always the stone frame (dark in both
+            // themes), while the bottom is stone only when the phone tab bar is
+            // there and paper otherwise. See `ui/core/system_ui.dart`.
+            child: AnnotatedRegion<SystemUiOverlayStyle>(
+              value: shellOverlayStyle(tabBar: mobile, isDark: _vm.isDark),
+              child: Scaffold(
+                backgroundColor: Palette.of(context).frame,
+                body: SafeArea(
+                  bottom: false,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (!mobile)
+                        _Sidebar(
+                          vm: _vm,
+                          rail: rail,
+                          narrow: narrow,
+                          onNavigate: _navigate,
+                          onHelp: () => showShortcutSheet(context),
+                        ),
+                      Expanded(
+                        child: _Paper(mobile: mobile, child: _pageFor(page)),
                       ),
-                    Expanded(
-                      child: Container(
-                        // The paper.
-                        color: Palette.of(context).bg,
-                        child: _pageFor(page),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                bottomNavigationBar:
+                    mobile ? _TabBar(vm: _vm, onNavigate: _navigate) : null,
+                floatingActionButton: null,
               ),
-              bottomNavigationBar:
-                  mobile ? _TabBar(vm: _vm, onNavigate: _navigate) : null,
-              floatingActionButton: null,
             ),
           ),
         );
@@ -221,6 +235,7 @@ class _AppShellState extends State<AppShell> {
     return NavScope(
       onNavigate: (id) => _navigateToId(id),
       child: switch (page) {
+        PageId.home => HomePage(controller: controller),
         PageId.words => WordsPage(controller: controller),
         PageId.flashcards => FlashcardsPage(controller: controller),
         PageId.quiz => QuizPage(controller: controller),
@@ -241,6 +256,39 @@ class _AppShellState extends State<AppShell> {
 /* ------------------------------------------------------------------ */
 /* Sidebar                                                             */
 /* ------------------------------------------------------------------ */
+
+/// The paper, with the lit edge that separates it from the stone frame.
+///
+/// In light theme the two materials are far apart in luminance and the boundary
+/// needs nothing. In dark theme both are near-black, so the step between them is
+/// almost invisible and the seam has to be drawn rather than implied: a 2dp
+/// highlight on the paper's frame side, [Palette.edge]. This is the web build's
+/// `:root[data-theme="dark"] .app:not(.mobile) .main { box-shadow: inset 2px 0 0
+/// var(--edge) }` — the token existed in the port, nothing painted it, so on a
+/// dark desktop the sidebar floated against an edge you could not see.
+///
+/// A phone has no frame beside the paper — the tab bar sits below, not to the
+/// left — so there is no seam to draw.
+class _Paper extends StatelessWidget {
+  const _Paper({required this.mobile, required this.child});
+
+  final bool mobile;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Container(
+      color: p.bg,
+      foregroundDecoration: p.isDark && !mobile
+          ? BoxDecoration(
+              border: Border(left: BorderSide(color: p.edge, width: 2)),
+            )
+          : null,
+      child: child,
+    );
+  }
+}
 
 class _Sidebar extends StatelessWidget {
   const _Sidebar({
@@ -281,7 +329,8 @@ class _Sidebar extends StatelessWidget {
         onTap: vm.toggleTheme,
       ),
       _SidebarButton(
-        icon: rail ? Ic.chevronRight : Ic.chevronLeft,
+        icon: Ic.chevronLeft,
+        quarterTurns: rail ? 2 : 0,
         tooltip: rail ? context.t('shell.expandRail') : context.t('shell.collapseRail'),
         onTap: () => vm.toggleRail(narrow),
       ),
@@ -456,11 +505,24 @@ class _NavItemState extends State<_NavItem> {
 }
 
 class _SidebarButton extends StatefulWidget {
-  const _SidebarButton({required this.icon, required this.tooltip, required this.onTap});
+  const _SidebarButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.quarterTurns = 0,
+  });
 
   final String icon;
   final String tooltip;
   final VoidCallback onTap;
+
+  /// How far to turn the icon, in quarter turns. The rail toggle uses two so the
+  /// same chevron points the other way: the web build rotates one glyph
+  /// (`.app.rail .rail-toggle svg { transform: rotate(180deg) }`) rather than
+  /// swapping icons, and the difference is that the turn is visible — the
+  /// chevron swings instead of being replaced, which is what tells you the two
+  /// states are the same control.
+  final int quarterTurns;
 
   @override
   State<_SidebarButton> createState() => _SidebarButtonState();
@@ -483,21 +545,36 @@ class _SidebarButtonState extends State<_SidebarButton> {
           onTap: widget.onTap,
           behavior: HitTestBehavior.opaque,
           child: TapTarget(
-            child: Container(
-              width: Layout.controlHSm,
-              height: Layout.controlHSm,
-              margin: const EdgeInsets.only(right: 2),
-              decoration: BoxDecoration(
-                color: _hover ? p.frame3 : Colors.transparent,
-                borderRadius: R.borderSm,
-              ),
-              child: Center(
-                child: LexIcon(
-                  widget.icon,
-                  size: 16,
-                  color: _hover ? p.frameInk : p.frameInk3,
-                ),
-              ),
+            // The hover tint fades in over `dur-2` rather than snapping. On a
+            // strip of three unlabelled icons a sudden fill reads as a state
+            // change; a fade reads as the pointer arriving.
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(begin: 0, end: _hover ? 1 : 0),
+              duration: Motion.dur2,
+              curve: Motion.ease,
+              builder: (BuildContext context, double t, Widget? child) {
+                return Container(
+                  width: Layout.controlHSm,
+                  height: Layout.controlHSm,
+                  margin: const EdgeInsets.only(right: 2),
+                  decoration: BoxDecoration(
+                    color: Color.lerp(Colors.transparent, p.frame3, t),
+                    borderRadius: R.borderSm,
+                  ),
+                  child: Center(
+                    child: AnimatedRotation(
+                      turns: widget.quarterTurns / 4,
+                      duration: Motion.dur3,
+                      curve: Motion.ease,
+                      child: LexIcon(
+                        widget.icon,
+                        size: 16,
+                        color: Color.lerp(p.frameInk3, p.frameInk, t)!,
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),
@@ -579,10 +656,18 @@ class _TabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    // The tab bar floats over the page rather than sitting in it, so it gets
+    // the one shadow the design system reserves for that: a hairline of its own
+    // colour plus a soft upward bloom. `Shadows.tabbarFor` was written for this
+    // bar and never wired up — the bar drew a flat `Border(top:)` instead, which
+    // reads as a seam rather than as lift. The border stays (it is what defines
+    // the edge against a same-coloured page in dark mode, where the bloom is
+    // nearly invisible); the shadow is what makes it a surface.
     return Container(
       decoration: BoxDecoration(
         color: p.frame,
         border: Border(top: BorderSide(color: p.frameLine)),
+        boxShadow: Shadows.tabbarFor(p.isDark),
       ),
       child: SafeArea(
         top: false,
@@ -621,10 +706,17 @@ class _TabItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final color = active ? p.frameAccent : p.frameInk3;
+    // The active pill is the only thing on this bar that moves, and it moves
+    // once per tap: a 180ms fade of the background, not a slide. A sliding
+    // indicator would need the bar to know where the previous item was, which
+    // is state the shell does not otherwise keep — and at 6 tabs on a 320dp
+    // phone the items are 50dp wide, so a slide would be a flicker.
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
+      child: AnimatedContainer(
+        duration: Motion.dur2,
+        curve: Motion.easeOut,
         constraints: const BoxConstraints(minHeight: 52),
         padding: const EdgeInsets.symmetric(vertical: Sp.x1, horizontal: Sp.x2),
         decoration: BoxDecoration(
@@ -642,7 +734,15 @@ class _TabItem extends StatelessWidget {
                 clipBehavior: Clip.none,
                 alignment: Alignment.center,
                 children: [
-                  LexIcon(_iconFor(item), size: 21, color: color),
+                  AnimatedScale(
+                    // A 4% lift on selection. Small enough that it reads as
+                    // "this one" rather than as a bounce, which the design
+                    // system forbids — nothing overshoots.
+                    scale: active ? 1.04 : 1.0,
+                    duration: Motion.dur2,
+                    curve: Motion.easeOut,
+                    child: LexIcon(_iconFor(item), size: 21, color: color),
+                  ),
                   if (badge != null)
                     Positioned(
                       top: -5,
@@ -675,6 +775,14 @@ class _TabItem extends StatelessWidget {
             const SizedBox(height: Sp.x1),
             Text(
               context.t(item.labelKey),
+              // Six destinations on a 320dp phone leave ~34dp of text column
+              // once the pill's padding is taken. A CJK label is two glyphs and
+              // fits; a longer Latin one has to ellipsize rather than wrap,
+              // because a wrapped label would grow the bar and the bar is the
+              // one piece of chrome that must not change height with language.
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: Fs.xs,
                 height: Lh.title,

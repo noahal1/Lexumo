@@ -36,6 +36,7 @@ import '../../../../domain/use_cases/word_query.dart';
 import '../../../core/context_feedback.dart';
 import '../../../core/tokens.dart';
 import '../../../core/widgets/controls.dart';
+import '../../../core/widgets/entrance.dart';
 import '../../../core/widgets/density.dart';
 import '../../../core/widgets/keyboard_hints.dart';
 import '../../../core/widgets/lex_icon.dart';
@@ -278,13 +279,20 @@ class _WordsPageState extends State<WordsPage> {
                   ),
                 if (_vm.selectMode) ...[
                   const SizedBox(height: Sp.x4),
-                  _BulkBar(
-                    count: _vm.selectedCount,
-                    allSelected: _vm.allVisibleSelected,
-                    onSelectAll: _vm.selectAllVisible,
-                    onFavorite: _vm.favoriteSelected,
-                    onDelete: _vm.deleteSelected,
-                    onCancel: _vm.exitSelect,
+                  // The web's `bar-rise`, and the largest travel of any
+                  // entrance: the bar appears where the footer hint was, so a
+                  // long rise makes the swap read as one thing rather than as
+                  // two unrelated footers trading places.
+                  FadeRise(
+                    offset: 14,
+                    child: _BulkBar(
+                      count: _vm.selectedCount,
+                      allSelected: _vm.allVisibleSelected,
+                      onSelectAll: _vm.selectAllVisible,
+                      onFavorite: _vm.favoriteSelected,
+                      onDelete: _vm.deleteSelected,
+                      onCancel: _vm.exitSelect,
+                    ),
                   ),
                 ],
                 if (_vm.hasResults && !_vm.selectMode) ...[
@@ -1083,24 +1091,31 @@ class _WordTable extends StatelessWidget {
                   ),
                 ),
               for (var i = 0; i < words.length; i++)
-                _WordRow(
+                FadeRise(
+                  // The key moves to the wrapper: it is what lets a row that
+                  // survives a filter keep its finished entrance instead of
+                  // replaying it, and what lets a genuinely new row play one.
                   key: ValueKey<String>(words[i].id),
-                  word: words[i],
-                  query: query,
-                  lang: lang,
-                  now: now,
-                  selectMode: selectMode,
-                  compact: compact,
-                  picked: selected.contains(words[i].id),
-                  last: i == words.length - 1,
-                  index: i,
-                  onTap: () => selectMode
-                      ? onToggleSelected(words[i].id)
-                      : onOpen(words[i]),
-                  onFavorite: () => onFavorite(words[i]),
-                  onPlay: () => onPlay(words[i]),
-                  onEdit: () => onOpen(words[i]),
-                  onDelete: () => onDelete(words[i]),
+                  offset: 6,
+                  delay: Motion.stagger * (i < _kStaggerRows ? i : _kStaggerRows),
+                  child: _WordRow(
+                    word: words[i],
+                    query: query,
+                    lang: lang,
+                    now: now,
+                    selectMode: selectMode,
+                    compact: compact,
+                    picked: selected.contains(words[i].id),
+                    last: i == words.length - 1,
+                    index: i,
+                    onTap: () => selectMode
+                        ? onToggleSelected(words[i].id)
+                        : onOpen(words[i]),
+                    onFavorite: () => onFavorite(words[i]),
+                    onPlay: () => onPlay(words[i]),
+                    onEdit: () => onOpen(words[i]),
+                    onDelete: () => onDelete(words[i]),
+                  ),
                 ),
             ],
           ),
@@ -1112,6 +1127,14 @@ class _WordTable extends StatelessWidget {
 
 /// Below this content width the row folds into a phone-shaped two-liner.
 const double _kCompactBreakpoint = 640;
+
+/// How many rows keep a growing entrance delay before it stops increasing.
+///
+/// The web build caps the inline `animationDelay` at `Math.min(index, 8) * 16ms`
+/// so a 400-word library costs the same third of a second as a ten-word one.
+/// Without the cap the last row of a long list would wait six seconds for its
+/// turn, which reads as the page being broken rather than as a stagger.
+const int _kStaggerRows = 8;
 const double _kStatusColW = 128;
 
 /// The actions column holds four icon buttons, so its width is not a constant —
@@ -1147,8 +1170,9 @@ class _HeadCell extends StatelessWidget {
 }
 
 class _WordRow extends StatefulWidget {
+  // No `key`: the identity that matters belongs to the [FadeRise] wrapper above,
+  // so that a row keeping its place keeps its finished entrance too.
   const _WordRow({
-    super.key,
     required this.word,
     required this.query,
     required this.lang,

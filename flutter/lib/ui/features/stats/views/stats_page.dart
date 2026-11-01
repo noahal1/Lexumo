@@ -25,6 +25,7 @@ import '../../../../domain/models/srs.dart';
 import '../../../../domain/models/types.dart';
 import '../../../../domain/use_cases/word_query.dart';
 import '../../../core/widgets/controls.dart';
+import '../../../core/widgets/entrance.dart';
 import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
 import '../view_models/stats_view_model.dart';
@@ -444,6 +445,9 @@ class _Split extends StatelessWidget {
 }
 
 /// Four headline tiles: one row on a wide window, 2×2 below 860.
+/// How many tiles keep a growing entrance delay before it stops increasing.
+const int _kStaggerTiles = 4;
+
 class _TileGrid extends StatelessWidget {
   const _TileGrid({required this.tiles});
 
@@ -465,7 +469,22 @@ class _TileGrid extends StatelessWidget {
                 children: [
                   for (var j = 0; j < row.length; j++) ...[
                     if (j > 0) const SizedBox(width: Sp.x4),
-                    Expanded(child: row[j]),
+                    Expanded(
+                      // The web's `tile-in` (`9px`, `dur-4`) staggered per tile
+                      // by `--stagger`, capped at four so a long grid does not
+                      // finish arriving after the user has already read it.
+                      //
+                      // Safe inside the `IntrinsicHeight` above: [FadeRise] wraps
+                      // in `Opacity`/`Transform`, both of which proxy intrinsic
+                      // dimensions straight through. A `LayoutBuilder` here would
+                      // be the thing that throws.
+                      child: FadeRise(
+                        offset: 9,
+                        duration: Motion.dur4,
+                        delay: Motion.stagger * (i + j < _kStaggerTiles ? i + j : _kStaggerTiles),
+                        child: row[j],
+                      ),
+                    ),
                   ],
                 ],
               ),

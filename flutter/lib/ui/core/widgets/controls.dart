@@ -69,6 +69,12 @@ class LexButton extends StatefulWidget {
 class _LexButtonState extends State<LexButton> {
   bool _hover = false;
 
+  /// Held down right now. The press is a 1.5% contraction, not a colour change:
+  /// the web build's `.btn:active { transform: scale(0.985) }`. A colour change
+  /// on press would compete with the hover tint and make a deliberate press look
+  /// like a hover that has not finished yet.
+  bool _pressed = false;
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -147,21 +153,35 @@ class _LexButtonState extends State<LexButton> {
 
     return Opacity(
       opacity: enabled ? 1 : 0.55,
-      child: MouseRegion(
-        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          onTap: widget.onPressed,
-          child: Container(
-            height: height,
-            padding: EdgeInsets.symmetric(horizontal: padH),
-            decoration: BoxDecoration(
-              color: bg,
-              borderRadius: R.borderSm,
-              border: Border.all(color: line),
+      // A press has to be visible on touch too, where there is no hover to
+      // signal that the button was in fact aimed at. `onTapDown`/`onTapCancel`
+      // bracket the gesture; `onTap` still owns the callback so a drag that
+      // turns into a scroll cancels the press without firing.
+      child: AnimatedScale(
+        scale: _pressed && enabled ? 0.985 : 1,
+        duration: _pressed ? Motion.dur1 : Motion.dur2,
+        curve: Motion.ease,
+        child: MouseRegion(
+          cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+          onEnter: (_) => setState(() => _hover = true),
+          onExit: (_) => setState(() => _hover = false),
+          child: GestureDetector(
+            onTap: widget.onPressed,
+            onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
+            onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
+            onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
+            child: AnimatedContainer(
+              duration: Motion.dur1,
+              curve: Motion.ease,
+              height: height,
+              padding: EdgeInsets.symmetric(horizontal: padH),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: R.borderSm,
+                border: Border.all(color: line),
+              ),
+              child: ContentCenter(child: content),
             ),
-            child: ContentCenter(child: content),
           ),
         ),
       ),

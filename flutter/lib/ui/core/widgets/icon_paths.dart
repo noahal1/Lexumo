@@ -7,6 +7,10 @@ library;
 
 /// Icon name to SVG path data, on a 24x24 grid.
 const Map<String, String> kIconPath = <String, String>{
+  // A roof over a doorway. Drawn on the same 24-grid as the rest: the ridge
+  // peaks at 3, the eaves land at 9.5, and the door is a plain rectangle
+  // rather than an arch so it stays legible at the 16px the rail uses.
+  'home': 'M4 9.5 12 3l8 6.5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9.5Z M9.5 21v-6.5h5V21',
   'words':
       'M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5H6.5A2.5 2.5 0 0 0 4 21V5.5Z M20 18.5H6.5',
   'cards':

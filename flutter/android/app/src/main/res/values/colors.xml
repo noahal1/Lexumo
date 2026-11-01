@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The window chrome colours, as literals.
+
+    These are the only Android resources in the app that duplicate a design
+    token, and they have to: the launch window is painted by the OS before Dart
+    runs, so it cannot read `lib/ui/core/tokens.dart`. Keep them in step with
+    `Paper.frame` / `Slate.frame` — the stone frame is the same colour in both
+    themes, which is exactly why one value is enough here.
+
+    `windowBackground` on the launch theme is this colour rather than white, so
+    the splash and the first Flutter frame are the same surface and the launch
+    reads as one continuous thing instead of a white flash into a dark frame.
+-->
+<resources>
+    <!-- Paper.frame (light) / Slate.frame is 0xFF050706 in dark; the launch
+         window has no theme-dependent copy of its own, so it uses the light
+         one, which is the more common first launch. -->
+    <color name="frame">#252C28</color>
+    <color name="transparent">#00000000</color>
+</resources>

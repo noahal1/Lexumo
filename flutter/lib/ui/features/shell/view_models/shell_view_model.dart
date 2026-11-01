@@ -17,7 +17,7 @@
 ///
 /// What moves here is everything that is *identity* rather than *paint*:
 ///
-///   * **order** — [values] is the tab-bar order, and the Ctrl/Cmd+1…5 table
+///   * **order** — [values] is the tab-bar order, and the Ctrl/Cmd+1…6 table
 ///     is indexed by it,
 ///   * **the wire id** — `'words'`, `'quiz'`, …, which is what a page sends
 ///     back through `NavScope` and what [PageId.fromId] resolves,
@@ -45,11 +45,17 @@ import '../../../../domain/models/types.dart';
 import '../../../../domain/use_cases/day_stats.dart';
 import '../../../core/view_model.dart';
 
-/// The five destinations, in tab-bar order.
+/// The six destinations, in tab-bar order.
 ///
 /// Identity, order and the i18n key — not the icon. See this file's header for
 /// why the icon mapping is the view's.
+///
+/// [home] leads because it is the screen the app opens on: a landing page that
+/// says what is waiting today. It was added after the other five, and it went
+/// in at the front rather than the back because tab-bar order is reading order
+/// — a summary belongs before the thing it summarises.
 enum PageId {
+  home('home', 'nav.home'),
   words('words', 'nav.words'),
   flashcards('flashcards', 'nav.flashcards'),
   quiz('quiz', 'nav.quiz'),
@@ -86,7 +92,7 @@ class ShellViewModel extends ViewModel {
   ShellViewModel({
     required Store store,
     required this.feedback,
-    PageId initialPage = PageId.words,
+    PageId initialPage = PageId.home,
     int Function()? clock,
   })  : _store = store,
         _page = initialPage,

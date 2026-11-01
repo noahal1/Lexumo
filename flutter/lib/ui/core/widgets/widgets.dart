@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../tokens.dart';
 import 'density.dart';
+import 'entrance.dart';
 import 'lex_icon.dart';
 
 /// The page shell every screen uses: a sticky header over a scrolling body.
@@ -63,9 +64,17 @@ class PageShell extends StatelessWidget {
                       // clear of it.
                       Layout.tap + Sp.x6,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: children,
+                    // Every page fades in on navigation. Opacity only — no
+                    // travel — for the same reason the web build restricted
+                    // `.page-inner` to `fade-in`: a transform here would become
+                    // the containing block for anything positioned inside the
+                    // page, and the shell draws its own layers above this one.
+                    child: FadeRise(
+                      offset: 0,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: children,
+                      ),
                     ),
                   ),
                 ),

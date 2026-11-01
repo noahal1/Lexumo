@@ -18,7 +18,7 @@
 cd flutter
 
 ../.flutter-sdk/flutterc analyze     # No issues found!
-../.flutter-sdk/flutterc test        # 764 passed, 6 skipped
+../.flutter-sdk/flutterc test        # 823 passed, 6 skipped
 
 ./tool/build_apk.sh                  # release APK → dist/lexumo-android-release.apk
 ./tool/release.sh                    # 签名 APK + dist/update.json（发布用）
@@ -57,8 +57,11 @@ lib/
     core/            theme / tokens / i18n/（en, zh_cn）
       widgets/       controls（LexButton/LexInput/LexSelect…）/ widgets（PageShell 等）
                      / density / keyboard_hints / lex_icon / icon_paths / toast
+                     / entrance（FadeRise：全应用唯一的入场动画）
       view_model.dart / context_feedback.dart   三层之间的契约
-    features/        按功能切：words / flashcards / quiz / stats / settings / update / shell
+      system_ui.dart                           系统栏：edgeToEdge +
+                                               AnnotatedRegion 的图标明暗
+    features/        按功能切：home / words / flashcards / quiz / stats / settings / update / shell
       <feature>/
         view_models/ ChangeNotifier：状态 + 意图，不 import material
         views/       只画界面：读状态、发意图，不含业务判断
@@ -102,7 +105,7 @@ lib/
 让测试变成绊线。理由与修之前的数字见 `../docs/flutter-design.md`。
 
 411dp 竖屏只走到三套布局模式里的一套，所以另一套里的小屏问题它看不见：
-`test/responsive_layout_test.dart` 把六个界面在五个视口（320、360、横屏 866×411、
+`test/responsive_layout_test.dart` 把七个界面在五个视口（320、360、横屏 866×411、
 平板 800、桌面 1280）与两个字号（1.3×、2.0×）下各扫一遍，断言不抛布局异常。
 手机布局那组是「够不够用」，这组是「还有没有别的模式」——两者的判据都是
 `takeException()` 为 null，因为溢出的内容等于看不见的内容，没有容忍区间。
@@ -149,7 +152,7 @@ CI 读同一个文件。没有这个文件时清单里就没有 `notes`，应用
 ../.flutter-sdk/flutterc test test/responsive_layout_test.dart # 五个视口 × 六个界面
 ```
 
-764 个通过、6 个跳过（那 6 条要真 Postgres 桥接，见
+823 个通过、6 个跳过（那 6 条要真 Postgres 桥接，见
 `../docs/supabase-sync-plan.md`）。四层验证各自抓不到什么，记在
 `../docs/flutter-design.md` 末节：
 

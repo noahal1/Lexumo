@@ -41,6 +41,7 @@ import 'data/services/snapshot_store.dart';
 import 'domain/models/seed.dart';
 import 'domain/models/types.dart';
 import 'ui/core/i18n/i18n.dart';
+import 'ui/core/system_ui.dart';
 import 'ui/core/theme.dart';
 import 'ui/core/tokens.dart';
 import 'ui/core/widgets/toast.dart';
@@ -48,6 +49,12 @@ import 'ui/features/shell/views/app_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Draw under the system bars before anything is mounted, so the first frame
+  // is already edge-to-edge. Awaiting matters here: `runApp` below would
+  // otherwise race the platform channel and the first frame would be drawn
+  // letterboxed, then jump.
+  await enableEdgeToEdge();
 
   final store = Store(
     persistence: SnapshotStore(),

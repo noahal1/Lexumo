@@ -5,9 +5,10 @@
 // type scale, that `Segmented` actually moves its selection, and that the
 // `I18n` runtime feeds labels through the ambient scope instead of a global.
 //
-// Deliberately no app-shell test here: `AppShell` imports all five pages, so a
-// smoke test on `LexumoApp` can only be written once those files exist. That
-// test lives in `test/shell_test.dart`.
+// Deliberately no app-shell test here: `AppShell` imports every page, so a
+// smoke test on `LexumoApp` would drag the whole tree into this file. The
+// layout sweeps in `test/responsive_layout_test.dart` already pump the shell at
+// five viewports, which is the coverage this file would otherwise duplicate.
 
 // `Card` below means the app's own card from `ui/widgets.dart`; Material's
 // same-named widget is hidden so the name is unambiguous.

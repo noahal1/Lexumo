@@ -53,7 +53,7 @@ import '../view_models/settings_view_model.dart';
 /// `app/shell.dart`, which imports this page — a back-import would close the
 /// cycle the shell's docs warn about.
 const List<({List<String> keys, String labelKey})> _kShortcuts = [
-  (keys: ['Ctrl', '1…5'], labelKey: 'shortcuts.pageSwitch'),
+  (keys: ['Ctrl', '1…6'], labelKey: 'shortcuts.pageSwitch'),
   (keys: ['?'], labelKey: 'shortcuts.help'),
   (keys: ['/'], labelKey: 'settings.shortcutSearch'),
   (keys: ['n'], labelKey: 'settings.shortcutAdd'),

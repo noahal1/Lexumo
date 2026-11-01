@@ -35,6 +35,7 @@ import 'package:lexumo/ui/core/i18n/i18n.dart';
 import 'package:lexumo/ui/core/theme.dart';
 import 'package:lexumo/ui/core/tokens.dart';
 import 'package:lexumo/ui/features/flashcards/views/flashcards_page.dart';
+import 'package:lexumo/ui/features/home/views/home_page.dart';
 import 'package:lexumo/ui/features/quiz/views/quiz_page.dart';
 import 'package:lexumo/ui/features/settings/views/settings_page.dart';
 import 'package:lexumo/ui/features/shell/views/app_shell.dart';
@@ -44,8 +45,9 @@ import 'package:lexumo/ui/features/words/views/words_page.dart';
 
 import 'support/fake_tts.dart';
 
-/// The six screens, in the order the tab bar lists them plus the shell itself.
+/// The seven screens, in the order the tab bar lists them plus the shell itself.
 final List<(String, Widget)> _screens = <(String, Widget)>[
+  ('home', const HomePage()),
   ('words', const WordsPage()),
   ('flashcards', const FlashcardsPage(controller: null)),
   ('quiz', const QuizPage(controller: null)),

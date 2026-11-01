@@ -23,6 +23,7 @@ abstract final class Ic {
   static const quiz = 'quiz';
   static const stats = 'stats';
   static const settings = 'settings';
+  static const home = 'home';
   static const search = 'search';
   static const plus = 'plus';
   static const star = 'star';
@@ -63,7 +64,7 @@ abstract final class Ic {
 
   /// Every name, for tests and for the icon-gallery check.
   static const all = <String>[
-    words, cards, quiz, stats, settings, search, plus, star, starFilled,
+    home, words, cards, quiz, stats, settings, search, plus, star, starFilled,
     trash, edit, play, volume, check, x, chevronLeft, chevronRight, chevronDown,
     flame, clock, more, upload, download, sparkles, filter, arrowRight, refresh,
     book, layers, target, calendar, keyboard, info, alert, sun, moon, undo,

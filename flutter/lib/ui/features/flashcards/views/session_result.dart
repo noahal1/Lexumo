@@ -13,6 +13,7 @@ import 'package:flutter/material.dart' hide Card;
 
 import '../../../core/tokens.dart';
 import '../../../../domain/models/session.dart';
+import '../../../core/widgets/entrance.dart';
 import '../../../core/widgets/widgets.dart';
 
 /// The finished-session summary.
@@ -56,9 +57,14 @@ class SessionResult extends StatelessWidget {
     final p = Palette.of(context);
     final percent = formatAccuracy(accuracy);
 
-    return Card(
-      padding: const EdgeInsets.all(Sp.x8),
-      child: Column(
+    // The web build hangs `.rise` on this card (`SessionResult.tsx:44`): the one
+    // moment in the app that is worth an entrance, because it is the only screen
+    // that arrives on its own rather than in response to a tap inside it.
+    return FadeRise(
+      offset: 10,
+      child: Card(
+        padding: const EdgeInsets.all(Sp.x8),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Center(
@@ -131,11 +137,12 @@ class SessionResult extends StatelessWidget {
               ],
             ],
           ),
-          if (footer != null) ...[
-            const SizedBox(height: Sp.x4),
-            footer!,
+            if (footer != null) ...[
+              const SizedBox(height: Sp.x4),
+              footer!,
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
