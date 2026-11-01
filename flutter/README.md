@@ -18,7 +18,7 @@
 cd flutter
 
 ../.flutter-sdk/flutterc analyze     # No issues found!
-../.flutter-sdk/flutterc test        # 574 passed, 6 skipped
+../.flutter-sdk/flutterc test        # 592 passed, 6 skipped
 
 ./tool/build_apk.sh                  # release APK → dist/lexumo-android-release.apk
 ./tool/release.sh                    # 签名 APK + dist/update.json（发布用）

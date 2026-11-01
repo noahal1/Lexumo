@@ -11,7 +11,7 @@ import {
   formatSenses,
   googleAdapter,
   lookupCacheSize,
-  normalizeTerm,
+  normalizeLookupTerm,
   parseGoogle,
   parseMyMemory,
   parseYoudao,
@@ -386,7 +386,7 @@ describe("formatting helpers", () => {
   });
 
   it("collapses whitespace in terms", () => {
-    expect(normalizeTerm("  take   it  easy ")).toBe("take it easy");
+    expect(normalizeLookupTerm("  take   it  easy ")).toBe("take it easy");
   });
 });
 

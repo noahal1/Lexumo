@@ -205,7 +205,8 @@ export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-export function normalizeTerm(term: string): string {
+/** Collapses runs of whitespace so "  take   it " and "take it" share a cache entry. */
+export function normalizeLookupTerm(term: string): string {
   return term.trim().replace(/\s+/g, " ");
 }
 
@@ -665,7 +666,7 @@ export function createLookup({ adapters, cache, clock = systemClock }: LookupDep
    * something more useful than "出错了".
    */
   async function lookupTerm(term: string, options: LookupOptions = {}): Promise<LookupResult> {
-    const cleaned = normalizeTerm(term);
+    const cleaned = normalizeLookupTerm(term);
     if (!cleaned) throw new LookupError("not-found", "empty term");
 
     const from = options.from ?? "en";
