@@ -21,7 +21,6 @@
 /// records the listen — the same pair the web build did inline.
 library;
 
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter/services.dart';
@@ -31,7 +30,6 @@ import '../../../../data/services/speech.dart';
 import '../../../../domain/models/languages.dart';
 import '../../../../domain/models/srs.dart';
 import '../../../../domain/models/types.dart';
-import '../../../../domain/models/utils.dart';
 import '../../../../domain/use_cases/word_query.dart';
 import '../../../core/context_feedback.dart';
 import '../../../core/tokens.dart';
@@ -218,7 +216,6 @@ class _WordsPageState extends State<WordsPage> {
                     sort: _vm.filters.sort ?? SortKey.recent,
                     favoriteOnly: _vm.filters.favoriteOnly,
                     counts: _vm.counts,
-                    matchCount: filtered.length,
                     selectMode: _vm.selectMode,
                     onQuery: _vm.setQuery,
                     onStatus: _vm.setStatus,
@@ -265,15 +262,12 @@ class _WordsPageState extends State<WordsPage> {
                   _WordTable(
                     words: filtered,
                     query: trimmed,
-                    lang: lang,
-                    now: _vm.now,
                     selectMode: _vm.selectMode,
                     selected: _vm.selected,
                     onToggleSelected: _vm.toggleSelected,
                     onOpen: (Word w) => _openEditor(word: w),
                     onFavorite: (Word w) => context.store.toggleFavorite(w.id),
                     onPlay: _vm.play,
-                    onDelete: _vm.deleteWord,
                   ),
                 if (_vm.selectMode) ...[
                   const SizedBox(height: Sp.x4),
@@ -505,7 +499,6 @@ class _QueryBar extends StatelessWidget {
     required this.sort,
     required this.favoriteOnly,
     required this.counts,
-    required this.matchCount,
     required this.selectMode,
     required this.onQuery,
     required this.onStatus,
@@ -522,7 +515,6 @@ class _QueryBar extends StatelessWidget {
   final SortKey sort;
   final bool favoriteOnly;
   final Map<String, int> counts;
-  final int matchCount;
   final bool selectMode;
   final ValueChanged<String> onQuery;
   final ValueChanged<WordStatus?> onStatus;
@@ -533,196 +525,57 @@ class _QueryBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    final trimmed = query.trim();
-    final filtersActive =
-        trimmed.isNotEmpty || status != null || favoriteOnly;
-
-    // No frame. The bar is a row of pills sitting on the page, not a form in a
-    // box: the search capsule, the sort capsule and the chips already say
-    // "these are controls", and the border around them was a second, empty
-    // container drawn just to hold them.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    // Two things, one row, at every width.
+    //
+    // The bar used to be five controls in two rows — the search capsule, a
+    // strip of six status segments, a sort menu, a favourites toggle and a
+    // select button — plus a third row of removable tokens that appeared once
+    // anything was filtered and restated the same three facts. On a phone that
+    // was 124dp of chrome above the list before a single word was visible, and
+    // on any width it asked the reader to learn five separate things that all
+    // answer one question: which words am I looking at?
+    //
+    // So everything that is not search went behind one capsule that reports its
+    // own state. The row cannot grow a second line any more, which is the point
+    // — there is nothing left to fold, and no token row to reflow.
+    return Row(
       children: [
-        _buildToolbarRow(context, trimmed),
-        if (filtersActive)
-          Padding(
-            padding: const EdgeInsets.only(top: Sp.x2, left: Sp.x1),
-            child: Wrap(
-              spacing: Sp.x2,
-              runSpacing: Sp.x2,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                if (trimmed.isNotEmpty)
-                  Text(
-                    context.t('words.matches', {'n': matchCount}),
-                    style: TextStyle(
-                      fontFamily: Fonts.mono,
-                      fontSize: Fs.xs,
-                      height: Lh.none,
-                      color: p.ink3,
-                    ),
-                  ),
-                if (status != null)
-                  _FilterToken(
-                    label: context.t(_kStatusLabelKey[status!]!),
-                    onRemove: () => onStatus(null),
-                  ),
-                if (favoriteOnly)
-                  _FilterToken(
-                    label: context.t('words.filterFavorites'),
-                    onRemove: onToggleFavorite,
-                  ),
-                _ResetButton(onTap: onReset),
-              ],
-            ),
+        Expanded(
+          child: _SearchField(
+            controller: controller,
+            focusNode: focusNode,
+            // On a phone the field shares its row with the filter capsule,
+            // which leaves ~120dp for the hint — the full sentence needs more
+            // than that and was being cut off mid-character. A hint that is
+            // ellipsised is worse than a shorter hint: the cut reads as a
+            // broken field, and the words it lost are the ones explaining what
+            // can be searched. The full sentence is kept wherever it fits.
+            placeholder: context.isTouch
+                ? context.t('words.searchPlaceholderShort')
+                : context.t('words.searchPlaceholder'),
+            onChanged: onQuery,
+            onClear: () {
+              controller.clear();
+              onQuery('');
+              focusNode.requestFocus();
+            },
           ),
-      ],
-    );
-  }
-
-  /// The search field, the status chips and the three tool buttons.
-  ///
-  /// On a desktop all of it fits on one line. On a phone it cannot: the five
-  /// status chips alone need more width than the screen has, and squeezing
-  /// them into an `Expanded` made the whole row overflow. Below
-  /// [_kCompactBreakpoint] the bar folds into two stacked rows and the chip
-  /// strip scrolls sideways instead of clipping a filter the user cannot tap.
-  ///
-  /// It used to be three: search, chips, tools. That cost 164dp of the 401dp a
-  /// phone has above the fold — and the middle row held nothing but five chips,
-  /// leaving the row's full width to one scrolling strip. Pairing search with
-  /// the two icon tools (which are 44dp each) and the chip strip with the
-  /// select toggle gives both rows something to share, and the bar drops to
-  /// 108dp. What is kept, deliberately: the sort menu still shows its current
-  /// label rather than collapsing to an icon, because "sorted by which column"
-  /// is the one thing in this bar a user cannot recover by tapping.
-  Widget _buildToolbarRow(BuildContext context, String trimmed) {
-    final search = _SearchField(
-      controller: controller,
-      focusNode: focusNode,
-      // On a phone the search field shares its row with the sort menu and the
-      // favourites toggle, which leaves 129dp for the hint — the full sentence
-      // needs 149dp and was being cut off mid-character. A hint that is
-      // ellipsised is worse than a shorter hint: the cut reads as a broken
-      // field, and the words it lost are the ones explaining what can be
-      // searched. The short form fits whole and still names both things people
-      // type. The full sentence is kept for the wide layout.
-      placeholder: context.isTouch
-          ? context.t('words.searchPlaceholderShort')
-          : context.t('words.searchPlaceholder'),
-      onChanged: onQuery,
-      onClear: () {
-        controller.clear();
-        onQuery('');
-        focusNode.requestFocus();
-      },
-    );
-    final statuses = Segmented<String>(
-      value: status?.wire ?? 'all',
-      options: <SegOption<String>>[
-        SegOption(
-          value: 'all',
-          label: context.t('common.all'),
-          count: counts['all'] ?? 0,
         ),
-        for (final s in _kStatusFilters)
-          SegOption(
-            value: s.wire,
-            label: context.t(_kStatusLabelKey[s]!),
-            count: counts[s.wire] ?? 0,
-          ),
+        const SizedBox(width: Sp.x2),
+        _FilterMenu(
+          status: status,
+          sort: sort,
+          favoriteOnly: favoriteOnly,
+          counts: counts,
+          selectMode: selectMode,
+          canClear: status != null || favoriteOnly || query.trim().isNotEmpty,
+          onStatus: onStatus,
+          onSort: onSort,
+          onToggleFavorite: onToggleFavorite,
+          onSelectMode: onToggleSelect,
+          onClear: onReset,
+        ),
       ],
-      onChanged: (value) =>
-          onStatus(value == 'all' ? null : WordStatus.fromWire(value)),
-    );
-    final sortMenu = _SortMenu(value: sort, onChanged: onSort);
-    final favoriteButton = _QbarIconButton(
-      icon: favoriteOnly ? Ic.starFilled : Ic.star,
-      active: favoriteOnly,
-      tooltip: context.t('words.filterFavorites'),
-      onTap: onToggleFavorite,
-    );
-    final selectButton = LexButton(
-      label: selectMode ? context.t('common.done') : context.t('words.select'),
-      icon: selectMode ? Ic.check : Ic.list,
-      size: BtnSize.sm,
-      kind: selectMode ? BtnKind.primary : BtnKind.quiet,
-      onPressed: onToggleSelect,
-    );
-
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        if (constraints.maxWidth >= _kCompactBreakpoint) {
-          return Padding(
-            padding: EdgeInsets.zero,
-            child: Row(
-              children: [
-                Expanded(flex: 3, child: search),
-                const SizedBox(width: Sp.x3),
-                // Scrollable even here. The five chips measure ~238dp with the
-                // touch floor and no counts; a 800dp window leaves this slot
-                // 224dp once the sort menu and two buttons have theirs, so the
-                // wide branch overflowed by 13 on a tablet before the strip
-                // could scroll. The compact branch below already scrolls for
-                // the same reason.
-                Expanded(
-                  flex: 4,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: statuses,
-                  ),
-                ),
-                const SizedBox(width: Sp.x3),
-                sortMenu,
-                const SizedBox(width: Sp.x1),
-                favoriteButton,
-                const SizedBox(width: Sp.x1),
-                selectButton,
-              ],
-            ),
-          );
-        }
-        // The two rows keep their height fixed so the bar does not jump as
-        // the search field gains focus and the chips change count.
-        return Padding(
-          padding: EdgeInsets.zero,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                height: context.controlH,
-                child: Row(
-                  children: [
-                    Expanded(child: search),
-                    const SizedBox(width: Sp.x2),
-                    sortMenu,
-                    const SizedBox(width: Sp.x1),
-                    favoriteButton,
-                  ],
-                ),
-              ),
-              const SizedBox(height: Sp.x3),
-              SizedBox(
-                height: context.controlH,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: statuses,
-                      ),
-                    ),
-                    const SizedBox(width: Sp.x2),
-                    selectButton,
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }
@@ -810,60 +663,251 @@ class _SearchFieldState extends State<_SearchField> {
   }
 }
 
-class _SortMenu extends StatelessWidget {
-  const _SortMenu({required this.value, required this.onChanged});
+/// What a pick in [_FilterMenu] means.
+///
+/// A sealed hierarchy rather than an enum: three of the five carry a payload,
+/// and the payloads are different types, so `switch` over these is exhaustive
+/// without a default branch that could silently swallow a new case.
+sealed class _FilterAction {
+  const _FilterAction();
+}
 
-  final SortKey value;
-  final ValueChanged<SortKey> onChanged;
+class _PickStatus extends _FilterAction {
+  const _PickStatus(this.status);
+
+  /// Null is "all statuses".
+  final WordStatus? status;
+}
+
+class _PickSort extends _FilterAction {
+  const _PickSort(this.sort);
+
+  final SortKey sort;
+}
+
+class _ToggleFavorites extends _FilterAction {
+  const _ToggleFavorites();
+}
+
+class _StartSelect extends _FilterAction {
+  const _StartSelect();
+}
+
+class _ClearFilters extends _FilterAction {
+  const _ClearFilters();
+}
+
+/// Every control that is not search, behind one capsule.
+///
+/// The capsule carries its own state in its label — the status it is filtered
+/// to, or a star when only favourites are showing — and turns accent-filled
+/// while any of it is on. That label is what let the removable filter tokens
+/// below the bar go: a filter you can read off the control that set it does not
+/// need a chip underneath reminding you it is set.
+class _FilterMenu extends StatelessWidget {
+  const _FilterMenu({
+    required this.status,
+    required this.sort,
+    required this.favoriteOnly,
+    required this.counts,
+    required this.selectMode,
+    required this.canClear,
+    required this.onStatus,
+    required this.onSort,
+    required this.onToggleFavorite,
+    required this.onSelectMode,
+    required this.onClear,
+  });
+
+  final WordStatus? status;
+  final SortKey sort;
+  final bool favoriteOnly;
+  final Map<String, int> counts;
+  final bool selectMode;
+  final bool canClear;
+  final ValueChanged<WordStatus?> onStatus;
+  final ValueChanged<SortKey> onSort;
+  final VoidCallback onToggleFavorite;
+  final VoidCallback onSelectMode;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    return PopupMenuButton<SortKey>(
-      tooltip: context.t('common.sort'),
-      initialValue: value,
-      onSelected: onChanged,
+    final List<String> parts = <String>[
+      if (status != null) context.t(_kStatusLabelKey[status!]!),
+      if (favoriteOnly) '★',
+    ];
+    final bool active = parts.isNotEmpty;
+    final String label =
+        active ? parts.join(' · ') : context.t('words.filter');
+    final Color fg = active ? p.accentInk : p.ink2;
+
+    return PopupMenuButton<_FilterAction>(
+      tooltip: context.t('words.filter'),
       position: PopupMenuPosition.under,
       color: p.surface,
-      itemBuilder: (context) => <PopupMenuEntry<SortKey>>[
-        for (final (key, labelKey) in _kSortOptions)
-          PopupMenuItem<SortKey>(
-            value: key,
+      onSelected: (_FilterAction action) {
+        switch (action) {
+          case _PickStatus(status: final WordStatus? picked):
+            onStatus(picked);
+          case _PickSort(sort: final SortKey picked):
+            onSort(picked);
+          case _ToggleFavorites():
+            onToggleFavorite();
+          case _StartSelect():
+            onSelectMode();
+          case _ClearFilters():
+            onClear();
+        }
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<_FilterAction>>[
+        _section(context.t('words.filter')),
+        for (final (WordStatus? s, String labelKey) in <(WordStatus?, String)>[
+          (null, 'common.all'),
+          for (final WordStatus s in _kStatusFilters) (s, _kStatusLabelKey[s]!),
+        ])
+          PopupMenuItem<_FilterAction>(
+            value: _PickStatus(s),
             height: context.controlH,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    context.t(labelKey),
-                    style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink),
-                  ),
-                ),
-                if (key == value)
-                  LexIcon(Ic.check, size: 14, color: p.accent),
-              ],
+            child: _MenuRow(
+              label: context.t(labelKey),
+              count: counts[s?.wire ?? 'all'],
+              selected: status == s,
             ),
           ),
+        const PopupMenuDivider(),
+        PopupMenuItem<_FilterAction>(
+          value: const _ToggleFavorites(),
+          height: context.controlH,
+          child: _MenuRow(
+            label: context.t('words.filterFavorites'),
+            selected: favoriteOnly,
+          ),
+        ),
+        // Entering select mode from here rather than from a button of its own:
+        // it is a once-in-a-session action, and a permanently visible button
+        // for it cost a third of the bar's width every other time.
+        if (!selectMode)
+          PopupMenuItem<_FilterAction>(
+            value: const _StartSelect(),
+            height: context.controlH,
+            child: _MenuRow(label: context.t('words.select')),
+          ),
+        const PopupMenuDivider(),
+        _section(context.t('common.sort')),
+        for (final (SortKey key, String labelKey) in _kSortOptions)
+          PopupMenuItem<_FilterAction>(
+            value: _PickSort(key),
+            height: context.controlH,
+            child: _MenuRow(label: context.t(labelKey), selected: sort == key),
+          ),
+        if (canClear) ...[
+          const PopupMenuDivider(),
+          PopupMenuItem<_FilterAction>(
+            value: const _ClearFilters(),
+            height: context.controlH,
+            child: _MenuRow(label: context.t('common.reset')),
+          ),
+        ],
       ],
       child: Container(
         height: context.controlH,
-        padding: const EdgeInsets.symmetric(horizontal: Sp.x4),
+        padding: const EdgeInsets.symmetric(horizontal: Sp.x3),
         decoration: BoxDecoration(
-          color: p.surface2,
+          // Filled, not outlined — the same capsule the search field and the
+          // add button wear, so the row reads as one family of controls.
+          color: active ? p.accentSoft : p.surface2,
           borderRadius: R.borderPill,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              context.t(
-                _kSortOptions.firstWhere((o) => o.$1 == value).$2,
-              ),
-              style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink2),
-            ),
+            LexIcon(Ic.filter, size: 15, color: active ? p.accentInk : p.ink3),
             const SizedBox(width: Sp.x2),
-            LexIcon(Ic.chevronDown, size: 12, color: p.ink3),
+            Text(
+              label,
+              style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: fg),
+            ),
+            const SizedBox(width: Sp.x1),
+            LexIcon(Ic.chevronDown, size: 12, color: active ? p.accentInk : p.ink3),
           ],
         ),
+      ),
+    );
+  }
+
+  /// A group heading. Disabled so it cannot be picked, short so it does not
+  /// read as a row of the menu.
+  PopupMenuEntry<_FilterAction> _section(String text) => PopupMenuItem<_FilterAction>(
+        enabled: false,
+        height: 28,
+        child: _MenuSection(label: text),
+      );
+}
+
+/// One pickable row: label, an optional count, a check when it is the choice.
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({required this.label, this.count, this.selected = false});
+
+  final String label;
+  final int? count;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: Fs.sm,
+              height: Lh.snug,
+              color: selected ? p.accent : p.ink,
+            ),
+          ),
+        ),
+        if (count != null) ...[
+          const SizedBox(width: Sp.x3),
+          Text(
+            '$count',
+            style: TextStyle(
+              fontFamily: Fonts.mono,
+              fontSize: Fs.xs,
+              height: Lh.none,
+              color: p.ink3,
+            ),
+          ),
+        ],
+        if (selected) ...[
+          const SizedBox(width: Sp.x2),
+          LexIcon(Ic.check, size: 14, color: p.accent),
+        ],
+      ],
+    );
+  }
+}
+
+class _MenuSection extends StatelessWidget {
+  const _MenuSection({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: Fs.xs,
+        height: Lh.snug,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.04,
+        color: p.ink3,
       ),
     );
   }
@@ -873,14 +917,12 @@ class _QbarIconButton extends StatefulWidget {
   const _QbarIconButton({
     required this.icon,
     required this.onTap,
-    this.active = false,
     this.tooltip,
     this.size = 16,
   });
 
   final String icon;
   final VoidCallback onTap;
-  final bool active;
   final String? tooltip;
   final double size;
 
@@ -894,12 +936,8 @@ class _QbarIconButtonState extends State<_QbarIconButton> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final bg = widget.active
-        ? p.accentSoft
-        : _hover
-            ? p.surfaceHover
-            : Colors.transparent;
-    final fg = widget.active ? p.accentInk : p.ink3;
+    final bg = _hover ? p.surfaceHover : Colors.transparent;
+    final fg = p.ink3;
 
     final button = MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -932,77 +970,6 @@ class _QbarIconButtonState extends State<_QbarIconButton> {
   }
 }
 
-class _FilterToken extends StatelessWidget {
-  const _FilterToken({required this.label, required this.onRemove});
-
-  final String label;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return GestureDetector(
-      onTap: onRemove,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: Sp.x2, vertical: Sp.x1),
-          decoration: BoxDecoration(
-            color: p.surface2,
-            borderRadius: R.borderXs,
-            border: Border.all(color: p.line),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(fontSize: Fs.xs, height: Lh.snug, color: p.ink2),
-              ),
-              const SizedBox(width: Sp.x1),
-              LexIcon(Ic.x, size: 11, color: p.ink3),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ResetButton extends StatefulWidget {
-  const _ResetButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  State<_ResetButton> createState() => _ResetButtonState();
-}
-
-class _ResetButtonState extends State<_ResetButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Text(
-          context.t('common.reset'),
-          style: TextStyle(
-            fontSize: Fs.xs,
-            height: Lh.snug,
-            color: _hover ? p.accent : p.ink3,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /* Table                                                               */
 /* ------------------------------------------------------------------ */
@@ -1011,28 +978,22 @@ class _WordTable extends StatelessWidget {
   const _WordTable({
     required this.words,
     required this.query,
-    required this.lang,
-    required this.now,
     required this.selectMode,
     required this.selected,
     required this.onToggleSelected,
     required this.onOpen,
     required this.onFavorite,
     required this.onPlay,
-    required this.onDelete,
   });
 
   final List<Word> words;
   final String query;
-  final String lang;
-  final int now;
   final bool selectMode;
   final Set<String> selected;
   final ValueChanged<String> onToggleSelected;
   final ValueChanged<Word> onOpen;
   final ValueChanged<Word> onFavorite;
   final ValueChanged<Word> onPlay;
-  final ValueChanged<Word> onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -1077,17 +1038,6 @@ class _WordTable extends StatelessWidget {
                         ],
                       ),
                     ),
-                    SizedBox(
-                      width: _kStatusColW,
-                      child: _HeadCell(label: context.t('common.status')),
-                    ),
-                    SizedBox(
-                      width: selectMode ? 0 : _actionsColW(context),
-                      child: _HeadCell(
-                        label: context.t('common.actions'),
-                        align: TextAlign.right,
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -1102,8 +1052,6 @@ class _WordTable extends StatelessWidget {
                 child: _WordRow(
                   word: words[i],
                   query: query,
-                  lang: lang,
-                  now: now,
                   selectMode: selectMode,
                   compact: compact,
                   picked: selected.contains(words[i].id),
@@ -1114,8 +1062,6 @@ class _WordTable extends StatelessWidget {
                       : onOpen(words[i]),
                   onFavorite: () => onFavorite(words[i]),
                   onPlay: () => onPlay(words[i]),
-                  onEdit: () => onOpen(words[i]),
-                  onDelete: () => onDelete(words[i]),
                 ),
               ),
           ],
@@ -1145,27 +1091,16 @@ Widget _gutter(Widget child) => Padding(
 /// Without the cap the last row of a long list would wait six seconds for its
 /// turn, which reads as the page being broken rather than as a stagger.
 const int _kStaggerRows = 8;
-const double _kStatusColW = 128;
-
-/// The actions column holds four icon buttons, so its width is not a constant —
-/// it is however wide four targets are. Hard-coding 140 was a mouse
-/// measurement: once the buttons grow to [Layout.tap] on a touch platform the
-/// column needed 176 and the row overflowed by exactly 36.
-double _actionsColW(BuildContext context) =>
-    math.max(140.0, 4 * context.iconTarget);
-
 class _HeadCell extends StatelessWidget {
-  const _HeadCell({required this.label, this.align = TextAlign.left});
+  const _HeadCell({required this.label});
 
   final String label;
-  final TextAlign align;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return Text(
       label,
-      textAlign: align,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
@@ -1185,8 +1120,6 @@ class _WordRow extends StatefulWidget {
   const _WordRow({
     required this.word,
     required this.query,
-    required this.lang,
-    required this.now,
     required this.selectMode,
     required this.compact,
     required this.picked,
@@ -1195,14 +1128,10 @@ class _WordRow extends StatefulWidget {
     required this.onTap,
     required this.onFavorite,
     required this.onPlay,
-    required this.onEdit,
-    required this.onDelete,
   });
 
   final Word word;
   final String query;
-  final String lang;
-  final int now;
   final bool selectMode;
   final bool compact;
   final bool picked;
@@ -1211,8 +1140,6 @@ class _WordRow extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onFavorite;
   final VoidCallback onPlay;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
 
   @override
   State<_WordRow> createState() => _WordRowState();
@@ -1266,13 +1193,16 @@ class _WordRowState extends State<_WordRow> {
     );
   }
 
-  /// Phone / narrow: term on the first line, gloss underneath, and the
-  /// status + actions folded into a quiet third line. Every text gets the
-  /// full row width instead of a fraction of it.
+  /// Phone / narrow: the term, then its gloss. Nothing else.
+  ///
+  /// The row used to carry a third line — a status chip, a due date and three
+  /// icon buttons — which made a five-line entry out of a two-line one. The
+  /// status and the date are both answers to "what is this word's place in my
+  /// study plan", and that is a question this page is not being asked: the
+  /// flashcard and stats screens report on scheduling, and a list is for
+  /// finding a word. They were also the two things that made a row's height
+  /// vary, so a list of twenty words had no rhythm to read down.
   Widget _buildCompact(BuildContext context, Palette p, Word w) {
-    final due = w.srs == null
-        ? context.t('words.neverReviewed')
-        : relativeDay(w.srs!.dueAt, widget.lang, widget.now);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1290,56 +1220,19 @@ class _WordRowState extends State<_WordRow> {
               _TermLine(word: w, query: widget.query, maxLines: 2),
               const SizedBox(height: 2),
               _DefinitionLine(word: w, query: widget.query, maxLines: 3),
-              const SizedBox(height: Sp.x2),
-              Row(
-                children: [
-                  StatusChip(
-                    label: context.t(_kStatusLabelKey[w.status]!),
-                    tone: w.status.wire,
-                  ),
-                  const SizedBox(width: Sp.x2),
-                  Expanded(
-                    child: Text(
-                      due,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: Fs.xs,
-                        height: Lh.snug,
-                        color: p.ink3,
-                      ),
-                    ),
-                  ),
-                  if (!widget.selectMode) ...[
-                    _RowAction(
-                      icon: w.favorite ? Ic.starFilled : Ic.star,
-                      tooltip: context.t('common.favorite'),
-                      onTap: widget.onFavorite,
-                      active: w.favorite,
-                    ),
-                    _RowAction(
-                      icon: Ic.volume,
-                      tooltip: context.t('words.listens', {'n': w.listenCount}),
-                      onTap: widget.onPlay,
-                    ),
-                    _RowAction(
-                      icon: Ic.trash,
-                      tooltip: context.t('common.delete'),
-                      onTap: widget.onDelete,
-                      danger: true,
-                    ),
-                  ],
-                ],
-              ),
             ],
           ),
         ),
+        if (!widget.selectMode) ...[
+          const SizedBox(width: Sp.x2),
+          _RowActions(word: w, onFavorite: widget.onFavorite, onPlay: widget.onPlay),
+        ],
       ],
     );
   }
 
-  /// Desktop / wide: the term column holds the term *and* its gloss stacked,
-  /// then fixed-width status and action columns.
+  /// Desktop / wide: the same two lines, with the actions held to the right by
+  /// the row's own width rather than by a fixed column.
   Widget _buildWide(BuildContext context, Palette p, Word w) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1362,69 +1255,13 @@ class _WordRowState extends State<_WordRow> {
           ),
         ),
         const SizedBox(width: Sp.x4),
-        SizedBox(
-          width: _kStatusColW,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              StatusChip(
-                label: context.t(_kStatusLabelKey[w.status]!),
-                tone: w.status.wire,
-              ),
-              const SizedBox(height: Sp.x1),
-              Text(
-                w.srs == null
-                    ? context.t('words.neverReviewed')
-                    : relativeDay(w.srs!.dueAt, widget.lang, widget.now),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: Fs.xs,
-                  height: Lh.snug,
-                  color: p.ink3,
-                ),
-              ),
-            ],
-          ),
-        ),
         if (!widget.selectMode)
-          SizedBox(
-            width: _actionsColW(context),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                _RowAction(
-                  icon: w.favorite ? Ic.starFilled : Ic.star,
-                  tooltip: context.t('common.favorite'),
-                  onTap: widget.onFavorite,
-                  active: w.favorite,
-                ),
-                _RowAction(
-                  icon: Ic.volume,
-                  tooltip: context.t('words.listens', {'n': w.listenCount}),
-                  onTap: widget.onPlay,
-                ),
-                _RowAction(
-                  icon: Ic.edit,
-                  tooltip: context.t('common.edit'),
-                  onTap: widget.onEdit,
-                ),
-                _RowAction(
-                  icon: Ic.trash,
-                  tooltip: context.t('common.delete'),
-                  onTap: widget.onDelete,
-                  danger: true,
-                ),
-              ],
-            ),
-          ),
+          _RowActions(word: w, onFavorite: widget.onFavorite, onPlay: widget.onPlay),
       ],
     );
   }
 }
 
-/// The headword, with the favourite star inline. Kept separate from the gloss
-/// so both can own a full line.
 /// The headword.
 ///
 /// One row of a word table is read as "what is this word, and what does it
@@ -1597,6 +1434,45 @@ class _Highlighted extends StatelessWidget {
       TextSpan(style: style, children: spans),
       maxLines: maxLines,
       overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+/// The two things a row can do: star it, hear it.
+///
+/// There used to be four. Edit was a duplicate — tapping the row already opens
+/// the editor — and delete is in that editor's footer, which is where a
+/// destructive action belongs: behind a deliberate open, not one stray tap from
+/// the row you were reading. What is left is what the reference puts on a row,
+/// and it fits beside the gloss instead of claiming a column of its own.
+class _RowActions extends StatelessWidget {
+  const _RowActions({
+    required this.word,
+    required this.onFavorite,
+    required this.onPlay,
+  });
+
+  final Word word;
+  final VoidCallback onFavorite;
+  final VoidCallback onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _RowAction(
+          icon: word.favorite ? Ic.starFilled : Ic.star,
+          tooltip: context.t('common.favorite'),
+          onTap: onFavorite,
+          active: word.favorite,
+        ),
+        _RowAction(
+          icon: Ic.volume,
+          tooltip: context.t('words.listens', {'n': word.listenCount}),
+          onTap: onPlay,
+        ),
+      ],
     );
   }
 }

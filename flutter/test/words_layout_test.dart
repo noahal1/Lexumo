@@ -137,17 +137,22 @@ void main() {
       // 420dp is the emulator's logical width in portrait.
       await pumpWordsAt(tester, 420);
 
-      final page = tester.getRect(find.byType(WordsPage));
       final term = rectOf(tester, kLongTerm);
       final def = rectOf(tester, kLongGloss);
 
       expect(def.top, greaterThanOrEqualTo(term.bottom - 1));
-      // Under the old split the gloss would have had ~44% of a ~356dp content
-      // area (~157dp). Stacked it must clear the majority of the row.
+      // Measured against the headword, not against the page. The row now ends
+      // in two 44dp action targets (star, speaker) rather than in a status
+      // column plus three buttons, and those targets are the only thing the
+      // gloss does not get; everything left of them is the text column. Under
+      // the old side-by-side split the gloss had ~44% of that column, so a 60%
+      // floor still fails on it while surviving the pos chip's width and a font
+      // metric drifting a little.
       expect(
         def.width,
-        greaterThan(page.width * 0.6),
-        reason: 'the gloss should own the row width on a phone',
+        greaterThan(term.width * 0.6),
+        reason:
+            'the gloss got ${def.width}dp of the ${term.width}dp text column',
       );
       // And the layout must not have overflowed while getting there.
       expect(tester.takeException(), isNull);

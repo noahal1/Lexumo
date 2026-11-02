@@ -37,8 +37,6 @@ import 'package:lexumo/ui/features/settings/views/settings_page.dart';
 import 'package:lexumo/ui/features/stats/views/stats_page.dart';
 import 'package:lexumo/ui/features/words/views/words_page.dart';
 import 'package:lexumo/data/services/tts.dart';
-import 'package:lexumo/ui/core/widgets/controls.dart';
-import 'package:lexumo/ui/core/widgets/widgets.dart';
 
 import 'support/fake_tts.dart';
 
@@ -351,56 +349,55 @@ void main() {
       );
     });
 
-    testWidgets('the query bar folds into two rows, not three', (
+    testWidgets('the query bar is one row, at every width', (
       WidgetTester tester,
     ) async {
       await pumpPhone(tester, const WordsPage());
 
-      final Finder strip = find.byType(Segmented<String>);
-      expect(strip, findsOneWidget);
-      final Rect statusRect = tester.getRect(strip);
+      // Two controls: the search field, and one capsule that holds every
+      // other way of narrowing the list. There used to be five — a strip of
+      // six status segments, a sort menu, a favourites toggle, a select
+      // button, and a third row of tokens restating whatever was active —
+      // which cost 164dp of a 401dp-wide phone before the first word.
       final Finder search = find.byWidgetPredicate(
         (w) => w.runtimeType.toString() == '_SearchField',
       );
-      expect(search, findsOneWidget);
-      final Rect searchRect = tester.getRect(search);
-      final Rect selectRect = tester.getRect(
-        find.widgetWithText(LexButton, '批量选择'),
+      final Finder filter = find.byWidgetPredicate(
+        (w) => w.runtimeType.toString() == '_FilterMenu',
       );
+      expect(search, findsOneWidget);
+      expect(filter, findsOneWidget);
 
-      // Row one: the search field shares its row with the sort menu and the
-      // favourites toggle, so it is narrower than the bar.
+      final Rect searchRect = tester.getRect(search);
+      final Rect filterRect = tester.getRect(filter);
+
+      // Same row: their vertical centres agree to within a pixel, which is
+      // the claim that matters. Anything that made the bar wrap would put
+      // one of them on a second line and separate these by ~44.
+      expect(
+        filterRect.center.dy,
+        closeTo(searchRect.center.dy, 1),
+        reason: 'the filter capsule shares the search field\'s row',
+      );
+      // And the whole bar is one control tall: no token row underneath, no
+      // wrapped second line.
+      expect(
+        filterRect.bottom - searchRect.top,
+        lessThanOrEqualTo(Layout.controlH + 8),
+        reason:
+            'the query bar is ${(filterRect.bottom - searchRect.top).toStringAsFixed(0)}dp tall',
+      );
+      // The search field still gets most of the row, and it is not the whole
+      // row — the capsule beside it is what keeps it from being five rows.
       expect(
         searchRect.width,
         lessThan(kPhone.width - 2 * Sp.x6),
-        reason: 'the search field must share its row with the sort menu',
-      );
-      // Row two: the status strip is wider than what its row leaves it, which is
-      // why it lives in a horizontal scroller rather than being squeezed. The
-      // point of the assertion is that it shares row two with the select button
-      // instead of owning a row of its own.
-      expect(
-        statusRect.width,
-        greaterThan(0),
-        reason: 'the status strip must be laid out at its natural width',
+        reason: 'the search field must share its row with the capsule',
       );
       expect(
-        selectRect.top,
-        closeTo(statusRect.top, 1),
-        reason: 'the select button shares the status strip\'s row',
-      );
-      expect(
-        searchRect.top,
-        lessThan(statusRect.top),
-        reason: 'search is row one, statuses are row two',
-      );
-      // 24 of padding + 44 + 12 + 44 + 24 = 124 is the whole bar on a phone. The
-      // old three-row version was 164.
-      expect(
-        statusRect.bottom - searchRect.top,
-        lessThanOrEqualTo(120),
-        reason:
-            'the query bar is ${(statusRect.bottom - searchRect.top).toStringAsFixed(0)}dp tall',
+        searchRect.width,
+        greaterThan((kPhone.width - 2 * Sp.x6) * 0.6),
+        reason: 'search still owns most of the row',
       );
     });
   });

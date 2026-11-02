@@ -129,6 +129,7 @@ const Map<String, String> enRaw = {
   'words.sortAlpha': 'Alphabetical',
   'words.sortDue': 'Due first',
   'words.sortStatus': 'By status',
+  'words.filter': 'Filter',
   'words.filterFavorites': 'Favorites only',
   'words.newList': 'New list',
   'words.listName': 'List name',

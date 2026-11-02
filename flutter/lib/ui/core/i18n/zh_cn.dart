@@ -126,6 +126,7 @@ const Map<String, String> zhCnRaw = {
   'words.sortAlpha': '字母顺序',
   'words.sortDue': '复习到期',
   'words.sortStatus': '按状态',
+  'words.filter': '筛选',
   'words.filterFavorites': '只看收藏',
   'words.newList': '新建词库',
   'words.listName': '词库名称',
