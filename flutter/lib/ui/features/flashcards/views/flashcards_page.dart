@@ -289,42 +289,38 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     }
 
     final Widget intro = Card(
-      padding: const EdgeInsets.all(Sp.x7),
+      padding: const EdgeInsets.all(Sp.x6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          LexIcon(Ic.cards, size: 26, color: Palette.of(context).ink4),
-          const SizedBox(height: Sp.x4),
+          // The 26dp card glyph that used to open this card is gone: an icon
+          // above a heading is a template habit, and this screen already says
+          // what it is with words. The heading is one step below the home
+          // hero (Fs.x2xl) because this is a card title, not a page statement.
           Text(
             t('flashcards.start'),
             style: TextStyle(
               fontFamily: Fonts.display,
-              fontSize: Fs.x2xl,
-              height: Lh.title,
+              fontSize: Fs.xl,
+              height: Lh.tight,
               fontWeight: FontWeight.w600,
-              letterSpacing: -0.02,
+              letterSpacing: -0.015,
               color: Palette.of(context).ink,
             ),
           ),
-          const SizedBox(height: Sp.x2),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: Fs.base * 24),
-            child: Text(
-              t('flashcards.subtitle'),
-              style: TextStyle(
-                fontSize: Fs.base,
-                height: Lh.loose,
-                color: Palette.of(context).ink2,
-              ),
-            ),
-          ),
-          const SizedBox(height: Sp.x4),
+          // `flashcards.subtitle` used to be printed here as well, so the same
+          // sentence appeared twice on one screen — once in the page header and
+          // once inside the card. It now lives only in the header, where it
+          // names the page; the card goes straight to the decision it holds.
+          const SizedBox(height: Sp.x5),
           Text(
             t('flashcards.buildDeck'),
             style: TextStyle(
-              fontSize: Fs.sm,
+              fontSize: Fs.xs,
+              height: Lh.tight,
               fontWeight: FontWeight.w500,
-              color: Palette.of(context).ink2,
+              letterSpacing: 0.02,
+              color: Palette.of(context).ink3,
             ),
           ),
           const SizedBox(height: Sp.x2),
@@ -346,23 +342,28 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             ),
           ),
           const SizedBox(height: Sp.x4),
-          Wrap(
-            spacing: Sp.x2,
-            runSpacing: Sp.x2,
+          // Three tinted pills used to sit here. A count is a figure, and the
+          // app-scope rule for figures is the same on every screen: the number
+          // leads in tabular mono, the word follows in the label size, and
+          // colour marks state only when there is state to mark. So the pills
+          // became one strip of figures with the same three numbers and the
+          // same three words.
+          Row(
             children: <Widget>[
-              StatusChip(
-                label: t('flashcards.dueCount',
-                    <String, Object>{'n': summary.dueReview}),
-                tone: 'learning',
+              _DeckFigure(
+                value: '${summary.dueReview}',
+                label: t('flashcards.figureDue'),
+                strong: summary.dueReview > 0,
               ),
-              StatusChip(
-                label: t('flashcards.newCount',
-                    <String, Object>{'n': summary.counts[DeckSource.fresh] ?? 0}),
-                tone: 'new',
+              const SizedBox(width: Sp.x6),
+              _DeckFigure(
+                value: '${summary.counts[DeckSource.fresh] ?? 0}',
+                label: t('flashcards.figureNew'),
               ),
-              StatusChip(
-                label: t('flashcards.deckSize', <String, Object>{'n': deckSize}),
-                tone: 'meta',
+              const SizedBox(width: Sp.x6),
+              _DeckFigure(
+                value: '$deckSize',
+                label: t('flashcards.figureCards'),
               ),
             ],
           ),
@@ -378,20 +379,19 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
           if (deckSize == 0)
             _emptyDeck(t, summary.caughtUp)
           else
-            Row(
-              children: <Widget>[
-                LexButton(
-                  label: t('flashcards.start'),
-                  size: BtnSize.lg,
-                  kind: BtnKind.primary,
-                  onPressed: _vm.startSession,
-                  trailing: LexIcon(
-                    Ic.arrowRight,
-                    size: 17,
-                    color: Palette.of(context).onAccent,
-                  ),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: LexButton(
+                label: t('flashcards.start'),
+                size: BtnSize.lg,
+                kind: BtnKind.primary,
+                onPressed: _vm.startSession,
+                trailing: LexIcon(
+                  Ic.arrowRight,
+                  size: 17,
+                  color: Palette.of(context).onAccent,
                 ),
-              ],
+              ),
             ),
           // Key legends are meaningless without a keyboard, so the whole block
           // (spacing included) is dropped on touch devices.
@@ -1142,6 +1142,62 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
 /* -------------------------------------------------------------------------- */
 /* Pieces                                                                     */
 /* -------------------------------------------------------------------------- */
+
+/// One figure of the deck readout: the number in tabular mono, the word under
+/// it in the label size.
+///
+/// This replaces the three `StatusChip`s that opened the deck picker. A chip
+/// is a state, but 「9 张到期」 is a count — and three tinted pills in a row
+/// made the strip read as a legend for colours that were never explained. The
+/// figure leads, the word follows, and only the due count is allowed to take
+/// the accent, because it is the one number that asks for an action.
+class _DeckFigure extends StatelessWidget {
+  const _DeckFigure({
+    required this.value,
+    required this.label,
+    this.strong = false,
+  });
+
+  final String value;
+  final String label;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette p = Palette.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          value,
+          maxLines: 1,
+          style: TextStyle(
+            fontFamily: Fonts.mono,
+            fontSize: Fs.lg,
+            height: Lh.tight,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.02,
+            fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+            color: strong ? p.accent : p.ink,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: Fs.xs,
+            height: Lh.tight,
+            color: p.ink3,
+            letterSpacing: 0.02,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 /// `.notice`: an icon column and a tinted body.
 class _Notice extends StatelessWidget {

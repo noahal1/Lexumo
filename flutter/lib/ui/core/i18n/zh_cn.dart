@@ -66,6 +66,7 @@ const Map<String, String> zhCnRaw = {
   'home.greetingEvening': '晚上好',
   'home.dueHeadline': '今天还有 {n} 张卡片在等你',
   'home.dueClear': '今天的卡片都过完了',
+  'home.todayTitle': '今天',
   'home.todayGoal': '今日目标',
   'home.goalDone': '今天的目标到了',
   'home.goalRemaining': '还差 {n} 次',
@@ -173,6 +174,10 @@ const Map<String, String> zhCnRaw = {
   'flashcards.start': '开始复习',
   'flashcards.dueCount': '{n} 张到期',
   'flashcards.newCount': '{n} 张新卡',
+  // 数字与量词分开显示：数字用等宽体领先，说明文字跟在下面。
+  'flashcards.figureDue': '张到期',
+  'flashcards.figureNew': '张新卡',
+  'flashcards.figureCards': '本组卡片',
   'flashcards.noCards': '暂时没有要复习的卡片',
   'flashcards.noCardsHint': '所有卡片都在计划内。可以添加新词，或稍后再来。',
   'flashcards.buildDeck': '组卡方式',

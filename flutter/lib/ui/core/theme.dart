@@ -194,9 +194,25 @@ ThemeData buildTheme(Palette p) {
       selectionHandleColor: p.accent,
     ),
 
+    // A field in this app is drawn by the widget that owns it: `LexInput`,
+    // `LexTextArea` and the words search field each wrap a bare `TextField` in
+    // their own bordered container, so the `TextField` itself is a viewport,
+    // not a box.
+    //
+    // This theme used to declare `OutlineInputBorder` for `border`,
+    // `enabledBorder` and `focusedBorder`. A call site that passes
+    // `border: InputBorder.none` overrides only `border` — `enabledBorder` and
+    // `focusedBorder` still come from the theme, so every field drew the
+    // theme's outline *inside* its own container's outline. That is the second
+    // border. `filled: true` repeated the same mistake as a fill: a `p.surface`
+    // rectangle painted on top of the `p.surface2` the container had already
+    // painted, and the words search field — the only call site that does not
+    // pass `filled` — silently got it.
+    //
+    // So this theme draws nothing and supplies only the type. A field that
+    // wants a box wraps itself in one.
     inputDecorationTheme: InputDecorationTheme(
-      filled: true,
-      fillColor: p.surface,
+      filled: false,
       isDense: true,
       contentPadding: const EdgeInsets.symmetric(
         horizontal: Sp.x3,
@@ -204,22 +220,12 @@ ThemeData buildTheme(Palette p) {
       ),
       hintStyle: _style(size: Fs.base, color: p.ink4, height: Lh.body),
       labelStyle: _style(size: Fs.sm, color: p.ink3, height: Lh.tight),
-      border: OutlineInputBorder(
-        borderRadius: R.borderMd,
-        borderSide: BorderSide(color: p.lineControl),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: R.borderMd,
-        borderSide: BorderSide(color: p.line),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: R.borderMd,
-        borderSide: BorderSide(color: p.accent, width: 1.5),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: R.borderMd,
-        borderSide: BorderSide(color: p.danger),
-      ),
+      border: InputBorder.none,
+      enabledBorder: InputBorder.none,
+      focusedBorder: InputBorder.none,
+      disabledBorder: InputBorder.none,
+      errorBorder: InputBorder.none,
+      focusedErrorBorder: InputBorder.none,
     ),
 
     switchTheme: SwitchThemeData(

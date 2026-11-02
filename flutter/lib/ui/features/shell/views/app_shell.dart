@@ -347,10 +347,47 @@ class _Sidebar extends StatelessWidget {
         border: Border(right: BorderSide(color: p.frameLine)),
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: Sp.x5, horizontal: rail ? Sp.x2 : Sp.x3),
+        padding: EdgeInsets.symmetric(vertical: Sp.x4, horizontal: rail ? Sp.x2 : Sp.x3),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // The product's own name, once, at the top of its own chrome. The
+            // sidebar used to begin with the first destination and end with the
+            // tagline, which meant the stone slab identified itself only at the
+            // bottom, under a streak counter — the two least consequential
+            // things in the column. Wordmark first, destinations under it.
+            if (!rail) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Sp.x3, 0, Sp.x3, Sp.x4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // The app mark: the same drawing as public/icon.svg — a
+                    // stone frame holding a paper sheet, an azurite spine and
+                    // one ink dot. It is the one mark in the chrome that is
+                    // neither text nor an icon, and it is what makes the slab
+                    // read as a cover rather than a menu.
+                    const LexMark(size: 20, semanticLabel: 'Lexumo'),
+                    const SizedBox(width: Sp.x2),
+                    Expanded(
+                      child: Text(
+                        context.t('common.appName'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: Fonts.display,
+                          fontSize: Fs.md,
+                          height: Lh.tight,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.02,
+                          color: p.frameInk,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             for (final item in PageId.values)
               _NavItem(
                 item: item,
@@ -417,11 +454,25 @@ class _NavItem extends StatefulWidget {
 class _NavItemState extends State<_NavItem> {
   bool _hover = false;
 
+  /// A labelled destination is taller than a control. 36dp is the height of a
+  /// button you press once; a sidebar row is a piece of a list you scan, and at
+  /// 36dp with a 15dp label the six of them read as a strip of tiles rather than
+  /// as a list. The rail keeps 36 because it wears no label and because a
+  /// landscape phone (866×411) has 379dp of column to fit six rows, the streak
+  /// card and three footer buttons into — 40dp rows overflow it by 5.
+  double get _rowH => widget.rail ? Layout.controlH : 40;
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final active = widget.active;
-    final bg = active || _hover ? (active ? p.frame3 : p.frame2) : Colors.transparent;
+    // The active destination is tinted, not merely a shade lighter than the
+    // stone. `frame3` on `frame` is #313935 on #252C28 — a 1.2:1 step that reads
+    // as a smudge rather than as "you are here", and the vision pass on the
+    // running build confirmed it disappears. The azurite-soft fill is the same
+    // move the segmented control and the list tabs already make, so the shell
+    // marks a selection the way the rest of the app does.
+    final bg = active ? p.frameAccentSoft : (_hover ? p.frame2 : Colors.transparent);
     final fg = active ? p.frameInk : (_hover ? p.frameInk : p.frameInk2);
     final iconColor = active || _hover ? p.frameAccent : p.frameInk3;
 
@@ -437,7 +488,8 @@ class _NavItemState extends State<_NavItem> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: Fs.md,
+                fontSize: Fs.base,
+                letterSpacing: 0.01,
                 color: fg,
                 fontWeight: active ? FontWeight.w500 : FontWeight.w400,
               ),
@@ -474,20 +526,22 @@ class _NavItemState extends State<_NavItem> {
                 : '',
             waitDuration: const Duration(milliseconds: 600),
             child: Container(
-              height: Layout.controlH,
-              padding: EdgeInsets.symmetric(horizontal: Sp.x2),
+              height: _rowH,
+              padding: EdgeInsets.symmetric(horizontal: Sp.x3),
               decoration: BoxDecoration(color: bg, borderRadius: R.borderSm),
               child: Stack(
                 alignment: Alignment.centerLeft,
                 children: [
                   row,
-                  // The azurite hairline that marks the current page.
+                  // The azurite hairline that marks the current page. It hangs
+                  // in the row's own left padding rather than over the row's
+                  // fill, so the mark and the fill do not read as one shape.
                   if (active)
                     Positioned(
-                      left: -Sp.x2,
+                      left: -Sp.x3,
                       child: Container(
                         width: 2,
-                        height: 16,
+                        height: 18,
                         decoration: BoxDecoration(
                           color: p.frameAccent,
                           borderRadius: const BorderRadius.horizontal(right: Radius.circular(R.x2xs)),
@@ -706,11 +760,12 @@ class _TabItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final color = active ? p.frameAccent : p.frameInk3;
-    // The active pill is the only thing on this bar that moves, and it moves
-    // once per tap: a 180ms fade of the background, not a slide. A sliding
-    // indicator would need the bar to know where the previous item was, which
-    // is state the shell does not otherwise keep — and at 6 tabs on a 320dp
-    // phone the items are 50dp wide, so a slide would be a flicker.
+    // The current tab is declared by the accent on its own icon and label plus a
+    // rule under them — not by a filled tile. The filled tile was the loudest
+    // shape on the bar and it read as a *button* sitting inside a row of tabs,
+    // which made the other five look disabled. A tint plus a rule is how the rest
+    // of the app marks a selection; the bar was the one place that invented a
+    // second vocabulary for the same idea.
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -720,7 +775,7 @@ class _TabItem extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 52),
         padding: const EdgeInsets.symmetric(vertical: Sp.x1, horizontal: Sp.x2),
         decoration: BoxDecoration(
-          color: active ? p.frame3 : Colors.transparent,
+          color: Colors.transparent,
           borderRadius: R.borderMd,
         ),
         child: Column(
@@ -745,24 +800,31 @@ class _TabItem extends StatelessWidget {
                   ),
                   if (badge != null)
                     Positioned(
-                      top: -5,
-                      right: -8,
+                      // A count is a footnote, not an alarm. It used to sit at
+                      // top -5 / right -8 of a 30×24 box, parked half outside the
+                      // icon and filled with the accent, so on an inactive tab it
+                      // was the loudest thing on the bar. It now sits inside the
+                      // icon's own box at a size the eye reaches only after the
+                      // destination, and it picks up the accent only when its tab
+                      // is the current one.
+                      top: -4,
+                      right: -6,
                       child: Container(
-                        constraints: const BoxConstraints(minWidth: 17),
-                        height: 17,
-                        padding: const EdgeInsets.symmetric(horizontal: Sp.x1),
+                        constraints: const BoxConstraints(minWidth: 15),
+                        height: 15,
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
                         decoration: BoxDecoration(
-                          color: p.frameAccent,
+                          color: active ? p.frameAccent : p.frame3,
                           borderRadius: BorderRadius.circular(R.full),
                         ),
                         child: Center(
                           child: Text(
                             badge! > 99 ? '99+' : '$badge',
                             style: TextStyle(
-                              fontSize: Fs.xs,
+                              fontSize: 10,
                               height: 1,
                               fontWeight: FontWeight.w600,
-                              color: p.frame2,
+                              color: active ? p.frame2 : p.frameInk3,
                               fontFeatures: const [FontFeature.tabularFigures()],
                             ),
                           ),
@@ -786,8 +848,23 @@ class _TabItem extends StatelessWidget {
               style: TextStyle(
                 fontSize: Fs.xs,
                 height: Lh.title,
-                fontWeight: FontWeight.w500,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                letterSpacing: 0.01,
                 color: color,
+              ),
+            ),
+            // The rule that says "you are here". Two dp tall, the width of the
+            // glyphs above it, and the only thing about a tab that changes
+            // shape on selection.
+            const SizedBox(height: 3),
+            AnimatedContainer(
+              duration: Motion.dur2,
+              curve: Motion.easeOut,
+              width: active ? 16 : 0,
+              height: 2,
+              decoration: BoxDecoration(
+                color: p.frameAccent,
+                borderRadius: BorderRadius.circular(R.full),
               ),
             ),
           ],

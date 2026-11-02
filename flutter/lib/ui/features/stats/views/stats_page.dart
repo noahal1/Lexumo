@@ -319,6 +319,10 @@ class _HeadCard extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
+            // The display face here matches `SectionHeading` and the settings
+            // groups: every card on every screen is named in the same voice, so
+            // "this is a heading" is one idea in the product rather than three.
+            fontFamily: Fonts.display,
             fontSize: Fs.md,
             height: Lh.tight,
             fontWeight: FontWeight.w600,
@@ -330,7 +334,7 @@ class _HeadCard extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             sub!,
-            style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink3),
+            style: TextStyle(fontSize: Fs.xs, height: Lh.snug, color: p.ink3),
           ),
         ],
       ],
@@ -386,7 +390,10 @@ class _HeadCard extends StatelessWidget {
                     },
                   ),
           ),
-          Container(height: 1, color: p.line),
+          // The head's own rule was the third vertical line in a card that
+          // already has a border and a fill change below it. Dropping it lets
+          // the heading sit on the card and the body sit in it, which is the
+          // same order the settings groups use.
           Padding(padding: const EdgeInsets.all(Sp.x5), child: child),
         ],
       ),

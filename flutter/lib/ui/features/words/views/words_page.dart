@@ -373,12 +373,17 @@ class _ListTabState extends State<_ListTab> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    // A list tab changes which rows are shown; it does not hold data. So it is
+    // not a box: the active tab carries the azurite tint the segmented control
+    // uses, and the rest are plain text that darkens under the pointer. Every
+    // tab used to draw a 1px outline, which put a row of five empty rectangles
+    // above the search field and made the strip look like a form.
     final bg = widget.active
         ? p.accentSoft
         : _hover
             ? p.surfaceHover
             : Colors.transparent;
-    final fg = widget.active ? p.accentInk : p.ink2;
+    final fg = widget.active ? p.accentInk : (_hover ? p.ink : p.ink2);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -395,19 +400,18 @@ class _ListTabState extends State<_ListTab> {
           // makes the box claim every pixel the Wrap offers, which turned one
           // tab into a full-width bar.
           height: context.controlH,
+          // A one-character list name would otherwise be a target narrower than
+          // a finger; the floor is on the box, so the shape does not grow with
+          // it on a mouse.
+          constraints: BoxConstraints(minWidth: context.isTouch ? Layout.tap : 0),
           padding: EdgeInsets.symmetric(
             horizontal: Sp.x3,
             vertical: context.isTouch ? 0 : Sp.x2,
           ),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: R.borderSm,
-            border: Border.all(
-              color: widget.active ? Colors.transparent : p.line,
-            ),
-          ),
+          decoration: BoxDecoration(color: bg, borderRadius: R.borderSm),
           child: Row(
             mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
                 widget.label,
@@ -425,7 +429,7 @@ class _ListTabState extends State<_ListTab> {
                   fontFamily: Fonts.mono,
                   fontSize: Fs.xs,
                   height: Lh.none,
-                  color: widget.active ? p.accentInk : p.ink3,
+                  color: widget.active ? p.accentInk : p.ink4,
                 ),
               ),
             ],
@@ -1409,6 +1413,13 @@ class _WordRowState extends State<_WordRow> {
 
 /// The headword, with the favourite star inline. Kept separate from the gloss
 /// so both can own a full line.
+/// The headword.
+///
+/// One row of a word table is read as "what is this word, and what does it
+/// mean" — in that order, and at a glance. The headword therefore carries the
+/// weight: serif, one step up from body, and the only thing in the row set in
+/// the display face. Everything under it is a caption by comparison, which is
+/// what makes a list of four hundred words scannable instead of uniform.
 class _TermLine extends StatelessWidget {
   const _TermLine({
     required this.word,
@@ -1428,7 +1439,7 @@ class _TermLine extends StatelessWidget {
       textBaseline: TextBaseline.alphabetic,
       children: [
         if (word.favorite) ...[
-          LexIcon(Ic.starFilled, size: 13, color: p.accent),
+          LexIcon(Ic.starFilled, size: 12, color: p.accent),
           const SizedBox(width: Sp.x2),
         ],
         Expanded(
@@ -1438,9 +1449,10 @@ class _TermLine extends StatelessWidget {
             maxLines: maxLines,
             style: TextStyle(
               fontFamily: Fonts.display,
-              fontSize: Fs.md,
+              fontSize: Fs.lg,
               height: Lh.title,
               fontWeight: FontWeight.w500,
+              letterSpacing: -0.005,
               color: p.ink,
             ),
           ),

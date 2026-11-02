@@ -101,12 +101,36 @@ class _HomePageState extends State<HomePage> {
           subtitle: subtitle,
           controller: widget.controller,
           children: _stacked(<Widget>[
-            _Greeting(vm: vm),
-            _GoalAndTiles(vm: vm),
-            _Actions(vm: vm),
-            if (vm.focusList != null && vm.focusDue > 0) _Focus(vm: vm),
-            _WeekCard(vm: vm),
-            if (vm.listCount > 0) _Libraries(vm: vm),
+            _Hero(vm: vm),
+            _Section(
+              title: context.t('home.todayTitle'),
+              child: _Today(vm: vm),
+            ),
+            if (vm.focusList != null && vm.focusDue > 0)
+              _Section(
+                title: context.t('home.focusTitle'),
+                child: _Focus(vm: vm),
+              ),
+            _Section(
+              title: context.t('home.weekTitle'),
+              note: vm.hasReviews
+                  ? context.t('home.weekTotal', {'n': vm.seriesTotal})
+                  : null,
+              action: vm.canNavigate
+                  ? LexButton(
+                      label: context.t('home.openStats'),
+                      kind: BtnKind.ghost,
+                      size: BtnSize.sm,
+                      onPressed: vm.openStats,
+                    )
+                  : null,
+              child: _WeekCard(vm: vm),
+            ),
+            if (vm.listCount > 0)
+              _Section(
+                title: context.t('home.listsTitle'),
+                child: _Libraries(vm: vm),
+              ),
           ]),
         );
       },
@@ -144,18 +168,67 @@ List<Widget> _stacked(List<Widget> blocks) {
 const int _staggeredBlocks = 4;
 
 /* ------------------------------------------------------------------ */
-/* Greeting                                                            */
+/* Named sections                                                      */
 /* ------------------------------------------------------------------ */
 
-/// Who you are, what time it is and what is left — the page's one hero band.
+/// A named block: the heading, then the thing it names.
+///
+/// The dashboard used to lay five unnamed bands on top of each other, and the
+/// only thing separating one idea from the next was the border of whichever card
+/// happened to be there — which is why the page read as a stack of boxes rather
+/// than as a set of answers. A block that says its own name can be found without
+/// being read.
+class _Section extends StatelessWidget {
+  const _Section({
+    required this.title,
+    required this.child,
+    this.note,
+    this.action,
+  });
+
+  final String title;
+  final String? note;
+  final Widget? action;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        SectionHeading(title: title, note: note, action: action),
+        const SizedBox(height: Sp.x3),
+        child,
+      ],
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Hero                                                                */
+/* ------------------------------------------------------------------ */
+
+/// Who you are, what time it is, what is left — and, on a wide window, the way
+/// out of the page.
 ///
 /// It carries no card. A card is a grouping of *things*, and a greeting is the
 /// page speaking rather than a container of content; putting it in a box made it
 /// read as a widget among widgets instead of as the answer to "what now?".
-class _Greeting extends StatelessWidget {
-  const _Greeting({required this.vm});
+///
+/// The two action buttons used to be a band of their own: two 551dp-wide
+/// controls under the cards, which is not a button, it is a stripe. Beside the
+/// headline they get a sane width, the page saves ~90dp of vertical space (which
+/// is exactly the height that was pushing 「我的词库」 under the fold), and the
+/// answer sits next to the question.
+class _Hero extends StatelessWidget {
+  const _Hero({required this.vm});
 
   final HomeViewModel vm;
+
+  /// Below this the actions drop under the headline instead of beside it: the
+  /// headline needs ~460dp to stay on one line and the pair needs ~280dp.
+  static const double _kSideBySide = 820;
 
   @override
   Widget build(BuildContext context) {
@@ -169,24 +242,38 @@ class _Greeting extends StatelessWidget {
         ? context.t('home.dueHeadline', {'n': vm.dueCount})
         : context.t('home.dueClear');
 
-    return Column(
+    final Widget text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Text(
           greeting,
-          style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink3),
+          style: TextStyle(
+            fontSize: Fs.sm,
+            height: Lh.snug,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.02,
+            color: p.ink3,
+          ),
         ),
         const SizedBox(height: Sp.x1),
-        Text(
-          headline,
-          style: TextStyle(
-            fontFamily: Fonts.display,
-            fontSize: Fs.xl,
-            height: Lh.title,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.01,
-            color: p.ink,
+        ConstrainedBox(
+          // The headline is one sentence; past ~620dp it stops being a
+          // sentence and starts being a paragraph of display type.
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: Text(
+            headline,
+            style: TextStyle(
+              fontFamily: Fonts.display,
+              // The page header is chrome at Fs.lg; the dashboard's own
+              // statement has to sit clearly above it or the two compete. This
+              // is the one place the display face is allowed to be large.
+              fontSize: Fs.x2xl,
+              height: Lh.tight,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.015,
+              color: p.ink,
+            ),
           ),
         ),
         const SizedBox(height: Sp.x3),
@@ -216,6 +303,30 @@ class _Greeting extends StatelessWidget {
           ],
         ),
       ],
+    );
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        if (constraints.maxWidth < _kSideBySide) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              text,
+              const SizedBox(height: Sp.x4),
+              _Actions(vm: vm),
+            ],
+          );
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: <Widget>[
+            Expanded(child: text),
+            const SizedBox(width: Sp.x6),
+            _Actions(vm: vm, compact: true),
+          ],
+        );
+      },
     );
   }
 }
@@ -264,69 +375,75 @@ class _Pill extends StatelessWidget {
 }
 
 /* ------------------------------------------------------------------ */
-/* Today's goal + the two headline figures                             */
+/* Today: the goal, then the two headline figures                       */
 /* ------------------------------------------------------------------ */
 
-/// The goal ring beside two tiles: one column on a phone, two columns wide.
-class _GoalAndTiles extends StatelessWidget {
-  const _GoalAndTiles({required this.vm});
+/// The goal and the two figures it sits beside.
+///
+/// The old arrangement put a centred 120dp ring in a card twice the width of its
+/// two neighbours and then used `IntrinsicHeight` to make all three the same
+/// height — so the two `StatTile`s were stretched to the ring's height and left
+/// ~50% of themselves empty, while the ring floated in 75% dead width. The ring
+/// is now 84dp and sits *beside* its numbers rather than above them, which makes
+/// the three cards naturally similar in height, so nothing has to be stretched
+/// and nothing is left blank.
+class _Today extends StatelessWidget {
+  const _Today({required this.vm});
 
   final HomeViewModel vm;
 
-  /// Below this the ring and the tiles stack. Measured against the content
-  /// column, not the window: 640 leaves each half ~300dp once the shell's own
-  /// padding is spent, which is the narrowest a `StatTile` reads at.
+  /// Below this the ring card takes the full width and the two figures share the
+  /// line under it; above, all three share one line at 2:1:1.
   static const double _kBreakpoint = 640;
 
   @override
   Widget build(BuildContext context) {
-    final Widget ring = _GoalCard(vm: vm);
-    final Widget tiles = IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Expanded(
-            child: StatTile(
-              label: context.t('stats.streak'),
-              value: '${vm.streak}',
-              sub: context.t('home.streakUnit'),
-              icon: Ic.flame,
-              accent: vm.streak > 0 ? Palette.of(context).accent : null,
-            ),
+    final p = Palette.of(context);
+    final Widget goal = _GoalCard(vm: vm);
+    final Widget figures = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(
+          child: StatTile(
+            label: context.t('stats.streak'),
+            value: '${vm.streak}',
+            sub: context.t('home.streakUnit'),
+            icon: Ic.flame,
+            accent: vm.streak > 0 ? p.accent : null,
           ),
-          const SizedBox(width: Sp.x4),
-          Expanded(
-            child: StatTile(
-              label: context.t('stats.mastered'),
-              value: '${vm.masteryPct}%',
-              sub: context.t('stats.masteryShare', {'n': vm.masteryPct}),
-              icon: Ic.target,
-            ),
+        ),
+        const SizedBox(width: Sp.x4),
+        Expanded(
+          child: StatTile(
+            label: context.t('stats.mastered'),
+            value: '${vm.masteryPct}%',
+            sub: context.t('stats.masteryShare', {'n': vm.masteryPct}),
+            icon: Ic.target,
           ),
-        ],
-      ),
+        ),
+      ],
     );
 
     // `LayoutBuilder` is safe here because nothing above asks this subtree for
     // an intrinsic size: it is a direct child of the page column. The reverse —
     // a `LayoutBuilder` *inside* an `IntrinsicHeight` — throws, which is why the
-    // tiles above are built without one.
+    // cards below are built without one.
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         if (constraints.maxWidth < _kBreakpoint) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
-            children: <Widget>[ring, const SizedBox(height: Sp.x4), tiles],
+            children: <Widget>[goal, const SizedBox(height: Sp.x4), figures],
           );
         }
         return IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Expanded(child: ring),
-              const SizedBox(width: Sp.x5),
-              Expanded(child: tiles),
+              Expanded(flex: 2, child: goal),
+              const SizedBox(width: Sp.x4),
+              Expanded(flex: 3, child: figures),
             ],
           ),
         );
@@ -335,13 +452,13 @@ class _GoalAndTiles extends StatelessWidget {
   }
 }
 
-/// The daily-goal card: one ring, one sentence, nothing else.
+/// The daily-goal card: a ring, the count, and one sentence.
 ///
-/// The ring is centred rather than paired with a paragraph the way the stats
-/// card does it. On a phone this card is 232dp wide inside its padding, so a
-/// 120dp ring leaves ~100dp for text — enough for a short caption and not enough
-/// for the three lines the stats card carries. A dashboard states the fact; the
-/// stats page is where it is explained.
+/// Laid out horizontally — ring on the left, numbers on the right — because the
+/// figure and its explanation belong on one line, and because a card that is
+/// wide should use its width rather than centre a circle in it. The ring keeps
+/// its job (a proportion you can read without doing arithmetic) at a size that
+/// leaves room for the words that say what the proportion means.
 class _GoalCard extends StatelessWidget {
   const _GoalCard({required this.vm});
 
@@ -352,65 +469,70 @@ class _GoalCard extends StatelessWidget {
     final p = Palette.of(context);
     final bool done = vm.reached;
     return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          Text(
-            context.t('home.todayGoal'),
-            style: TextStyle(
-              fontSize: Fs.sm,
-              height: Lh.tight,
-              fontWeight: FontWeight.w500,
-              color: p.ink2,
-            ),
+          Ring(
+            value: vm.goalPct,
+            max: 1,
+            size: 84,
+            stroke: 8,
+            children: <Widget>[
+              Text(
+                '${vm.today}',
+                style: TextStyle(
+                  fontFamily: Fonts.mono,
+                  fontSize: Fs.lg,
+                  height: Lh.title,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                  color: p.ink,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                '/ ${vm.goal}',
+                style: TextStyle(
+                  fontFamily: Fonts.mono,
+                  fontSize: Fs.xs,
+                  height: Lh.tight,
+                  color: p.ink3,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: Sp.x4),
-          Center(
-            child: Ring(
-              value: vm.goalPct,
-              max: 1,
-              size: 120,
-              stroke: 10,
+          const SizedBox(width: Sp.x4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 Text(
-                  '${vm.today}',
+                  context.t('home.todayGoal'),
                   style: TextStyle(
-                    fontFamily: Fonts.mono,
-                    fontSize: Fs.lg,
-                    height: Lh.title,
-                    fontWeight: FontWeight.w600,
-                    fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-                    color: p.ink,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '/ ${vm.goal}',
-                  style: TextStyle(
-                    fontFamily: Fonts.mono,
                     fontSize: Fs.xs,
                     height: Lh.tight,
-                    color: p.ink2,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.02,
+                    color: p.ink3,
+                  ),
+                ),
+                const SizedBox(height: Sp.x1 + 2),
+                Text(
+                  done
+                      ? context.t('home.goalDone')
+                      : context.t('home.goalRemaining', {'n': vm.remaining}),
+                  style: TextStyle(
+                    fontSize: Fs.md,
+                    height: Lh.snug,
+                    fontWeight: FontWeight.w500,
+                    // The accent marks the one thing that is *good news* on this
+                    // page. A missed goal is stated in ordinary ink rather than
+                    // in a warning colour: it is not an error, it is a Tuesday.
+                    color: done ? p.accent : p.ink,
                   ),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: Sp.x3),
-          Text(
-            done
-                ? context.t('home.goalDone')
-                : context.t('home.goalRemaining', {'n': vm.remaining}),
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: Fs.sm,
-              height: Lh.snug,
-              fontWeight: FontWeight.w500,
-              // The accent marks the one thing that is *good news* on this page.
-              // A missed goal is stated in ordinary ink rather than in a warning
-              // colour: it is not an error, it is a Tuesday.
-              color: done ? p.accent : p.ink2,
             ),
           ),
         ],
@@ -424,15 +546,28 @@ class _GoalCard extends StatelessWidget {
 /* ------------------------------------------------------------------ */
 
 /// Review and quiz, side by side wide and stacked on a phone.
+/// The two things a learner came here to do.
+///
+/// Sits beside the headline when there is room and under it when there is not.
+/// In the beside-form it takes a fixed column width instead of filling the row:
+/// `block: true` would stretch each button to whatever the page happens to be,
+/// and two 900dp-wide buttons on a desktop are not controls, they are banners.
 class _Actions extends StatelessWidget {
-  const _Actions({required this.vm});
+  const _Actions({required this.vm, this.compact = false});
 
   final HomeViewModel vm;
+
+  /// True when the pair sits to the right of the headline rather than below it.
+  final bool compact;
 
   /// Below this the two buttons stack. Side by side each would get under 180dp,
   /// and `LexButton` clips its label rather than wrapping it — a truncated
   /// "开始复…" is worse than a second row.
   static const double _kBreakpoint = 480;
+
+  /// Width of the beside-form. Enough for 「开始复习 · 12」 at `BtnSize.lg` with
+  /// its icon, and it keeps the pair from swallowing the headline.
+  static const double _kCompactWidth = 260;
 
   @override
   Widget build(BuildContext context) {
@@ -477,6 +612,17 @@ class _Actions extends StatelessWidget {
               ),
             ),
           );
+
+    if (compact) {
+      return SizedBox(
+        width: _kCompactWidth,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[review, const SizedBox(height: Sp.x2), quiz, hint],
+        ),
+      );
+    }
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
@@ -530,25 +676,21 @@ class _Focus extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  context.t('home.focusTitle'),
-                  style: TextStyle(fontSize: Fs.xs, height: Lh.tight, color: p.ink3),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  list.name,
-                  style: TextStyle(
-                    fontSize: Fs.base,
-                    height: Lh.snug,
-                    fontWeight: FontWeight.w500,
-                    color: p.ink,
-                  ),
-                ),
-              ],
+            // The caption that used to sit here said 「接着上次的」, which is
+            // exactly what the section heading above the card now says — the
+            // same sentence twice, 70dp apart, once as a heading and once as a
+            // label. The heading names the block, so the card names the thing
+            // itself: the list, at the size a row's own name deserves.
+            child: Text(
+              list.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: Fs.md,
+                height: Lh.snug,
+                fontWeight: FontWeight.w500,
+                color: p.ink,
+              ),
             ),
           ),
           const SizedBox(width: Sp.x3),
@@ -583,69 +725,22 @@ class _WeekCard extends StatelessWidget {
 
   final HomeViewModel vm;
 
-  /// Plot height. Short on purpose: this is a rhythm strip, not a chart, and the
-  /// stats page is one tap away for the real thing.
-  static const double _plotH = Sp.x16;
+  /// Plot height. The strip carries a count over every bar, so it needs room for
+  /// a label as well as a bar: 52dp of plot under a 20dp label row. It is still
+  /// short on purpose — this is a rhythm strip, not a chart, and the stats page
+  /// is one tap away for the real thing.
+  static const double _plotH = Sp.x16 + Sp.x2;
 
   @override
   Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    final String sub =
-        vm.hasReviews ? context.t('home.weekTotal', {'n': vm.seriesTotal}) : '';
-
+    // The title, the running total and the way out to the stats page all live in
+    // the section heading above this card now, so the card holds only the plot.
+    // Before, the same three facts were printed inside the card while the card
+    // had no name at all — the heading repeated what the card said.
     return Card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      context.t('home.weekTitle'),
-                      style: TextStyle(
-                        fontSize: Fs.md,
-                        height: Lh.tight,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.005,
-                        color: p.ink,
-                      ),
-                    ),
-                    if (sub.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 2),
-                      Text(
-                        sub,
-                        style: TextStyle(
-                          fontFamily: Fonts.mono,
-                          fontSize: Fs.sm,
-                          height: Lh.snug,
-                          color: p.ink3,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (vm.canNavigate) ...<Widget>[
-                const SizedBox(width: Sp.x3),
-                LexButton(
-                  label: context.t('home.openStats'),
-                  kind: BtnKind.ghost,
-                  size: BtnSize.sm,
-                  onPressed: vm.openStats,
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: Sp.x4),
-          if (vm.hasReviews) _Spark(series: vm.series, max: vm.seriesMax) else _NoReviews(vm: vm),
-        ],
-      ),
+      child: vm.hasReviews
+          ? _Spark(series: vm.series, max: vm.seriesMax)
+          : _NoReviews(vm: vm),
     );
   }
 }
@@ -674,29 +769,59 @@ class _Spark extends StatelessWidget {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: Sp.x1 / 2),
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: FractionallySizedBox(
-                        widthFactor: 1,
-                        // A zero day still draws a stub, so the strip reads as a
-                        // track with a quiet day in it rather than as a gap in
-                        // the layout.
-                        heightFactor: bar.count == 0
-                            ? 0.06
-                            : (bar.count / max).clamp(0.10, 1.0),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        // The count sits on its own bar. A bar chart with no
+                        // numbers on it can only be compared with itself, which
+                        // is why the old strip read as decoration: five of the
+                        // seven days were a stub and nothing said whether that
+                        // meant zero or just a short day.
+                        Text(
+                          '${bar.count}',
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontFamily: Fonts.mono,
+                            fontSize: Fs.xs - 1,
+                            height: Lh.none,
+                            fontWeight:
+                                bar.isToday ? FontWeight.w600 : FontWeight.w400,
                             color: bar.count == 0
-                                ? p.surfaceSunken
+                                ? p.ink4
                                 : bar.isToday
                                     ? p.accent
-                                    : p.accentSoft,
-                            borderRadius: BorderRadius.vertical(
-                              top: Radius.circular(R.xs),
+                                    : p.ink2,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.bottomCenter,
+                            child: FractionallySizedBox(
+                              widthFactor: 1,
+                              // A zero day still draws a stub, so the strip reads
+                              // as a track with a quiet day in it rather than as a
+                              // gap in the layout.
+                              heightFactor: bar.count == 0
+                                  ? 0.06
+                                  : (bar.count / max).clamp(0.10, 1.0),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: bar.count == 0
+                                      ? p.surfaceSunken
+                                      : bar.isToday
+                                          ? p.accent
+                                          : p.accentSoft,
+                                  borderRadius: BorderRadius.vertical(
+                                    top: Radius.circular(R.xs),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
@@ -792,73 +917,58 @@ class _Libraries extends StatelessWidget {
     final p = Palette.of(context);
     final List<WordList> shown = vm.lists.take(_kShown).toList();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          context.t('home.listsTitle'),
-          style: TextStyle(
-            fontSize: Fs.md,
-            height: Lh.tight,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.005,
-            color: p.ink,
-          ),
-        ),
-        const SizedBox(height: Sp.x3),
-        LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            // The shell's own breakpoint, so the strip changes shape at the same
-            // width the chrome does rather than at a number invented here.
-            if (constraints.maxWidth < Layout.mobileBreakpoint) {
-              return Card(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    for (var i = 0; i < shown.length; i++) ...<Widget>[
-                      if (i > 0) Container(height: 1, color: p.line),
-                      _ListRow(
-                        list: shown[i],
-                        words: vm.listWords(shown[i].id),
-                        due: vm.listDue(shown[i].id),
-                        onTap: () => vm.openList(shown[i].id),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            }
-            // One shared height so four cards read as one row of cards rather
-            // than four boxes that happen to be beside each other. `Intrinsic`
-            // is fine here: no descendant of these cards builds a
-            // `LayoutBuilder`, which is the one thing it cannot measure.
-            return IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  for (var i = 0; i < shown.length; i++) ...<Widget>[
-                    if (i > 0) const SizedBox(width: Sp.x3),
-                    Expanded(
-                      child: Card(
-                        padding: EdgeInsets.zero,
-                        child: _ListRow(
-                          list: shown[i],
-                          words: vm.listWords(shown[i].id),
-                          due: vm.listDue(shown[i].id),
-                          onTap: () => vm.openList(shown[i].id),
-                        ),
-                      ),
-                    ),
-                  ],
+    // The heading above supplies the name of this block, so the strip is nothing
+    // but the lists themselves.
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        // The shell's own breakpoint, so the strip changes shape at the same
+        // width the chrome does rather than at a number invented here.
+        if (constraints.maxWidth < Layout.mobileBreakpoint) {
+          return Card(
+            padding: EdgeInsets.zero,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                for (var i = 0; i < shown.length; i++) ...<Widget>[
+                  if (i > 0) Container(height: 1, color: p.line),
+                  _ListRow(
+                    list: shown[i],
+                    words: vm.listWords(shown[i].id),
+                    due: vm.listDue(shown[i].id),
+                    onTap: () => vm.openList(shown[i].id),
+                  ),
                 ],
-              ),
-            );
-          },
-        ),
-      ],
+              ],
+            ),
+          );
+        }
+        // One shared height so four cards read as one row of cards rather than
+        // four boxes that happen to be beside each other. `Intrinsic` is fine
+        // here: no descendant of these cards builds a `LayoutBuilder`, which is
+        // the one thing it cannot measure.
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              for (var i = 0; i < shown.length; i++) ...<Widget>[
+                if (i > 0) const SizedBox(width: Sp.x3),
+                Expanded(
+                  child: Card(
+                    padding: EdgeInsets.zero,
+                    child: _ListRow(
+                      list: shown[i],
+                      words: vm.listWords(shown[i].id),
+                      due: vm.listDue(shown[i].id),
+                      onTap: () => vm.openList(shown[i].id),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

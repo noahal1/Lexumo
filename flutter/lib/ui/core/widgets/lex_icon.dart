@@ -418,3 +418,94 @@ abstract final class SvgPathParser {
     return out;
   }
 }
+
+/// The app mark, drawn from the same geometry as `public/icon.svg`.
+///
+/// A stone frame holding a paper sheet, an azurite spine down the left edge
+/// and one ink dot — the word you are on. The mark is a multi-shape FILLED
+/// drawing on a 64x64 grid, not a stroked 24x24 glyph, so it does not go
+/// through [LexIcon]/`kIconPath`: adding it there would let an unknown-shape
+/// contract drift into the icon set. Drawn with [CustomPainter] so it stays
+/// crisp at every size and both themes carry the same fixed colours (the
+/// mark is the brand; a theme recolours chrome, never the brand).
+class LexMark extends StatelessWidget {
+  const LexMark({super.key, this.size = 20, this.semanticLabel});
+
+  final double size;
+
+  /// The mark is the app's identity; screens name it when it stands alone.
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: const _MarkPainter(),
+        child: semanticLabel == null
+            ? null
+            : Semantics(label: semanticLabel, child: const SizedBox.expand()),
+      ),
+    );
+  }
+}
+
+class _MarkPainter extends CustomPainter {
+  const _MarkPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 64x64 viewBox scaled to fit.
+    final scale = size.width / 64;
+    canvas.scale(scale);
+
+    // Stone frame.
+    final stone = Paint()..color = const Color(0xFF252C28);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(6.375, 6.375, 51.188, 51.188),
+        const Radius.circular(11.25),
+      ),
+      stone,
+    );
+
+    // Paper sheet with its hairline edge.
+    final paper = Paint()..color = const Color(0xFFF9F7F3);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(10.316, 10.316, 43.306, 43.306),
+        const Radius.circular(5.688),
+      ),
+      paper,
+    );
+    final edge = Paint()
+      ..color = const Color(0xFFE0DED7)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.125;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(10.316, 10.316, 43.306, 43.306),
+        const Radius.circular(5.688),
+      ),
+      edge,
+    );
+
+    // Azurite spine down the left edge.
+    final azurite = Paint()..color = const Color(0xFF175B72);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(18.251, 19.438, 7.808, 25.063),
+        const Radius.circular(3.142),
+      ),
+      azurite,
+    );
+
+    // One ink dot — the word you are on.
+    final ink = Paint()..color = const Color(0xFF1E221E);
+    canvas.drawCircle(const Offset(40.317, 31.938), 6.317, ink);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MarkPainter oldDelegate) => false;
+}

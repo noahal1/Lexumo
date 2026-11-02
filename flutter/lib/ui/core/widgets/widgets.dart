@@ -112,16 +112,21 @@ class _TopBar extends StatelessWidget {
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
           child: Padding(
-            // A phone spends 87dp of an 866dp screen on this bar. The type
-            // stays — a page title is not something to shrink — but the air
-            // around it can go: 20/16 of vertical padding is a desktop
-            // measurement, and dropping it to 16/12 buys back 8dp on every
-            // page without moving anything the eye reads.
+            // The header is chrome, and chrome sits below the work: the page's
+            // own first block is what the eye should land on, so the title is a
+            // 19dp serif line over a 12dp grey one rather than a second display
+            // size competing with the content (on the dashboard it was exactly
+            // the same size as the headline directly under it).
+            //
+            // The padding is the other half of that. A phone spends 87dp of an
+            // 866dp screen on this bar; 16/12 makes it 71dp, and 16dp of that
+            // is the difference between the first card sitting above the fold
+            // and being cut by it.
             padding: EdgeInsets.fromLTRB(
               Sp.x6,
-              context.isTouch ? Sp.x4 : Sp.x5,
-              Sp.x6,
               context.isTouch ? Sp.x3 : Sp.x4,
+              Sp.x6,
+              context.isTouch ? Sp.x2 + 2 : Sp.x3,
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -135,17 +140,25 @@ class _TopBar extends StatelessWidget {
                         title,
                         style: TextStyle(
                           fontFamily: Fonts.display,
-                          fontSize: Fs.xl,
+                          fontSize: Fs.lg,
                           height: Lh.title,
                           fontWeight: FontWeight.w600,
+                          letterSpacing: -0.01,
                           color: p.ink,
                         ),
                       ),
                       if (subtitle != null) ...[
-                        const SizedBox(height: Sp.x1),
+                        const SizedBox(height: 2),
+                        // The subtitle counts and describes; it is not content
+                        // to read. Left to wrap, a phone-width header spends
+                        // three lines on 「14 词，今日待复习 9」 while the page
+                        // below it loses that height, so it yields with an
+                        // ellipsis and the bar keeps its measured 71dp.
                         Text(
                           subtitle!,
-                          style: TextStyle(fontSize: Fs.sm, color: p.ink3, height: Lh.snug),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: Fs.xs, color: p.ink3, height: Lh.snug),
                         ),
                       ],
                     ],
@@ -195,7 +208,7 @@ class Segmented<T> extends StatelessWidget {
       // and the inset has to give way, or the strip would stand 4dp taller
       // than the row that holds it.
       padding: EdgeInsets.all(context.isTouch ? 0 : 2),
-      decoration: BoxDecoration(color: p.surface2, borderRadius: R.borderMd),
+      decoration: BoxDecoration(color: p.surfaceSunken, borderRadius: R.borderMd),
       // The track outline is painted *over* the children rather than as part of
       // the box decoration, because a border consumes layout space: with a real
       // 1dp border the tallest a chip could be inside a 44dp track is 42. Drawn
@@ -268,13 +281,21 @@ class _SegButtonState<T> extends State<_SegButton<T>> {
               ? const BoxConstraints(minWidth: Layout.tap)
               : null,
           decoration: BoxDecoration(
+            // The selected chip is a *tinted* chip, not a white one. A white
+            // chip on a near-white track is a 1.04:1 difference and a hairline
+            // — the state was legible only to whoever already knew which chip
+            // they had tapped. The accent tint says "this one" from across the
+            // room, which is the only job a filter has, and it is the one place
+            // besides the primary action the accent is allowed to appear.
             color: selected
-                ? p.surface
+                ? p.accentSoft
                 : _hover
                     ? p.surfaceHover
                     : const Color(0x00000000),
             borderRadius: R.borderSm,
-            border: Border.all(color: selected ? p.line : const Color(0x00000000)),
+            border: Border.all(
+              color: selected ? p.accent : const Color(0x00000000),
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -285,7 +306,7 @@ class _SegButtonState<T> extends State<_SegButton<T>> {
                   fontSize: Fs.sm,
                   height: Lh.tight,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  color: selected ? p.ink : p.ink2,
+                  color: selected ? p.accentInk : p.ink2,
                 ),
               ),
               // The count is a wide-screen affordance. Five chips with a number
@@ -443,9 +464,17 @@ class Ring extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final pct = max <= 0 ? 0.0 : (value / max).clamp(0.0, 1.0);
+    // The ring holds text, so its diameter has to answer to the text scale the
+    // same way a padded box does. A fixed 84dp circle that fits 「0 / 20」 at 1.0x
+    // overflows by 20dp at 2.0x — the numerals are what is inside it, not
+    // decoration painted next to it. Capped at 1.6x so a large-text ring does
+    // not swallow the card it sits in; past that the figures are simply bigger
+    // than the ring and the ring yields by overlap-free growth only up to here.
+    final double scale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.6);
+    final double side = size * scale;
     return SizedBox(
-      width: size,
-      height: size,
+      width: side,
+      height: side,
       child: TweenAnimationBuilder<double>(
         tween: Tween(begin: 0, end: pct),
         duration: Motion.dur4,
@@ -547,6 +576,21 @@ class StatusChip extends StatelessWidget {
 }
 
 /// A labelled figure — the stats page is a grid of these.
+///
+/// The order is label, figure, note — not icon, figure, note. A figure is the
+/// thing this app is made of (words counted, days counted, percentages), and it
+/// was being set one step smaller than the serif page furniture around it while
+/// an icon carried the colour. The figure now leads in tabular monospace so two
+/// tiles side by side line up digit for digit even when the numbers differ in
+/// width, and the icon — where a caller still passes one — is a 13dp muted mark
+/// inside the label row rather than a tinted badge above the number.
+///
+/// The icon trails its label rather than leading it. Leading it pushed the
+/// label 19dp to the right of the figure underneath, so the two left edges of a
+/// tile disagreed and a row of tiles read as ragged — the live build measured
+/// 「连续学习」 starting at x1156 above a figure starting at x1129. A mark that
+/// sits ahead of the words it describes moves the words; a mark that follows
+/// them perturbs nothing that has to line up.
 class StatTile extends StatelessWidget {
   const StatTile({
     super.key,
@@ -578,36 +622,109 @@ class StatTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (icon != null) ...[
-                LexIcon(icon!, size: 14, color: accent ?? p.ink3),
-                const SizedBox(width: Sp.x2),
-              ],
               Flexible(
                 child: Text(
                   label,
-                  style: TextStyle(fontSize: Fs.xs, color: p.ink3, height: Lh.tight),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: Fs.xs,
+                    color: p.ink3,
+                    height: Lh.tight,
+                    letterSpacing: 0.02,
+                  ),
                 ),
               ),
+              if (icon != null) ...[
+                const SizedBox(width: Sp.x1 + 2),
+                LexIcon(icon!, size: 13, color: p.ink4),
+              ],
             ],
           ),
-          const SizedBox(height: Sp.x2),
+          const SizedBox(height: Sp.x1 + 2),
           Text(
             value,
+            maxLines: 1,
             style: TextStyle(
-              fontFamily: Fonts.display,
-              fontSize: Fs.xl,
-              height: Lh.title,
+              fontFamily: Fonts.mono,
+              fontSize: Fs.x2xl,
+              height: Lh.tight,
               fontWeight: FontWeight.w600,
+              letterSpacing: -0.02,
+              fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
               color: accent ?? p.ink,
             ),
           ),
           if (sub != null) ...[
             const SizedBox(height: Sp.x1),
-            Text(sub!, style: TextStyle(fontSize: Fs.xs, color: p.ink4, height: Lh.tight)),
+            Text(
+              sub!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: Fs.xs, color: p.ink4, height: Lh.tight),
+            ),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// A section heading over a block of related content.
+///
+/// The dashboard had no such thing: every band sat directly on the page and the
+/// only hierarchy came from card borders, so the eye could not tell where one
+/// idea ended and the next began. A heading is 15dp of serif over a 12dp muted
+/// count — the same relationship the page header uses, one level down, so the
+/// page reads as a table of contents rather than a stack.
+class SectionHeading extends StatelessWidget {
+  const SectionHeading({super.key, required this.title, this.note, this.action});
+
+  final String title;
+  final String? note;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Flexible(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: Fonts.display,
+              fontSize: Fs.md,
+              height: Lh.tight,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.005,
+              color: p.ink,
+            ),
+          ),
+        ),
+        if (note != null) ...[
+          const SizedBox(width: Sp.x3),
+          Flexible(
+            child: Text(
+              note!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: Fonts.mono,
+                fontSize: Fs.xs,
+                height: Lh.tight,
+                color: p.ink4,
+              ),
+            ),
+          ),
+        ],
+        if (action != null) ...[const SizedBox(width: Sp.x3), action!],
+      ],
     );
   }
 }

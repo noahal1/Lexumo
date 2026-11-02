@@ -250,14 +250,11 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 880),
-              child: Card(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _Section(
-                      icon: Ic.sun,
-                      title: context.t('settings.appearance'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Section(
+                    title: context.t('settings.appearance'),
                       children: [
                         _Row(
                           label: context.t('settings.theme'),
@@ -286,9 +283,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ],
                     ),
-                    _Divider(color: p.line),
+                    const SizedBox(height: Sp.x5),
                     _Section(
-                      icon: Ic.target,
                       title: context.t('settings.study'),
                       children: [
                         _Row(
@@ -325,9 +321,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ],
                     ),
-                    _Divider(color: p.line),
+                    const SizedBox(height: Sp.x5),
                     _Section(
-                      icon: Ic.volume,
                       title: context.t('settings.audio'),
                       // Only note the absence once the engine has actually said
                       // no; before warm-up `supported` answers true on purpose so
@@ -443,9 +438,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ],
                     ),
-                    _Divider(color: p.line),
+                    const SizedBox(height: Sp.x5),
                     _Section(
-                      icon: Ic.book,
                       title: context.t('settings.dictionary'),
                       // No `note` here. It carried the cache count, which the
                       // row below already says — on a phone the two sat 60dp
@@ -472,15 +466,14 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ],
                     ),
-                    _Divider(color: p.line),
+                    const SizedBox(height: Sp.x5),
                     _SyncSection(
                       vm: vm,
                       autoSync: settings.autoSync,
                       onAutoSync: (v) => vm.patch((s) => s.copyWith(autoSync: v)),
                     ),
-                    _Divider(color: p.line),
+                    const SizedBox(height: Sp.x5),
                     _Section(
-                      icon: Ic.layers,
                       title: context.t('settings.data'),
                       note: context.t('settings.dataNote', {
                         'words': data.words.length,
@@ -549,7 +542,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
               ),
-            ),
             const SizedBox(height: Sp.x5),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 880),
@@ -583,60 +575,36 @@ class _SettingsPageState extends State<SettingsPage> {
 /* Section / row / divider — the web build's parts.tsx                  */
 /* ------------------------------------------------------------------ */
 
+/// One named group of settings: a heading, then a card holding its rows.
+///
+/// The page used to be a single 880dp card containing every group, with
+/// full-bleed hairlines between them. That made eight unrelated decisions read
+/// as one form, and the card's own border competed with the dividers inside it
+/// — the eye had no clue where a group started, so it read the page as a wall.
+/// A heading above its own card is the same information with a visible edge:
+/// each group is a thing you can find by scanning the left margin, which is how
+/// the rest of the app is organised now.
+///
+/// The leading icon is gone. Eight 14dp glyphs in a column never aligned with
+/// anything (rows are inset 12dp from the card edge, the icon sat at 20dp), and
+/// a settings group is named by its words, not by a symbol.
 class _Section extends StatelessWidget {
-  const _Section({required this.icon, required this.title, this.note, required this.children});
+  const _Section({required this.title, this.note, required this.children});
 
-  final String icon;
   final String title;
   final String? note;
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(Sp.x5),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: Sp.x2),
-            child: Row(
-              children: [
-                LexIcon(icon, size: 14, color: p.ink3),
-                const SizedBox(width: Sp.x2),
-                Flexible(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: Fs.sm,
-                      height: Lh.tight,
-                      fontWeight: FontWeight.w500,
-                      color: p.ink2,
-                    ),
-                  ),
-                ),
-                if (note != null) ...[
-                  const SizedBox(width: Sp.x2),
-                  Flexible(
-                    child: Text(
-                      note!,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        fontFamily: Fonts.mono,
-                        fontSize: Fs.xs,
-                        height: Lh.tight,
-                        color: p.ink3,
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          /* Rows sit 2px apart and bleed horizontally so their hover tint
-             reaches the card's padding edge, exactly like `.set-rows`. */
-          Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionHeading(title: title, note: note),
+        const SizedBox(height: Sp.x3),
+        Card(
+          padding: EdgeInsets.zero,
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (var i = 0; i < children.length; i++) ...[
@@ -645,8 +613,8 @@ class _Section extends StatelessWidget {
               ],
             ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -731,15 +699,6 @@ class _RowState extends State<_Row> {
       ),
     );
   }
-}
-
-class _Divider extends StatelessWidget {
-  const _Divider({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => Container(height: 1, color: color);
 }
 
 /// A left-aligned integer field. [value] is the store's number; the field keeps
@@ -1262,7 +1221,6 @@ class _SyncSection extends StatelessWidget {
     final formError = vm.syncFormError;
 
     return _Section(
-      icon: Ic.cloud,
       title: context.t('settings.sync'),
       children: [
         if (!signedIn)
@@ -1460,32 +1418,36 @@ class _UpdateSection extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(Sp.x5, Sp.x4, Sp.x5, Sp.x3),
           child: Row(
             children: [
-              LexIcon(Ic.refresh, size: 14, color: p.ink3),
-              const SizedBox(width: Sp.x2),
               Expanded(
                 child: Text(
                   context.t('settings.update'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: Fs.sm,
+                    fontFamily: Fonts.display,
+                    fontSize: Fs.md,
                     height: Lh.tight,
-                    fontWeight: FontWeight.w500,
-                    color: p.ink2,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.005,
+                    color: p.ink,
                   ),
                 ),
               ),
+              const SizedBox(width: Sp.x3),
               Text(
                 versionText,
+                maxLines: 1,
+                softWrap: false,
                 style: TextStyle(
                   fontFamily: Fonts.mono,
                   fontSize: Fs.xs,
                   height: Lh.tight,
-                  color: p.ink3,
+                  color: p.ink4,
                 ),
               ),
             ],
           ),
         ),
-        Container(height: 1, color: p.line),
         _Row(
           // The header already names the build, so this line is where the
           // *state* goes: the newest release, the download, the answer.

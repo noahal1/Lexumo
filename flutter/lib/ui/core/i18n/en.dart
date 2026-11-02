@@ -66,6 +66,7 @@ const Map<String, String> enRaw = {
   'home.greetingEvening': 'Good evening',
   'home.dueHeadline': '{n} cards are waiting for you today',
   'home.dueClear': 'Every card is done for today',
+  'home.todayTitle': 'Today',
   'home.todayGoal': "Today's goal",
   'home.goalDone': 'Goal reached',
   'home.goalRemaining': '{n} to go',
@@ -177,6 +178,11 @@ const Map<String, String> enRaw = {
   'flashcards.start': 'Start review',
   'flashcards.dueCount': '{n} due',
   'flashcards.newCount': '{n} new',
+  // The deck readout prints its figure and its word as two separate nodes, so
+  // the label cannot carry `{n}` — see `_DeckFigure` in flashcards_page.dart.
+  'flashcards.figureDue': 'due',
+  'flashcards.figureNew': 'new',
+  'flashcards.figureCards': 'in this set',
   'flashcards.noCards': 'Nothing to review right now',
   'flashcards.noCardsHint':
       'Everything is scheduled. Add new words or come back later.',

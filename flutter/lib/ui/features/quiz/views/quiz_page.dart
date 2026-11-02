@@ -297,20 +297,22 @@ class _QuizPageState extends State<QuizPage> {
     final Palette p = Palette.of(context);
     final int count = QUIZ_ROUND < eligibleCount ? QUIZ_ROUND : eligibleCount;
     final Widget intro = Card(
-      padding: const EdgeInsets.all(Sp.x7),
+      padding: const EdgeInsets.all(Sp.x6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          LexIcon(Ic.quiz, size: 26, color: p.ink4),
-          const SizedBox(height: Sp.x4),
+          // Same change as the flashcards intro: a 26dp glyph above a heading
+          // is a template habit, and the heading drops from Fs.x2xl to Fs.xl so
+          // a card title cannot compete with the page headline. Both intros are
+          // the same object now, which is why they are edited together.
           Text(
             t('quiz.start'),
             style: TextStyle(
               fontFamily: Fonts.display,
-              fontSize: Fs.x2xl,
-              height: Lh.title,
+              fontSize: Fs.xl,
+              height: Lh.tight,
               fontWeight: FontWeight.w600,
-              letterSpacing: -0.02,
+              letterSpacing: -0.015,
               color: p.ink,
             ),
           ),
