@@ -1003,7 +1003,7 @@ class PillField extends StatelessWidget {
         // outline at all — so the transition is from "no line" to "accent line",
         // which is a stronger signal than the old grey-to-accent swap.
         border: Border.all(
-          color: focused ? p.accent : Colors.transparent,
+          color: focused ? p.accent : fadeFrom(p.accent),
         ),
       ),
       child: Row(

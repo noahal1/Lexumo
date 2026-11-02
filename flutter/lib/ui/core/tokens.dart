@@ -394,6 +394,22 @@ class Palette extends ThemeExtension<Palette> {
       Theme.of(context).extension<Palette>() ?? light;
 }
 
+/// The colour to animate a hover fill *from*.
+///
+/// `Colors.transparent` is transparent **black**, not "no colour", so a
+/// `BoxDecoration` that tweens `transparent → surfaceHover` spends the whole
+/// 120ms passing through dark grey before it arrives. Composited over paper the
+/// midpoint of that tween is around `#C6C3C0` — noticeably darker than either
+/// end — and the eye reads the dip and the recovery as a flicker rather than as
+/// a highlight. Reported as "鼠标放在不同单词上也会闪烁".
+///
+/// Taking the target colour at alpha 0 instead keeps the whole path on one hue,
+/// so the row simply gets warmer. Same duration, same curve, no dip.
+///
+/// Call sites: every animated hover/selection fill. A static (non-animated)
+/// transparent is fine and should stay `Colors.transparent`.
+Color fadeFrom(Color target) => target.withValues(alpha: 0);
+
 /// ---------------------------------------------------------------------------
 /// Spacing — one 4px grid, no exceptions.
 /// ---------------------------------------------------------------------------

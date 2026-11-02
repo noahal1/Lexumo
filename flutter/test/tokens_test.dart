@@ -177,6 +177,28 @@ void main() {
       expect(Palette.light.lerp(Palette.dark, 0.49).isDark, Palette.light.isDark);
       expect(Palette.light.lerp(Palette.dark, 0.5).isDark, Palette.dark.isDark);
     });
+
+    test('fadeFrom keeps the hue and drops only the alpha', () {
+      // The whole point of `fadeFrom` over `Colors.transparent`: a tween from
+      // transparent black passes through dark grey, and on a hover fill the eye
+      // reads that dip as a flicker. These two assertions are the difference
+      // between a fade and a flash.
+      for (final Color target in <Color>[
+        Palette.light.surfaceHover,
+        Palette.light.surface2,
+        Palette.light.accent,
+        Palette.dark.surfaceHover,
+      ]) {
+        final Color from = fadeFrom(target);
+        expect(from.a, 0);
+        expect(from.r, target.r);
+        expect(from.g, target.g);
+        expect(from.b, target.b);
+      }
+      // `Colors.transparent` is the wrong starting point, and saying so here
+      // means a "simplification" back to it has to argue with a test.
+      expect(fadeFrom(Palette.light.surfaceHover), isNot(Colors.transparent));
+    });
   });
 
   group('Fonts', () {

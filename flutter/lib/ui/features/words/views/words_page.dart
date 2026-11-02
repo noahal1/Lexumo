@@ -378,7 +378,7 @@ class _ListTabState extends State<_ListTab> {
         ? p.accentSoft
         : _hover
             ? p.surfaceHover
-            : Colors.transparent;
+            : fadeFrom(p.surfaceHover);
     final fg = widget.active ? p.accentInk : (_hover ? p.ink : p.ink2);
 
     return MouseRegion(
@@ -936,7 +936,7 @@ class _QbarIconButtonState extends State<_QbarIconButton> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final bg = _hover ? p.surfaceHover : Colors.transparent;
+    final bg = _hover ? p.surfaceHover : fadeFrom(p.surfaceHover);
     final fg = p.ink3;
 
     final button = MouseRegion(
@@ -1157,7 +1157,7 @@ class _WordRowState extends State<_WordRow> {
         ? p.accentSoft
         : _hover
             ? p.surfaceHover
-            : Colors.transparent;
+            : fadeFrom(p.surfaceHover);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -1551,7 +1551,7 @@ class _RowActionState extends State<_RowAction> {
               height: Layout.controlHSm,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: _hover ? p.surface2 : Colors.transparent,
+                color: _hover ? p.surface2 : fadeFrom(p.surface2),
                 borderRadius: R.borderXs,
               ),
               child: LexIcon(widget.icon, size: 15, color: fg),

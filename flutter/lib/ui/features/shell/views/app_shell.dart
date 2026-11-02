@@ -615,7 +615,7 @@ class _SidebarButtonState extends State<_SidebarButton> {
                   height: Layout.controlHSm,
                   margin: const EdgeInsets.only(right: 2),
                   decoration: BoxDecoration(
-                    color: Color.lerp(Colors.transparent, p.frame3, t),
+                    color: Color.lerp(fadeFrom(p.frame3), p.frame3, t),
                     borderRadius: R.borderSm,
                   ),
                   child: Center(
@@ -782,7 +782,7 @@ class _TabItem extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 2, vertical: Sp.x1),
         padding: const EdgeInsets.symmetric(vertical: Sp.x1, horizontal: Sp.x2),
         decoration: BoxDecoration(
-          color: active ? p.frameAccentSoft : Colors.transparent,
+          color: active ? p.frameAccentSoft : fadeFrom(p.frameAccentSoft),
           borderRadius: R.borderPill,
         ),
         child: Column(

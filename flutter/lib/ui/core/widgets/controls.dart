@@ -92,17 +92,17 @@ class _LexButtonState extends State<LexButton> {
           Colors.transparent,
         ),
       BtnKind.ghost => (
-          _hover ? p.surfaceHover : Colors.transparent,
+          _hover ? p.surfaceHover : fadeFrom(p.surfaceHover),
           _hover ? p.ink : p.ink2,
           Colors.transparent,
         ),
       BtnKind.quiet => (
-          _hover ? p.surfaceHover : Colors.transparent,
+          _hover ? p.surfaceHover : fadeFrom(p.surfaceHover),
           _hover ? p.ink : p.ink3,
           Colors.transparent,
         ),
       BtnKind.danger => (
-          _hover ? p.dangerSoft : Colors.transparent,
+          _hover ? p.dangerSoft : fadeFrom(p.dangerSoft),
           p.danger,
           p.danger,
         ),
@@ -291,7 +291,7 @@ class _LexInputState extends State<LexInput> {
         // its own. Focus is the only time a line appears.
         color: _focus ? p.surface : p.surface2,
         borderRadius: R.borderPill,
-        border: Border.all(color: _focus ? p.accent : Colors.transparent),
+        border: Border.all(color: _focus ? p.accent : fadeFrom(p.accent)),
       ),
       child: Row(
         children: [
@@ -376,7 +376,7 @@ class _LexTextAreaState extends State<LexTextArea> {
         color: _focus ? p.surface : p.surface2,
         // Same capsule as [LexInput] — a multi-line field is still a field.
         borderRadius: R.borderLg,
-        border: Border.all(color: _focus ? p.accent : Colors.transparent),
+        border: Border.all(color: _focus ? p.accent : fadeFrom(p.accent)),
       ),
       child: Focus(
         onFocusChange: (v) => setState(() => _focus = v),
