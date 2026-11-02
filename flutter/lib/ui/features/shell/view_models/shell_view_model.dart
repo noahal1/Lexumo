@@ -17,10 +17,10 @@
 ///
 /// What moves here is everything that is *identity* rather than *paint*:
 ///
-///   * **order** — [values] is the tab-bar order, and the Ctrl/Cmd+1…6 table
+///   * **order** — [values] is the tab-bar order, and the Ctrl/Cmd+1…5 table
 ///     is indexed by it,
-///   * **the wire id** — `'words'`, `'quiz'`, …, which is what a page sends
-///     back through `NavScope` and what [PageId.fromId] resolves,
+///   * **the wire id** — `'words'`, `'practice'`, …, which is what a page
+///     sends back through `NavScope` and what [PageId.fromId] resolves,
 ///   * **the label key** — a plain `String` key, not a translation; the view
 ///     still calls `context.t` on it, so no language lives in this file,
 ///   * **the selected index** — [page], the one piece of mutable state the
@@ -45,26 +45,32 @@ import '../../../../domain/models/types.dart';
 import '../../../../domain/use_cases/day_stats.dart';
 import '../../../core/view_model.dart';
 
-/// The six destinations, in tab-bar order.
+/// The five destinations, in tab-bar order.
 ///
 /// Identity, order and the i18n key — not the icon. See this file's header for
 /// why the icon mapping is the view's.
 ///
 /// [home] leads because it is the screen the app opens on: a landing page that
-/// says what is waiting today. It was added after the other five, and it went
-/// in at the front rather than the back because tab-bar order is reading order
-/// — a summary belongs before the thing it summarises.
+/// says what is waiting today. It was added after the other destinations, and
+/// it went in at the front rather than the back because tab-bar order is
+/// reading order — a summary belongs before the thing it summarises.
+///
+/// [practice] is the merge of the old [flashcards] and [quiz] destinations:
+/// one tab whose page flips between review and quiz, as the reference's
+/// 「练习」 entry point does. The two old wire ids stay reachable through
+/// [fromId] so existing call sites (home's "开始复习"/"开始测验", the stats
+/// "去复习", the review page's own "去测验") keep working and land on the
+/// practice tab rather than being dropped.
 enum PageId {
   home('home', 'nav.home'),
   words('words', 'nav.words'),
-  flashcards('flashcards', 'nav.flashcards'),
-  quiz('quiz', 'nav.quiz'),
+  practice('practice', 'nav.practice'),
   stats('stats', 'nav.stats'),
   settings('settings', 'nav.settings');
 
   const PageId(this.id, this.labelKey);
 
-  /// The wire id a page sends through `NavScope` — `'words'`, `'quiz'`, ….
+  /// The wire id a page sends through `NavScope` — `'words'`, `'practice'`, ….
   final String id;
 
   /// The i18n key for the destination's label. The view translates it.
@@ -75,7 +81,12 @@ enum PageId {
   /// Forgiving on purpose: a page can ask for a destination this build does
   /// not have, and that must be ignored rather than throw out of a button
   /// callback.
+  ///
+  /// The retired `'flashcards'` and `'quiz'` ids resolve to [practice], so a
+  /// stale call site still lands somewhere useful instead of being silently
+  /// swallowed by an id the enum no longer carries.
   static PageId? fromId(String id) {
+    if (id == 'flashcards' || id == 'quiz') return PageId.practice;
     for (final PageId page in values) {
       if (page.id == id) return page;
     }
@@ -168,7 +179,7 @@ class ShellViewModel extends ViewModel {
   /// The snapshot's theme, for the sidebar's sun/moon button.
   bool get isDark => _store.data.settings.theme == ThemeMode_.dark;
 
-  /// How many cards are waiting, for the flashcard badge.
+  /// How many cards are waiting, for the practice badge.
   int get dueCount => dueWords(_store.data).length;
 
   /// The streak card's two numbers, read from one clock reading.

@@ -30,9 +30,8 @@ import 'package:lexumo/ui/core/theme.dart';
 import 'package:lexumo/ui/core/tokens.dart';
 import 'package:lexumo/domain/models/seed.dart';
 import 'package:lexumo/ui/core/i18n/i18n.dart';
-import 'package:lexumo/ui/features/flashcards/views/flashcards_page.dart';
 import 'package:lexumo/ui/features/home/views/home_page.dart';
-import 'package:lexumo/ui/features/quiz/views/quiz_page.dart';
+import 'package:lexumo/ui/features/practice/views/practice_page.dart';
 import 'package:lexumo/ui/features/settings/views/settings_page.dart';
 import 'package:lexumo/ui/features/stats/views/stats_page.dart';
 import 'package:lexumo/ui/features/words/views/words_page.dart';
@@ -79,8 +78,7 @@ Future<void> pumpPhone(WidgetTester tester, Widget child) async {
 final List<(String, Widget)> kScreens = <(String, Widget)>[
   ('home', const HomePage()),
   ('words', const WordsPage()),
-  ('flashcards', const FlashcardsPage(controller: null)),
-  ('quiz', const QuizPage(controller: null)),
+  ('practice', const PracticePage(controller: null)),
   ('stats', const StatsPage(controller: null)),
   ('settings', const SettingsPage(controller: null)),
   ('shell', const AppShell()),
@@ -319,7 +317,7 @@ void main() {
       // future change drops the nav label believing the title covers it.
       await pumpPhone(tester, const AppShell());
       expect(find.text('词库'), findsWidgets);
-      expect(find.text('闪卡'), findsWidgets);
+      expect(find.text('练习'), findsWidgets);
       expect(find.text('统计'), findsWidgets);
     });
 

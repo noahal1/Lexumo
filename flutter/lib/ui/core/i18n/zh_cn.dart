@@ -54,8 +54,7 @@ const Map<String, String> zhCnRaw = {
   // nav
   'nav.home': '首页',
   'nav.words': '词库',
-  'nav.flashcards': '闪卡',
-  'nav.quiz': '测验',
+  'nav.practice': '练习',
   'nav.stats': '统计',
   'nav.settings': '设置',
   // home
@@ -165,6 +164,9 @@ const Map<String, String> zhCnRaw = {
   'words.saveAnywhere': '保存',
   'words.listsSubtitle': '{n} 个词库',
   'words.deleteListConfirm': '删除词库「{name}」，其中的 {n} 个词语会一起删掉，不能恢复。',
+  // practice
+  'practice.review': '复习',
+  'practice.quiz': '测验',
   // flashcards
   'flashcards.start': '开始复习',
   // 数字与量词分开显示：数字用等宽体领先，说明文字跟在下面。

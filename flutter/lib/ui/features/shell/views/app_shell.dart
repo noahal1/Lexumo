@@ -37,9 +37,8 @@ import '../../../core/widgets/density.dart';
 import '../../../core/widgets/keyboard_hints.dart';
 import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
-import '../../flashcards/views/flashcards_page.dart';
 import '../../home/views/home_page.dart';
-import '../../quiz/views/quiz_page.dart';
+import '../../practice/views/practice_page.dart';
 import '../../settings/views/settings_page.dart';
 import '../../stats/views/stats_page.dart';
 import '../../words/views/words_page.dart';
@@ -63,8 +62,7 @@ const Key kSidebarKey = ValueKey<String>('app-sidebar');
 String _iconFor(PageId page) => switch (page) {
       PageId.home => Ic.home,
       PageId.words => Ic.words,
-      PageId.flashcards => Ic.cards,
-      PageId.quiz => Ic.quiz,
+      PageId.practice => Ic.cards,
       PageId.stats => Ic.stats,
       PageId.settings => Ic.settings,
     };
@@ -79,7 +77,7 @@ class ShortcutHelp {
 /// The sheet's contents, in declaration order — the same list the web build
 /// rendered from `SHORTCUT_HELP`.
 const List<ShortcutHelp> kShortcutHelp = <ShortcutHelp>[
-  ShortcutHelp(<String>['Ctrl', '1…6'], 'shortcuts.pageSwitch'),
+  ShortcutHelp(<String>['Ctrl', '1…5'], 'shortcuts.pageSwitch'),
   ShortcutHelp(<String>['?'], 'shortcuts.help'),
   ShortcutHelp(<String>['/'], 'settings.shortcutSearch'),
   ShortcutHelp(<String>['n'], 'settings.shortcutAdd'),
@@ -90,19 +88,18 @@ const List<ShortcutHelp> kShortcutHelp = <ShortcutHelp>[
   ShortcutHelp(<String>['Esc'], 'shortcuts.closeModal'),
 ];
 
-/// The digit keys behind Ctrl/Cmd+1…6, in page order. Spelled out because
+/// The digit keys behind Ctrl/Cmd+1…5, in page order. Spelled out because
 /// `LogicalKeyboardKey.digit1 + i` is not arithmetic the type allows.
 ///
-/// Six entries for six destinations. The list is indexed by
+/// Five entries for five destinations. The list is indexed by
 /// [PageId.values], so adding a destination without extending it would throw
-/// a range error on the first Ctrl+6 rather than silently doing nothing.
+/// a range error on the first Ctrl+5 rather than silently doing nothing.
 const List<LogicalKeyboardKey> _digitKeys = <LogicalKeyboardKey>[
   LogicalKeyboardKey.digit1,
   LogicalKeyboardKey.digit2,
   LogicalKeyboardKey.digit3,
   LogicalKeyboardKey.digit4,
   LogicalKeyboardKey.digit5,
-  LogicalKeyboardKey.digit6,
 ];
 
 class AppShell extends StatefulWidget {
@@ -169,7 +166,7 @@ class _AppShellState extends State<AppShell> {
 
         return CallbackShortcuts(
           bindings: <ShortcutActivator, VoidCallback>{
-            // Ctrl/Cmd + 1…6. The digits are not contiguous logical key codes,
+            // Ctrl/Cmd + 1…5. The digits are not contiguous logical key codes,
             // so the table is spelled out rather than computed.
             for (var i = 0; i < PageId.values.length; i++) ...{
               SingleActivator(_digitKeys[i], control: true): () =>
@@ -237,8 +234,7 @@ class _AppShellState extends State<AppShell> {
       child: switch (page) {
         PageId.home => HomePage(controller: controller),
         PageId.words => WordsPage(controller: controller),
-        PageId.flashcards => FlashcardsPage(controller: controller),
-        PageId.quiz => QuizPage(controller: controller),
+        PageId.practice => PracticePage(controller: controller),
         PageId.stats => StatsPage(controller: controller),
         PageId.settings => SettingsPage(controller: controller),
       },
@@ -393,7 +389,7 @@ class _Sidebar extends StatelessWidget {
                 item: item,
                 active: vm.page == item,
                 rail: rail,
-                badge: item == PageId.flashcards && vm.dueCount > 0
+                badge: item == PageId.practice && vm.dueCount > 0
                     ? vm.dueCount
                     : null,
                 onTap: () => onNavigate(item),
@@ -456,9 +452,9 @@ class _NavItemState extends State<_NavItem> {
 
   /// A labelled destination is taller than a control. 36dp is the height of a
   /// button you press once; a sidebar row is a piece of a list you scan, and at
-  /// 36dp with a 15dp label the six of them read as a strip of tiles rather than
+  /// 36dp with a 15dp label the five of them read as a strip of tiles rather than
   /// as a list. The rail keeps 36 because it wears no label and because a
-  /// landscape phone (866×411) has 379dp of column to fit six rows, the streak
+  /// landscape phone (866×411) has 379dp of column to fit five rows, the streak
   /// card and three footer buttons into — 40dp rows overflow it by 5.
   double get _rowH => widget.rail ? Layout.controlH : 40;
 
@@ -741,7 +737,7 @@ class _TabBar extends StatelessWidget {
                   child: _TabItem(
                     item: item,
                     active: vm.page == item,
-                    badge: item == PageId.flashcards && vm.dueCount > 0
+                    badge: item == PageId.practice && vm.dueCount > 0
                         ? vm.dueCount
                         : null,
                     onTap: () => onNavigate(item),
@@ -844,7 +840,7 @@ class _TabItem extends StatelessWidget {
             const SizedBox(height: Sp.x1),
             Text(
               context.t(item.labelKey),
-              // Six destinations on a 320dp phone leave ~34dp of text column
+              // Five destinations on a 320dp phone leave ~34dp of text column
               // once the pill's padding is taken. A CJK label is two glyphs and
               // fits; a longer Latin one has to ellipsize rather than wrap,
               // because a wrapped label would grow the bar and the bar is the

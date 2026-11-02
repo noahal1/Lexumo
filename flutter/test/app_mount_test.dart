@@ -44,7 +44,7 @@ import 'package:lexumo/domain/models/seed.dart';
 import 'package:lexumo/main.dart';
 import 'package:lexumo/ui/core/widgets/toast.dart';
 import 'package:lexumo/ui/features/home/views/home_page.dart';
-import 'package:lexumo/ui/features/quiz/views/quiz_page.dart';
+import 'package:lexumo/ui/features/practice/views/practice_page.dart';
 import 'package:lexumo/ui/features/words/views/words_page.dart';
 
 /// Never reached: `InstallSupport.none` short-circuits the check before any
@@ -196,13 +196,13 @@ void main() {
       await _pumpApp(tester);
       expect(find.byType(HomePage), findsOneWidget);
 
-      // `测验` appears as a tab label and nowhere else on the home page (the
+      // `练习` appears as a tab label and nowhere else on the home page (the
       // dashboard's own button reads `开始测验`, a different string).
-      await tester.tap(find.text('测验'));
+      await tester.tap(find.text('练习'));
       await tester.pumpAndSettle();
 
       expect(tester.takeException(), isNull);
-      expect(find.byType(QuizPage), findsOneWidget);
+      expect(find.byType(PracticePage), findsOneWidget);
       expect(find.byType(HomePage), findsNothing);
 
       await _unmount(tester);

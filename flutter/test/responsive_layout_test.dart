@@ -34,9 +34,8 @@ import 'package:lexumo/domain/models/types.dart' show DEFAULT_LIST_ID;
 import 'package:lexumo/ui/core/i18n/i18n.dart';
 import 'package:lexumo/ui/core/theme.dart';
 import 'package:lexumo/ui/core/tokens.dart';
-import 'package:lexumo/ui/features/flashcards/views/flashcards_page.dart';
 import 'package:lexumo/ui/features/home/views/home_page.dart';
-import 'package:lexumo/ui/features/quiz/views/quiz_page.dart';
+import 'package:lexumo/ui/features/practice/views/practice_page.dart';
 import 'package:lexumo/ui/features/settings/views/settings_page.dart';
 import 'package:lexumo/ui/features/shell/views/app_shell.dart';
 import 'package:lexumo/ui/features/stats/views/stats_page.dart';
@@ -49,8 +48,7 @@ import 'support/fake_tts.dart';
 final List<(String, Widget)> _screens = <(String, Widget)>[
   ('home', const HomePage()),
   ('words', const WordsPage()),
-  ('flashcards', const FlashcardsPage(controller: null)),
-  ('quiz', const QuizPage(controller: null)),
+  ('practice', const PracticePage(controller: null)),
   ('stats', const StatsPage(controller: null)),
   ('settings', const SettingsPage(controller: null)),
   ('shell', const AppShell()),

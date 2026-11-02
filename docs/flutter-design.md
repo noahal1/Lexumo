@@ -92,22 +92,24 @@ flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 
     features/
       home/
         view_models/home_view_model.dart           首页聚合：今日目标 / 连续天数 / 近七天（306 行）
-        views/home_page.dart                       只画（982 行）
+        views/home_page.dart                       只画（1034 行）
       words/
         view_models/words_view_model.dart          列表 + 筛选 + 批量操作（477 行）
         view_models/word_editor_view_model.dart    新建/编辑词的草稿与查词（486 行）
-        views/words_page.dart                     只画，不含判断（2031 行）
+        views/words_page.dart                     只画，不含判断（1973 行）
         views/word_editor.dart                    只画（767 行）
+      practice/
+        views/practice_page.dart                   复习 / 测验二选一的外壳（95 行）
       flashcards/
         view_models/flashcards_view_model.dart     会话 / 翻面 / 评分 / 撤销（582 行）
-        views/flashcards_page.dart                 只画（1387 行）
+        views/flashcards_page.dart                 只画（1439 行）
         views/session_result.dart                  会话结果卡（两个学习页共用）
       quiz/
         view_models/quiz_view_model.dart           一轮测验 / 答案 / 错题（364 行）
-        views/quiz_page.dart                       只画（1018 行）
+        views/quiz_page.dart                       只画（1020 行）
       stats/
         view_models/stats_view_model.dart          图表数据推导（276 行）
-        views/stats_page.dart                      只画（899 行）
+        views/stats_page.dart                      只画（943 行）
       settings/
         view_models/settings_view_model.dart       设置项、词典缓存、同步表单
         views/settings_page.dart                   只画
@@ -115,8 +117,8 @@ flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 
         view_models/update_view_model.dart         升级卡状态（393 行）
         views/update_sheet.dart                    只画（384 行）
       shell/
-        view_models/shell_view_model.dart          三档布局 + 六页切换（198 行）
-        views/app_shell.dart                       只画（870 行）
+        view_models/shell_view_model.dart          三档布局 + 五页切换（215 行）
+        views/app_shell.dart                       只画（997 行）
   third_party/
     flutter_tts/       flutter_tts 4.2.5 的原样拷贝，只改 Windows 的 C++（见 7.2）
 ```
@@ -302,16 +304,19 @@ view model 并把草稿推回 7 个 `TextEditingController`——**必须在构�
   并排等于没有主行动。
 - **目标环只放一个环，不放统计页那三行说明。** 手机上这张卡内宽 232dp，120dp 的环
   留给文字约 100dp——够一句短的，不够统计页的三行。首页陈述事实，解释留在统计页。
-- **七个界面的顺序**：`_screens`（`responsive_layout_test.dart`）与 `kScreens`
+- **六个界面的顺序**：`_screens`（`responsive_layout_test.dart`）与 `kScreens`
   （`mobile_layout_test.dart`）里 `('home', …)` 排在最前，因为 `PageId` 的声明顺序
-  就是标签栏顺序与 Ctrl/Cmd+1…6 的编号，测试列表若用别的顺序，那份顺序就成了假的。
+  就是标签栏顺序与 Ctrl/Cmd+1…5 的编号，测试列表若用别的顺序，那份顺序就成了假的。
 
-首个把 `PageId` 从五页扩到六页的改动连带三处：`_digitKeys` 从五条扩到六条（它按
-`PageId.values` 索引，少一条会在 Ctrl+6 上抛区间错误）、`kShortcutHelp` 与设置页
-`_kShortcuts` 的 `Ctrl 1…5` 改成 `1…6`（设置页那是一份**故意镜像**的副本，反向
-import 会成环）、`Ic.home` 加进 `icon_paths.dart` 与 `lex_icon.dart`。标签栏同时补了
-两件事：`Shadows.tabbarFor(p.isDark)`（令牌写了却一直没接）、以及活动项的
-`AnimatedContainer` + 4% 图标缩放——只动 transform 与 opacity，不越界回弹。
+`PageId` 的条目数改过两次，两次都要连带三处：`_digitKeys`（它按 `PageId.values`
+索引，少一条会在对应的 Ctrl+数字上抛区间错误）、`kShortcutHelp` 与设置页
+`_kShortcuts` 的 `Ctrl 1…N`（设置页那是一份**故意镜像**的副本，反向 import 会成环）、
+以及导航图标映射。第一次是五页扩到六页（首页进场）：`_digitKeys` 五条→六条、
+`Ctrl 1…5`→`1…6`、`Ic.home` 加进 `icon_paths.dart` 与 `lex_icon.dart`。第二次是
+六页收回五页（闪卡与测验并成练习）：`_digitKeys` 删掉 `digit6`、两处 `1…6`→`1…5`、
+`_iconFor` 里两行并成一行。标签栏同时补了两件事：`Shadows.tabbarFor(p.isDark)`
+（令牌写了却一直没接）、以及活动项的 `AnimatedContainer` + 4% 图标缩放——只动
+transform 与 opacity，不越界回弹。
 
 `_GoalAndTiles` 里有一处注释值得单独记：外面那个 `IntrinsicHeight(Row(...))` 让环和
 两块等高，而**它的子树里不能出现 `LayoutBuilder`**（内禀尺寸算不出来，第 6 节第五类
@@ -319,7 +324,7 @@ import 会成环）、`Ic.home` 加进 `icon_paths.dart` 与 `lex_icon.dart`。�
 
 宽度判断放在实际拿到的 `constraints.maxWidth` 上：环与两块并排的门槛是 640（按内容列
 算，不是窗口），行动区竖排/横排是 480。手机上量到的数字：411dp 下
-「今天还有 7 张卡片在等你」占 312dp，可用 363dp，不折行；320dp 下六个标签各占
+「今天还有 7 张卡片在等你」占 312dp，可用 363dp，不折行；320dp 下五个标签各占
 25×14dp，最大的一行也没挤到相邻项。
 
 ### 词库页（`words_page.dart`，2031 行 + `words_view_model.dart` 477 行）
@@ -341,12 +346,25 @@ import 会成环）、`Ic.home` 加进 `icon_paths.dart` 与 `lex_icon.dart`。�
 `test/words_layout_test.dart` 用几何断言锁住这三点（释义在词条下方、释义列宽占行宽
 一半以上、窄屏不溢出），因为截图只能证明「看起来对了」，不能证明「为什么对了」。
 
-### 闪卡页（`flashcards_page.dart`，1387 行 + `flashcards_view_model.dart` 582 行）
+### 练习页（`practice_page.dart`，95 行）
+一个入口装两种练习。参考图里只有「练习」一个位置，而旧版把闪卡与测验做成两个并列
+的导航项——两件事共用同一套牌堆、同一份进度、同一组快捷键，却各占一格标签栏。现在
+`PageId.practice` 一个位置，页内一个 `Segmented<PracticeMode>`（复习 / 测验）切换。
+
+**同时只挂载一个子页，不是两个都建好再隐藏。** 两个子页各带自己的 `ScrollController`
+（外壳为每个导航项准备的那一个）和自己的 `FocusNode`，同时挂在树上会抢同一个滚动位置
+和同一套键盘绑定。代价是切模式会丢掉正在进行的会话——那正是切模式的意思。
+
+**两个退役的 wire id 仍然可用。** `PageId.fromId` 里 `'flashcards'` 与 `'quiz'` 都
+解析成 `practice`：首页的「开始复习」「开始测验」、统计页空图表的「去复习」、复习页
+自己的「去测验」都还在用旧 id 说话，直接删 id 会让这些按钮静默失效。
+
+### 闪卡页（`flashcards_page.dart`，1439 行 + `flashcards_view_model.dart` 582 行）
 会话状态机来自 `domain/models/session.dart`。卡片翻面是两段式 Y 轴旋转（`Matrix4.rotateY`），
 键盘：空格翻面、1/2/3 评分、←/→ 跳过、Ctrl+Z 撤销。右侧面板显示快捷键与进度。
 会话结束复用 `session_result.dart`。
 
-### 测验页（`quiz_page.dart`，1018 行 + `quiz_view_model.dart` 364 行）
+### 测验页（`quiz_page.dart`，1020 行 + `quiz_view_model.dart` 364 行）
 四个选项自适应排成 1/2/4 列（240px 最小宽度）。答完即时反馈：正确项描边 accent，
 错选项描边 cinnabar，其余降到 55% 不透明度。键盘 A–D / 1–4 选择，Enter 下一题。
 
@@ -617,7 +635,7 @@ foundation 的 debug 变量已复位，用 `addTearDown` 会让测试因为「�
 | > 1000 | full | 248dp 完整侧栏 |
 
 所以 411dp 的测试**在结构上不可能**发现 rail 里的事，无论加多少条断言。补的
-`test/responsive_layout_test.dart` 把七个界面在五个视口（320×568、360×640、
+`test/responsive_layout_test.dart` 把六个界面在五个视口（320×568、360×640、
 横屏 866×411、平板 800×1280、桌面 1280×800）和两个字号（1.3×、2.0×）下各扫一遍，
 判据仍然是 `takeException()` 为 null。**第一次跑就抓到三处 `RenderFlex overflowed`
 和一处 `LayoutBuilder` 内禀尺寸异常，全部是线上真能碰到的组合。**

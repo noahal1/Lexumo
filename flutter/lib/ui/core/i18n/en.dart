@@ -54,8 +54,7 @@ const Map<String, String> enRaw = {
   // nav
   'nav.home': 'Home',
   'nav.words': 'Words',
-  'nav.flashcards': 'Flashcards',
-  'nav.quiz': 'Quiz',
+  'nav.practice': 'Practice',
   'nav.stats': 'Stats',
   'nav.settings': 'Settings',
   // home
@@ -169,6 +168,9 @@ const Map<String, String> enRaw = {
   'words.listsSubtitle': '{n} lists',
   'words.deleteListConfirm':
       'Delete “{name}”? Its {n} words go with it, and this cannot be undone.',
+  // practice
+  'practice.review': 'Review',
+  'practice.quiz': 'Quiz',
   // flashcards
   'flashcards.start': 'Start review',
   // The deck readout prints its figure and its word as two separate nodes, so

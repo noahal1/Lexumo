@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ (API 31) 用系统启动画面替代 windowBackground。系统启动
+         画面的背景读 windowSplashScreenBackground、图标衬底读
+         windowSplashScreenIconBackgroundColor，这两者未声明时会回退到主题的
+         colorPrimary / colorAccent —— Theme.Light 的出厂默认是 Material 青色
+         teal (#008577)，这就是冷启动时状态栏呈青色的来源。这里把它们钉死为
+         石框色，与 values/styles.xml 的策略保持一致。
+
+         图标衬底也一并设为石框色而不是留白：留白会让系统在启动画面中间画
+         一个青色的圆，同样不属于设计系统。 -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowSplashScreenBackground">@color/frame</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/frame</item>
+        <item name="android:statusBarColor">@color/transparent</item>
+        <item name="android:navigationBarColor">@color/transparent</item>
+    </style>
+    <!-- 与 values/styles.xml 的 NormalTheme 一一对应，仅补上 API 31 新增的
+         启动画面属性；其余条目从父主题继承，不必重复。 -->
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@color/frame</item>
+        <item name="android:windowSplashScreenBackground">@color/frame</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/frame</item>
+        <item name="android:statusBarColor">@color/transparent</item>
+        <item name="android:navigationBarColor">@color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+    </style>
+</resources>
