@@ -260,7 +260,6 @@ const Map<String, String> zhCnRaw = {
   'stats.todayProgress': '{n} / {goal}',
   'stats.emptyHint': '先添加几个词语，统计会随着你的学习慢慢长出形状。',
   'stats.addWords': '添加词语',
-  'stats.reviewWithCount': '开始复习（{n}）',
   'stats.listsCount': '{n} 个词库',
   'stats.masteryShare': '占全部 {n}%',
   'stats.remainingToGoal': '还差 {n} 次到目标',

@@ -28,7 +28,6 @@ import 'lex_icon.dart';
 class PageShell extends StatelessWidget {
   const PageShell({
     super.key,
-    this.actions,
     required this.children,
     this.wide = false,
     this.controller,
@@ -36,14 +35,6 @@ class PageShell extends StatelessWidget {
     this.bleed = false,
   });
 
-  /// A page-level action, drawn at the top of the body and aligned to its end.
-  ///
-  /// It lives inside the scroll view, not in chrome above it: an action belongs
-  /// to the content it acts on, and a button pinned above a list scrolls away
-  /// from the list's own idea of where it is. Only the pages that genuinely
-  /// have one page-wide action pass this — a button that duplicates something
-  /// already in the body is not an action, it is a second copy.
-  final Widget? actions;
   final List<Widget> children;
 
   /// `wide` widens the content column from [Layout.contentMax] to 1360.
@@ -61,9 +52,6 @@ class PageShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final maxWidth = wide ? 1360.0 : Layout.contentMax;
-    // The action row sits inside the scroll view so it scrolls with the content
-    // it acts on. `bleed` pages draw their lists edge to edge, so the row keeps
-    // its own gutter rather than inheriting the body's (absent) padding.
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -96,22 +84,7 @@ class PageShell extends StatelessWidget {
                       offset: 0,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (actions != null) ...[
-                            Padding(
-                              padding: EdgeInsetsDirectional.only(
-                                start: bleed ? Sp.x6 : 0,
-                                end: bleed ? Sp.x6 : 0,
-                              ),
-                              child: Align(
-                                alignment: AlignmentDirectional.centerEnd,
-                                child: actions,
-                              ),
-                            ),
-                            const SizedBox(height: Sp.x4),
-                          ],
-                          ...children,
-                        ],
+                        children: children,
                       ),
                     ),
                   ),

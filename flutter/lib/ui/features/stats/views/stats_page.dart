@@ -239,16 +239,6 @@ class _StatsPageState extends State<StatsPage> {
         return PageShell(
           wide: true,
           controller: widget.controller,
-          // The one thing this page can send you to do. It rides at the top of
-          // the body rather than in a bar above the scroll view, so it belongs
-          // to the numbers it is drawn from.
-          actions: summary.dueToday > 0 && vm.canNavigate
-              ? LexButton(
-                  label: context.t('stats.reviewWithCount', {'n': summary.dueToday}),
-                  kind: BtnKind.primary,
-                  onPressed: vm.goToFlashcards,
-                )
-              : null,
           children: _stacked(blocks),
         );
       },

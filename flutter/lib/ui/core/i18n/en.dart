@@ -273,7 +273,6 @@ const Map<String, String> enRaw = {
   'stats.emptyHint':
       'Add a few words first — your stats will take shape as you study.',
   'stats.addWords': 'Add words',
-  'stats.reviewWithCount': 'Review ({n})',
   'stats.listsCount': '{n} lists',
   'stats.masteryShare': '{n}% of all words',
   'stats.remainingToGoal': '{n} to go today',

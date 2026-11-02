@@ -193,15 +193,17 @@ localStorage——都是浏览器白送的，这里都要自己写。
    选中项），副标题又重复了正文下方一个块里的同一组数字。现在 `PageShell` 只有一个
    滚动区，body 从屏幕顶端开始——`mobile_layout_test` 的「首屏预算」组直接断言
    `SingleChildScrollView` 的起点是 `0`，而不是「≤ 84」。
-   页面级动作（统计页的「复习 N 个」）挪到正文顶部右对齐，跟着内容一起滚动：动作属于
-   它作用的那块内容。词库页原本在标题栏的「词库」按钮直接删掉——标签条末尾的
-   `_AddTabButton` 已经开了同一个对话框；测验页的「结束」按钮挪进进行中的题目顶部那行，
-   挨着它要放弃的进度和已经拿到的得分；方向选择器在所有平台都回到正文里，不再按窗口
-   宽度在两处之间搬。
+   页面级动作条整条删掉（`PageShell(actions:)` 已不存在）。它原本只服务一个按钮——
+   统计页的「复习 N 个」——而那个按钮和首页的「开始复习」、闪卡页的「开始复习」是同一
+   件事的第三份拷贝；统计页现在的职责只是读数，不再发号施令。词库页原本在标题栏的
+   「词库」按钮直接删掉——标签条末尾的 `_AddTabButton` 已经开了同一个对话框；测验页的
+   「结束」按钮挪进进行中的题目顶部那行，挨着它要放弃的进度和已经拿到的得分；方向选择器
+   在所有平台都回到正文里，不再按窗口宽度在两处之间搬。
    连带清掉 12 个只被标题栏读过的 i18n key（`home.title`/`home.subtitle`/`words.title`/
    `words.pageSubtitle`/`flashcards.title`/`flashcards.subtitle`/`quiz.title`/`quiz.subtitle`/
    `stats.title`/`stats.subtitle`/`settings.title`/`settings.subtitle`）。`words.subtitle`
-   留着——词语编辑弹窗拿它当对话框副标题，那是弹窗头，不是页头。
+   留着——词语编辑弹窗拿它当对话框副标题，那是弹窗头，不是页头。随后删掉那个动作条又
+   带走一个 key：`stats.reviewWithCount`（它只被这一颗按钮读过）。
 
 配套的两个新原语：`PageShell(bleed: true)` 让 body 去掉左右内边距，好让列表贴到
 纸的边（各页自己用 `_gutter()` 给非列表块补回 `Sp.x6`）；`PageShell(fab:)` 在右下角

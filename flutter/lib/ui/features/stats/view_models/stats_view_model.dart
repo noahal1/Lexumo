@@ -175,7 +175,11 @@ class StatsViewModel extends ViewModel {
   /// Open the word library — the empty state's call to action.
   void goToWords() => _feedback.goTo('words');
 
-  /// Start a review session — the empty chart and the page action.
+  /// Start a review session — the empty retention chart's call to action.
+  ///
+  /// The page also used to carry a permanent "复习 N 个" button in a body-level
+  /// action row. That was the third copy of an affordance home and the deck
+  /// screen already own, so the row is gone and this now has one caller.
   void goToFlashcards() => _feedback.goTo('flashcards');
 
   /* ---------------------------------------------------------------- */
