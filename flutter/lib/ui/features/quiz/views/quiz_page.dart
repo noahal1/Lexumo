@@ -36,7 +36,7 @@ import '../../../../domain/models/types.dart';
 import '../../../../data/services/speech.dart';
 import '../../../../data/services/tts.dart' show appSpeech;
 import '../../../core/widgets/controls.dart';
-import '../../../core/widgets/density.dart';
+
 import '../../../core/widgets/keyboard_hints.dart';
 import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
@@ -226,38 +226,7 @@ class _QuizPageState extends State<QuizPage> {
       child: Focus(
         focusNode: _focus,
         child: PageShell(
-          title: t('quiz.title'),
-          subtitle: t('quiz.subtitle'),
           controller: widget.controller,
-          // The direction picker is 237dp wide. Standing in the bar it left
-          // 109dp for a 146dp subtitle, so "用主动回忆检验掌握程度" broke after
-          // "用主动回忆检验" on every phone. On touch it moves into the card
-          // below, which is where the choice actually belongs — it configures
-          // the round the card is about to start, and the card already names
-          // the direction in its own subtitle.
-          actions: _vm.phase == QuizPhase.active
-              ? LexButton(
-                  label: t('quiz.finish'),
-                  kind: BtnKind.quiet,
-                  onPressed: _vm.requestFinish,
-                )
-              : context.isTouch
-                  ? null
-                  : Segmented<QuizDirection>(
-                      value: _vm.direction,
-                      options: <SegOption<QuizDirection>>[
-                        SegOption<QuizDirection>(
-                          value: QuizDirection.termToDef,
-                          label: t('quiz.termToDef'),
-                        ),
-                        SegOption<QuizDirection>(
-                          value: QuizDirection.defToTerm,
-                          label: t('quiz.defToTerm'),
-                        ),
-                      ],
-                      onChanged: (QuizDirection value) =>
-                          _vm.setDirection(value),
-                    ),
           children: body,
         ),
       ),
@@ -298,65 +267,58 @@ class _QuizPageState extends State<QuizPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         // Same change as the flashcards intro: a 26dp glyph above a heading
-        // is a template habit, and the heading drops from Fs.x2xl to Fs.xl so
-        // a section title cannot compete with the page headline. Both intros
-        // are the same object now, which is why they are edited together.
-        Text(
-          t('quiz.start'),
-          style: TextStyle(
-            fontFamily: Fonts.display,
-            fontSize: Fs.xl,
-            height: Lh.tight,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.015,
-            color: p.ink,
-          ),
-        ),
-        const SizedBox(height: Sp.x2),
+        // is a template habit, and the heading repeated the exact words of the
+        // button four lines below it. With the page header gone, that heading
+        // was also the top line of the screen — a screen opening by naming
+        // itself and then offering a button with the same name. The block now
+        // opens with what the round will actually be.
         Text(
           '$directionLabel · ${t('quiz.chooseCount')} $count',
           style: TextStyle(fontSize: Fs.base, height: Lh.loose, color: p.ink2),
         ),
         const SizedBox(height: Sp.x5),
-        // On a phone the picker lives here rather than in the page bar; see
-        // the `actions` comment above. It replaces the direction chip, which
-        // said the same thing in less useful form — a chip reports, a picker
-        // changes.
-        if (context.isTouch) ...<Widget>[
-          // Scrollable, not stretched: at a 2x accessibility text scale the
-          // two labels measure ~388dp against the 305dp this column has, and
-          // a RenderFlex overflowed by 83. The strip keeps its natural width
-          // and scrolls instead of truncating a label it was built to show.
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Segmented<QuizDirection>(
-              value: _vm.direction,
-              options: <SegOption<QuizDirection>>[
-                SegOption<QuizDirection>(
-                  value: QuizDirection.termToDef,
-                  label: t('quiz.termToDef'),
-                ),
-                SegOption<QuizDirection>(
-                  value: QuizDirection.defToTerm,
-                  label: t('quiz.defToTerm'),
-                ),
-              ],
-              onChanged: (QuizDirection value) => _vm.setDirection(value),
-            ),
+        // The picker stands here on every platform now that the page bar is
+        // gone. It had been in the bar on desktop and here on touch only, which
+        // meant the same control lived in two places depending on the window
+        // width — and the bar's copy is what squeezed the old subtitle to
+        // 109dp for a 146dp sentence. It replaces the direction chip too: a
+        // chip reports, a picker changes, and this column is where the round is
+        // configured.
+        // Scrollable, not stretched: at a 2x accessibility text scale the two
+        // labels measure ~388dp against the 305dp this column has, and a
+        // RenderFlex overflowed by 83. The strip keeps its natural width and
+        // scrolls instead of truncating a label it was built to show.
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Segmented<QuizDirection>(
+            value: _vm.direction,
+            options: <SegOption<QuizDirection>>[
+              SegOption<QuizDirection>(
+                value: QuizDirection.termToDef,
+                label: t('quiz.termToDef'),
+              ),
+              SegOption<QuizDirection>(
+                value: QuizDirection.defToTerm,
+                label: t('quiz.defToTerm'),
+              ),
+            ],
+            onChanged: (QuizDirection value) => _vm.setDirection(value),
           ),
-          const SizedBox(height: Sp.x4),
-        ],
-        Wrap(
-          spacing: Sp.x2,
-          runSpacing: Sp.x2,
-          children: <Widget>[
-            if (!context.isTouch) StatusChip(label: directionLabel, tone: 'meta'),
-            StatusChip(
-              label: t('quiz.eligible', <String, Object>{'n': eligibleCount}),
-              tone: 'new',
-            ),
-          ],
         ),
+        // A 14 个词可测 chip used to stand here, and it said exactly what the
+        // side panel's own figure says two columns to the right, on the same
+        // screen, in the same words — the screen counted the same words twice
+        // before the user had done anything. But the side panel is hidden below
+        // `Layout.mobileBreakpoint`, and there this chip was the only place the
+        // count appeared at all. So it is back, only where the side panel is
+        // not: one copy of the number, never two.
+        if (!_showsSidePanel) ...[
+          const SizedBox(height: Sp.x4),
+          StatusChip(
+            label: t('quiz.eligible', <String, Object>{'n': eligibleCount}),
+            tone: 'new',
+          ),
+        ],
         const SizedBox(height: Sp.x5),
         Row(
           children: <Widget>[
@@ -431,6 +393,17 @@ class _QuizPageState extends State<QuizPage> {
             StatusChip(label: directionLabel, tone: 'meta'),
             const Spacer(),
             StatusChip(label: '${t('quiz.score')} $score', tone: 'reviewed'),
+            const SizedBox(width: Sp.x2),
+            // Ending the round early used to be a button in the page bar. The
+            // bar is gone, and this is where it belongs anyway: beside the
+            // progress it abandons, on the same line as the score it has earned
+            // so far, rather than pinned above the question it interrupts.
+            LexButton(
+              label: t('quiz.finish'),
+              kind: BtnKind.quiet,
+              size: BtnSize.sm,
+              onPressed: _vm.requestFinish,
+            ),
           ],
         ),
         const SizedBox(height: Sp.x2),
@@ -676,6 +649,11 @@ class _QuizPageState extends State<QuizPage> {
   /* ------------------------------------------------------------------ */
   /* Side panel                                                          */
   /* ------------------------------------------------------------------ */
+
+  /// Whether [_studySplit] is currently drawing the side panel. The intro
+  /// needs this: the side panel carries the eligible count, and below
+  /// [Layout.mobileBreakpoint] there is no panel to carry it.
+  bool get _showsSidePanel => MediaQuery.sizeOf(context).width > Layout.mobileBreakpoint;
 
   Widget _sidePanel(
     String Function(String, [Map<String, Object>?]) t, {

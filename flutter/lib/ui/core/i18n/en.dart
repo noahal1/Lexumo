@@ -59,8 +59,6 @@ const Map<String, String> enRaw = {
   'nav.stats': 'Stats',
   'nav.settings': 'Settings',
   // home
-  'home.title': 'Home',
-  'home.subtitle': 'What today looks like, at a glance',
   'home.greetingMorning': 'Good morning',
   'home.greetingAfternoon': 'Good afternoon',
   'home.greetingEvening': 'Good evening',
@@ -94,9 +92,7 @@ const Map<String, String> enRaw = {
   'shell.shortcutsTypingHint':
       "These keys stay quiet while you're typing in a field.",
   // words
-  'words.title': 'Words',
   'words.subtitle': 'Collect, organize, and let each word settle in',
-  'words.pageSubtitle': '{words} words, {due} due today',
   'words.addWord': 'Add word',
   'words.editWord': 'Edit word',
   'words.term': 'Word',
@@ -173,8 +169,6 @@ const Map<String, String> enRaw = {
   'words.deleteListConfirm':
       'Delete “{name}”? Its {n} words go with it, and this cannot be undone.',
   // flashcards
-  'flashcards.title': 'Flashcards',
-  'flashcards.subtitle': 'Review at the right pace, before memory fades',
   'flashcards.start': 'Start review',
   // The deck readout prints its figure and its word as two separate nodes, so
   // the label cannot carry `{n}` — see `_DeckFigure` in flashcards_page.dart.
@@ -227,8 +221,6 @@ const Map<String, String> enRaw = {
       "Today's new-card limit is {n}. The rest come back tomorrow.",
   'flashcards.goQuiz': 'Go to quiz',
   // quiz
-  'quiz.title': 'Quiz',
-  'quiz.subtitle': 'Active recall shows what actually stuck',
   'quiz.termToDef': 'Word → meaning',
   'quiz.defToTerm': 'Meaning → word',
   'quiz.start': 'Start quiz',
@@ -264,8 +256,6 @@ const Map<String, String> enRaw = {
   'quiz.answeredCount': '{n} of {total} answered',
   'quiz.unanswered': 'Not answered',
   // stats
-  'stats.title': 'Stats',
-  'stats.subtitle': 'See the shape of your accumulation',
   'stats.totalWords': 'Total words',
   'stats.mastered': 'Mastered',
   'stats.dueToday': 'Due today',
@@ -318,8 +308,6 @@ const Map<String, String> enRaw = {
   'shortcuts.skip': 'Skip current card',
   'shortcuts.closeModal': 'Close dialog',
   // settings
-  'settings.title': 'Settings',
-  'settings.subtitle': 'Tune Lexumo to your taste',
   'settings.appearance': 'Appearance',
   'settings.theme': 'Theme',
   'settings.language': 'Interface language',

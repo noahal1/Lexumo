@@ -188,10 +188,20 @@ localStorage——都是浏览器白送的，这里都要自己写。
    输入框的胶囊化有个陷阱：外层容器画圆角时，里面的 `TextField` 必须保持
    `filled: false` + `BorderInput.none`，否则主题里的 `enabledBorder`/`focusedBorder`
    会在胶囊里再画一个方框——0.2.5 修过的「两层边框」就是这个坑，改圆角时不要把它改回去。
-4. **页面标题变大，正文其实没变。** `_TopBar` 的标题从 `Fs.lg`（19）提到 `Fs.x2xl`（30），
-   并且**去掉了标题下的分隔线**：标题直接坐在纸上。手机上标题占掉 34.5 + 18.2dp，
-   所以 `mobile_layout_test` 的「页头 ≤ 84dp」预算里只留下 12dp 上下留白——
-   这条预算就是在拦「把页头做成一张海报」。
+4. **页面标题栏整条删掉。** `_TopBar` 不在了：30dp 衬线标题 + 一行副标题曾经占掉手机上
+   866dp 屏幕的头 77dp，而它说的正是外壳导航刚说过的那件事（侧栏当前行、底部标签的
+   选中项），副标题又重复了正文下方一个块里的同一组数字。现在 `PageShell` 只有一个
+   滚动区，body 从屏幕顶端开始——`mobile_layout_test` 的「首屏预算」组直接断言
+   `SingleChildScrollView` 的起点是 `0`，而不是「≤ 84」。
+   页面级动作（统计页的「复习 N 个」）挪到正文顶部右对齐，跟着内容一起滚动：动作属于
+   它作用的那块内容。词库页原本在标题栏的「词库」按钮直接删掉——标签条末尾的
+   `_AddTabButton` 已经开了同一个对话框；测验页的「结束」按钮挪进进行中的题目顶部那行，
+   挨着它要放弃的进度和已经拿到的得分；方向选择器在所有平台都回到正文里，不再按窗口
+   宽度在两处之间搬。
+   连带清掉 12 个只被标题栏读过的 i18n key（`home.title`/`home.subtitle`/`words.title`/
+   `words.pageSubtitle`/`flashcards.title`/`flashcards.subtitle`/`quiz.title`/`quiz.subtitle`/
+   `stats.title`/`stats.subtitle`/`settings.title`/`settings.subtitle`）。`words.subtitle`
+   留着——词语编辑弹窗拿它当对话框副标题，那是弹窗头，不是页头。
 
 配套的两个新原语：`PageShell(bleed: true)` 让 body 去掉左右内边距，好让列表贴到
 纸的边（各页自己用 `_gutter()` 给非列表块补回 `Sp.x6`）；`PageShell(fab:)` 在右下角
@@ -450,8 +460,8 @@ bool isTouchPlatform({TargetPlatform? platform}) => switch (p) {
 ```
 
 `context.controlH` / `context.controlHSm` / `context.iconTarget` 三个取值器取代直接
-引用 `Layout.controlH`，`LexButton` / `LexInput` / `LexSelect` / `_TopBar` 的
-`Segmented` 全部改走它们。**两条配方刻意不同**：
+引用 `Layout.controlH`，`LexButton` / `LexInput` / `LexSelect` 与 `Segmented` 全部走它们。
+**两条配方刻意不同**：
 
 - **带文字的按钮整体长大。** 边框和填充就是可供性，44dp 的按钮就是正常手机按钮。
 - **纯图标按钮只长大命中盒，绘制盒不变。** 44dp 的描边方块放进表格行里像一个洞，
@@ -512,7 +522,7 @@ bool isTouchPlatform({TargetPlatform? platform}) => switch (p) {
 | --- | --- | --- |
 | 六个界面在 411dp 下不抛异常 | `takeException()` 为 null | 设置页溢出 40px |
 | 五个页面每个 `GestureDetector` 两维 ≥ 44 | `Layout.tap` | 词库 54 个不达标 |
-| 顶栏高 | ≤ 84dp | 87dp |
+| 顶栏高 | 曾经 ≤ 84dp，现在 = 0 | 87dp → 标题栏整条删掉 |
 | 第一行单词 top | ≤ 320dp | 358dp |
 | 查询带高 | ≤ 120dp | 164dp |
 
@@ -549,8 +559,9 @@ chip 从卡片边缘切掉一半。**「切一半」与「这个 chip 不存在�
 `overflow` 断言看不见它——被滚动容器接住的溢出不抛异常。
 
 **二、被兄弟挤窄到断行。** 这是最像「布局很奇怪」的一种：每一句都正确换行了，
-但换的位置荒唐。测验页的方向选择器 237dp 站在 `_TopBar` 里，副标题只剩 109.5dp 而它
-需要 145.8dp，于是「用主动回忆检验掌握程度」每次都在「用主动回忆检验」后面断开；统计页
+但换的位置荒唐。测验页的方向选择器 237dp 曾站在 `_TopBar` 里，副标题只剩 109.5dp 而它
+需要 145.8dp，于是「用主动回忆检验掌握程度」每次都在「用主动回忆检验」后面断开（那条
+标题栏后来整条删掉了，选择器回到正文，这个断法也就不存在了）；统计页
 `_HeadCard` 里 224dp 的窗口选择器把标题压到 85.3dp，「近 30 天复习」在「近」后断行。
 **判据不是「换行了」，是「本可以一行却换行」**：`getMaxIntrinsicWidth(∞) <= 实际宽度`
 还断成两行，就一定是被挤的。
@@ -564,7 +575,7 @@ chip 从卡片边缘切掉一半。**「切一半」与「这个 chip 不存在�
 | 症状 | 病灶 | 修法 |
 | --- | --- | --- |
 | 状态筛选条右溢 21.8dp | `_SegButton` 侧向 padding 12dp × 5 | 触控平台收到 4dp，**并加 `minWidth: Layout.tap`** |
-| 测验副标题断在「用主动回忆检验」后 | 选择器站在 `_TopBar` 里 | 触控平台把选择器移进卡片，方向 chip 随之删掉 |
+| 测验副标题断在「用主动回忆检验」后 | 选择器站在 `_TopBar` 里 | 触控平台把选择器移进卡片，方向 chip 随之删掉；后来整条 `_TopBar` 删掉，选择器在所有平台都在正文里 |
 | 统计卡标题断在「近」后 | `_HeadCard` 的 `Row[Expanded, trailing]` | `LayoutBuilder`，内宽 < 520 时上下堆叠（**只在这一头有 `trailing` 时才建**，理由见下一节） |
 | `0.95×` 断成两行 | `SizedBox(width: 52)` | 去掉固定宽，`maxLines: 1, softWrap: false` |
 | 搜索占位被省略号 | 一行里塞了搜索+排序+收藏 | 触控平台换短文案（129dp 装不下 149dp） |

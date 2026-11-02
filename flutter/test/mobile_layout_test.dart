@@ -291,10 +291,16 @@ void main() {
   });
 
   group('first screen budget', () {
-    testWidgets('the page header stays under 84dp', (WidgetTester tester) async {
-      // 87dp of an 866dp screen is 10% spent on a title. The floor is the type:
-      // Fs.xl at Lh.title plus the subtitle, so this budget is about air, not
-      // about shrinking the heading.
+    testWidgets('no page spends its first screen on a title', (
+      WidgetTester tester,
+    ) async {
+      // The pages used to open with a sticky bar: a 30dp serif title and a
+      // one-line subtitle, ~77dp of an 866dp phone before any content. It named
+      // the page the shell's own navigation had just named, so it was removed
+      // rather than resized — and this is the assertion that keeps it removed.
+      //
+      // Measured as "where the scrolling body starts", which is the honest
+      // shape of the claim: no chrome above the content at all.
       await pumpPhone(tester, const WordsPage());
       final RenderBox body = tester.renderObject<RenderBox>(
         find.byType(SingleChildScrollView).first,
@@ -302,9 +308,21 @@ void main() {
       final double header = body.localToGlobal(Offset.zero).dy;
       expect(
         header,
-        lessThanOrEqualTo(84),
-        reason: 'the sticky header is ${header}dp of an 866dp screen',
+        0,
+        reason: 'the page body starts ${header}dp down an 866dp screen',
       );
+    });
+
+    testWidgets('the page name is still reachable from the shell', (
+      WidgetTester tester,
+    ) async {
+      // Removing the in-page title is only safe because the shell names the
+      // page. Asserted at the shell rather than at a page, so this fails if a
+      // future change drops the nav label believing the title covers it.
+      await pumpPhone(tester, const AppShell());
+      expect(find.text('词库'), findsWidgets);
+      expect(find.text('闪卡'), findsWidgets);
+      expect(find.text('统计'), findsWidgets);
     });
 
     testWidgets('the first word is above the fold', (

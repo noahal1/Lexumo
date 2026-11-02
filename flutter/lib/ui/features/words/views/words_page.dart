@@ -179,11 +179,6 @@ class _WordsPageState extends State<WordsPage> {
           child: Focus(
             autofocus: true,
             child: PageShell(
-              title: context.t('words.title'),
-              subtitle: context.t('words.pageSubtitle', {
-                'words': _vm.listCount,
-                'due': _vm.dueCount,
-              }),
               controller: widget.controller,
               // The list runs edge to edge and wears the accent rule on the
               // page's own left margin, so the shell stops padding the body and
@@ -199,13 +194,10 @@ class _WordsPageState extends State<WordsPage> {
                 tooltip: context.t('words.addWord'),
                 onPressed: () => _openEditor(),
               ),
-              actions: LexButton(
-                label: context.t('common.list'),
-                icon: Ic.layers,
-                size: BtnSize.sm,
-                kind: BtnKind.ghost,
-                onPressed: _openListManager,
-              ),
+              // No page-level action row: the list manager is already reachable
+              // from the tabs strip below (`_AddTabButton`), and a second button
+              // for the same dialog in the chrome above it was the page saying
+              // the same thing twice.
               children: [
                 _gutter(
                   _ListTabs(

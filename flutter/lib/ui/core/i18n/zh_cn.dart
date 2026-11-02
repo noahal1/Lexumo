@@ -59,8 +59,6 @@ const Map<String, String> zhCnRaw = {
   'nav.stats': '统计',
   'nav.settings': '设置',
   // home
-  'home.title': '首页',
-  'home.subtitle': '今天该做什么，一眼看完',
   'home.greetingMorning': '早上好',
   'home.greetingAfternoon': '下午好',
   'home.greetingEvening': '晚上好',
@@ -93,9 +91,7 @@ const Map<String, String> zhCnRaw = {
   'shell.shortcutsSub': '不用鼠标，也能把该复习的过完。',
   'shell.shortcutsTypingHint': '在输入框里打字时，这些键不会触发。',
   // words
-  'words.title': '词库',
   'words.subtitle': '收集、整理、并让每一个词慢慢留下来',
-  'words.pageSubtitle': '{words} 词，今日待复习 {due}',
   'words.addWord': '添加词语',
   'words.editWord': '编辑词语',
   'words.term': '词语',
@@ -169,8 +165,6 @@ const Map<String, String> zhCnRaw = {
   'words.listsSubtitle': '{n} 个词库',
   'words.deleteListConfirm': '删除词库「{name}」，其中的 {n} 个词语会一起删掉，不能恢复。',
   // flashcards
-  'flashcards.title': '闪卡',
-  'flashcards.subtitle': '按节奏复习，让记忆在遗忘前被唤醒',
   'flashcards.start': '开始复习',
   // 数字与量词分开显示：数字用等宽体领先，说明文字跟在下面。
   'flashcards.figureDue': '张到期',
@@ -216,8 +210,6 @@ const Map<String, String> zhCnRaw = {
   'flashcards.newCapReached': '今天的新卡上限是 {n} 张，剩下的明天再来。',
   'flashcards.goQuiz': '去测验',
   // quiz
-  'quiz.title': '测验',
-  'quiz.subtitle': '用主动回忆检验掌握程度',
   'quiz.termToDef': '词语 → 释义',
   'quiz.defToTerm': '释义 → 词语',
   'quiz.start': '开始测验',
@@ -252,8 +244,6 @@ const Map<String, String> zhCnRaw = {
   'quiz.answeredCount': '答了 {n} / {total} 题',
   'quiz.unanswered': '没有作答',
   // stats
-  'stats.title': '统计',
-  'stats.subtitle': '看见积累的形状',
   'stats.totalWords': '词语总数',
   'stats.mastered': '已掌握',
   'stats.dueToday': '今日待复习',
@@ -305,8 +295,6 @@ const Map<String, String> zhCnRaw = {
   'shortcuts.skip': '跳过当前卡',
   'shortcuts.closeModal': '关闭弹窗',
   // settings
-  'settings.title': '设置',
-  'settings.subtitle': '把 Lexumo 调成你喜欢的样子',
   'settings.appearance': '外观',
   'settings.theme': '主题',
   'settings.language': '界面语言',

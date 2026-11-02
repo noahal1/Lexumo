@@ -244,8 +244,6 @@ class _SettingsPageState extends State<SettingsPage> {
         final p = Palette.of(context);
 
         return PageShell(
-          title: context.t('settings.title'),
-          subtitle: context.t('settings.subtitle'),
           controller: widget.controller,
           children: [
             ConstrainedBox(

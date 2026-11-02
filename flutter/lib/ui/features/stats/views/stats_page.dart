@@ -70,15 +70,10 @@ class _StatsPageState extends State<StatsPage> {
       builder: (BuildContext context, Widget? _) {
         final vm = _vm;
 
-        final title = context.t('stats.title');
-        final subtitle = context.t('stats.subtitle');
-
         /* The whole-page empty state. A dashboard of zeroes teaches nothing, so
            the page becomes one card that says what to do first. */
         if (vm.isEmpty) {
           return PageShell(
-            title: title,
-            subtitle: subtitle,
             controller: widget.controller,
             children: [
               EmptyState(
@@ -242,10 +237,11 @@ class _StatsPageState extends State<StatsPage> {
         ];
 
         return PageShell(
-          title: title,
-          subtitle: subtitle,
           wide: true,
           controller: widget.controller,
+          // The one thing this page can send you to do. It rides at the top of
+          // the body rather than in a bar above the scroll view, so it belongs
+          // to the numbers it is drawn from.
           actions: summary.dueToday > 0 && vm.canNavigate
               ? LexButton(
                   label: context.t('stats.reviewWithCount', {'n': summary.dueToday}),

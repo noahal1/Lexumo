@@ -14,16 +14,20 @@ import 'density.dart';
 import 'entrance.dart';
 import 'lex_icon.dart';
 
-/// The page shell every screen uses: a sticky header over a scrolling body.
+/// The page shell every screen uses: one scrolling body, nothing above it.
 ///
-/// The web version drew `.topbar` + `.page`; on Flutter the header is a
-/// [Column] child and the body expands, which keeps one scroll view per page
-/// and lets the phone layout put its tab bar underneath without measuring.
+/// It used to open every page with a sticky bar carrying a 30dp serif title and
+/// a one-line subtitle. Both are gone. The shell's own navigation already names
+/// the page — the sidebar's active row, the phone tab bar's selected tab — so a
+/// title repeated the one thing the screen had just told you, and on a phone it
+/// spent the first ~77dp of an 866dp screen doing it. The subtitle was worse: it
+/// counted things the body counts again one block below.
+///
+/// What survives is the body, which still expands rather than scrolls the whole
+/// page, so the phone tab bar can sit underneath without anyone measuring.
 class PageShell extends StatelessWidget {
   const PageShell({
     super.key,
-    required this.title,
-    this.subtitle,
     this.actions,
     required this.children,
     this.wide = false,
@@ -32,8 +36,13 @@ class PageShell extends StatelessWidget {
     this.bleed = false,
   });
 
-  final String title;
-  final String? subtitle;
+  /// A page-level action, drawn at the top of the body and aligned to its end.
+  ///
+  /// It lives inside the scroll view, not in chrome above it: an action belongs
+  /// to the content it acts on, and a button pinned above a list scrolls away
+  /// from the list's own idea of where it is. Only the pages that genuinely
+  /// have one page-wide action pass this — a button that duplicates something
+  /// already in the body is not an action, it is a second copy.
   final Widget? actions;
   final List<Widget> children;
 
@@ -52,10 +61,12 @@ class PageShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final maxWidth = wide ? 1360.0 : Layout.contentMax;
+    // The action row sits inside the scroll view so it scrolls with the content
+    // it acts on. `bleed` pages draw their lists edge to edge, so the row keeps
+    // its own gutter rather than inheriting the body's (absent) padding.
     final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _TopBar(title: title, subtitle: subtitle, actions: actions, maxWidth: maxWidth),
         Expanded(
           child: Scrollbar(
             controller: controller,
@@ -85,7 +96,22 @@ class PageShell extends StatelessWidget {
                       offset: 0,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: children,
+                        children: [
+                          if (actions != null) ...[
+                            Padding(
+                              padding: EdgeInsetsDirectional.only(
+                                start: bleed ? Sp.x6 : 0,
+                                end: bleed ? Sp.x6 : 0,
+                              ),
+                              child: Align(
+                                alignment: AlignmentDirectional.centerEnd,
+                                child: actions,
+                              ),
+                            ),
+                            const SizedBox(height: Sp.x4),
+                          ],
+                          ...children,
+                        ],
                       ),
                     ),
                   ),
@@ -109,102 +135,6 @@ class PageShell extends StatelessWidget {
           child: fab!,
         ),
       ],
-    );
-  }
-}
-
-class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.title,
-    required this.subtitle,
-    required this.actions,
-    required this.maxWidth,
-  });
-
-  final String title;
-  final String? subtitle;
-  final Widget? actions;
-  final double maxWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return Container(
-      // No hairline under the header. The reference sets its title straight on
-      // the page with nothing drawn around it, and a rule here made the bar
-      // read as a separate toolbar rather than as the opening line of the page.
-      // The header still sits above the scroll view, so nothing slides under it.
-      color: p.bg,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: Padding(
-            // The title is a display line again. It had been pulled down to
-            // 19dp to stop the dashboard's header competing with the headline
-            // directly beneath it; the fix for that belongs in the dashboard's
-            // own first block, not in a page title that every screen renders.
-            // At 30dp serif the header speaks once and the content below it
-            // starts lower, which is the rhythm the reference has.
-            //
-            // The phone pad is deliberately tighter than the desktop one. A
-            // 30dp title already spends the whole header budget — the type is
-            // 34.5 + 18.2dp of it — so the phone keeps 12dp above and below
-            // and lets the size do the talking, instead of spending an
-            // 866dp screen's first 91dp on a title block.
-            padding: EdgeInsets.fromLTRB(
-              Sp.x6,
-              context.isTouch ? Sp.x3 : Sp.x7,
-              Sp.x6,
-              context.isTouch ? Sp.x3 : Sp.x4,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontFamily: Fonts.display,
-                          fontSize: Fs.x2xl,
-                          height: Lh.title,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.02,
-                          color: p.ink,
-                        ),
-                      ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: Sp.x1 + 2),
-                        // The subtitle counts and describes; it is not content
-                        // to read. Left to wrap, a phone-width header spends
-                        // three lines on 「14 词，今日待复习 9」 while the page
-                        // below it loses that height.
-                        Text(
-                          subtitle!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: Fs.sm,
-                            color: p.ink3,
-                            height: Lh.snug,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (actions != null) ...[
-                  const SizedBox(width: Sp.x4),
-                  actions!,
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

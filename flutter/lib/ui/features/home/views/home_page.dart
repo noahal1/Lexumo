@@ -66,16 +66,12 @@ class _HomePageState extends State<HomePage> {
       listenable: _vm,
       builder: (BuildContext context, Widget? _) {
         final vm = _vm;
-        final String title = context.t('home.title');
-        final String subtitle = context.t('home.subtitle');
 
         /* A dashboard of zeroes teaches nothing, so an empty library becomes one
            card that says what to do first — the same shape the stats page uses
            for the same situation. */
         if (vm.isEmpty) {
           return PageShell(
-            title: title,
-            subtitle: subtitle,
             controller: widget.controller,
             children: <Widget>[
               EmptyState(
@@ -95,8 +91,6 @@ class _HomePageState extends State<HomePage> {
         }
 
         return PageShell(
-          title: title,
-          subtitle: subtitle,
           controller: widget.controller,
           // The dashboard is a stack of lists, not a stack of boxes: every band
           // below runs edge to edge with hairlines between its rows, and the

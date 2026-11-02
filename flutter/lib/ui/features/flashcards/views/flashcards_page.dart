@@ -256,8 +256,6 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       child: Focus(
         focusNode: _focus,
         child: PageShell(
-          title: t('flashcards.title'),
-          subtitle: t('flashcards.subtitle'),
           controller: widget.controller,
           children: body,
         ),
@@ -290,26 +288,13 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     final Widget intro = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        // The 26dp card glyph that used to open this card is gone: an icon
-        // above a heading is a template habit, and this screen already says
-        // what it is with words. The heading is one step below the home
-        // hero (Fs.x2xl) because this is a section title, not a page statement.
-        Text(
-          t('flashcards.start'),
-          style: TextStyle(
-            fontFamily: Fonts.display,
-            fontSize: Fs.xl,
-            height: Lh.tight,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.015,
-            color: p.ink,
-          ),
-        ),
-        // The subtitle used to be printed here as well, so the same sentence
-        // appeared twice on one screen — once in the page header and once
-        // inside this block. It now lives only in the header, where it names
-        // the page; the block goes straight to the decision it holds.
-        const SizedBox(height: Sp.x5),
+        // This block used to open with a 开始复习 heading, which was fine while
+        // a page header sat above it naming the screen. That header is gone
+        // (the sidebar and the tab bar name the page), so the heading became
+        // the top line of the screen — and it printed the exact words of the
+        // button three lines below it. One of the two had to go, and the
+        // button is the one that does something. The block now starts with the
+        // label of the control it holds.
         Text(
           t('flashcards.buildDeck'),
           style: TextStyle(

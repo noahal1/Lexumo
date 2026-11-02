@@ -43,7 +43,7 @@ const Map<UiLang, Map<String, String>> _dicts = <UiLang, Map<String, String>>{
 /// ```dart
 /// final i18n = I18n(lang);
 /// i18n.t('nav.words');                       // 词库
-/// i18n.t('words.pageSubtitle', {'words': 12, 'due': 3});
+/// i18n.t('home.listMeta', {'words': 12, 'due': 3});
 /// ```
 ///
 /// Keys are the raw dot paths from the TS dictionaries rather than generated

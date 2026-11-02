@@ -118,10 +118,12 @@ void main() {
     });
 
     test('interpolates several variables in one string', () {
+      // `home.listMeta` is '{words} 词 · {due} 待复习' — two placeholders, so a
+      // single-pass replace of one of them is caught.
       const I18n zh = I18n(UiLang.zhCN);
       final String rendered =
-          zh.t('words.pageSubtitle', <String, Object>{'words': 12, 'due': 3});
-      final String raw = zhCnRaw['words.pageSubtitle']!;
+          zh.t('home.listMeta', <String, Object>{'words': 12, 'due': 3});
+      final String raw = zhCnRaw['home.listMeta']!;
       expect(rendered, isNot(raw));
       expect(rendered, isNot(contains('{')));
     });
