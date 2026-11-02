@@ -1103,8 +1103,8 @@ install**，只在中间某行出现过一次 `cmake_install.cmake`。真正的�
 没删，`[ -f "$EXE" ]` 通过，于是「崩溃消失了」和「格子结果互相矛盾」同时出现。
 任何「改代码 → 看行为」的实验，构建前必须删掉目标二进制、构建后必须确认它真的被
 重写。这与死代码扫描器那次「工具报全干净」是同一类错误：**先验证测量手段有效，
-再相信测量结果**。为此 `tool/probe_exit.ps1` 取代了更早的 `tool/run_windows.ps1`——
-后者用 `Start-Process -PassThru`，对短命 GUI 子进程常常返回空 `ExitCode`，把
+再相信测量结果**。为此 `tool/probe_exit.ps1` 取代了更早那版启动脚本（已删除）——
+旧版用 `Start-Process -PassThru`，对短命 GUI 子进程常常返回空 `ExitCode`，把
 「崩溃 `0xC0000409`」和「正常退出 0」都印成 `code= (0x00000000)`。
 
 ### 7.3 测试与验证工具
@@ -1120,16 +1120,13 @@ install**，只在中间某行出现过一次 `cmake_install.cmake`。真正的�
 | `mobile_sweep.sh` | 依次切五个页面并 dump，用于回归 |
 | `check_hints.cjs` | 检查 dump 出的 xml 里有没有残留键帽文本 |
 | `shot.sh` | 截图（同样带 adb 重试） |
-| `apk_state.sh` / `verify_apk.sh` / `diagnose_install.sh` | 安装问题排查 |
+| `verify_apk.sh` / `diagnose_install.sh` | 安装问题排查 |
 | `repro_lck.sh` | 复现 7.4 的 `.lck` 问题，用于确认环境变量假设 |
 | `release.sh` | 出签名 APK + 生成 `dist/update.json`（见 7.6） |
 | `setup_signing.sh` | 把 keystore 就位并写出 `android/key.properties`，密码不经历史、先验证再落盘 |
 | `scan_i18n.cjs` / `scan_symbols.cjs` / `scan_public.cjs` / `scan_orphans.cjs` | 死代码扫描 |
-| `ui_text.sh` | 只取界面文本标签（比整棵无障碍树好读） |
-| `restart_and_dump.sh` | 重启应用并 dump，用于确认冷启动后的状态 |
-| `shots_mobile.sh` / `shot_retry.sh` | 逐页截图 / 单张截图（都带 adb 重试） |
+| `shots_mobile.sh` | 逐页截图（带 adb 重试） |
 | `probe_exit.ps1` | Windows 启动测量：拿真实退出码 + 是否画出窗口（见 7.2） |
-| `run_windows.ps1` | 旧版 Windows 启动测量，退出码不准，已被上一条取代 |
 | `prelink.cjs` | 用 `mklink /D` 补插件符号链接（Dart 建不了，见 7.2） |
 | `patch_tts_windows.cjs` | 给 vendored `flutter_tts` 打 Windows 崩溃补丁（`--restore` 还原） |
 | `probe_lookup.dart` | 打真实网络的查词冒烟：三个 provider 各走一次，打印音标/释义/例句与缓存条数 |

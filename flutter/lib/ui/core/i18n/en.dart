@@ -176,8 +176,6 @@ const Map<String, String> enRaw = {
   'flashcards.title': 'Flashcards',
   'flashcards.subtitle': 'Review at the right pace, before memory fades',
   'flashcards.start': 'Start review',
-  'flashcards.dueCount': '{n} due',
-  'flashcards.newCount': '{n} new',
   // The deck readout prints its figure and its word as two separate nodes, so
   // the label cannot carry `{n}` — see `_DeckFigure` in flashcards_page.dart.
   'flashcards.figureDue': 'due',

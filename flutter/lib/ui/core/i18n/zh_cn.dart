@@ -172,8 +172,6 @@ const Map<String, String> zhCnRaw = {
   'flashcards.title': '闪卡',
   'flashcards.subtitle': '按节奏复习，让记忆在遗忘前被唤醒',
   'flashcards.start': '开始复习',
-  'flashcards.dueCount': '{n} 张到期',
-  'flashcards.newCount': '{n} 张新卡',
   // 数字与量词分开显示：数字用等宽体领先，说明文字跟在下面。
   'flashcards.figureDue': '张到期',
   'flashcards.figureNew': '张新卡',
