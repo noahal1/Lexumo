@@ -200,7 +200,10 @@ localStorage——都是浏览器白送的，这里都要自己写。
    件事的第三份拷贝；统计页现在的职责只是读数，不再发号施令。词库页原本在标题栏的
    「词库」按钮直接删掉——标签条末尾的 `_AddTabButton` 已经开了同一个对话框；测验页的
    「结束」按钮挪进进行中的题目顶部那行，挨着它要放弃的进度和已经拿到的得分；方向选择器
-   在所有平台都回到正文里，不再按窗口宽度在两处之间搬。
+   在所有平台都回到正文里，不再按窗口宽度在两处之间搬。那一行原本还挂着一枚「得分 N」
+   芯片，而侧栏的 `StatTile` 用同一个数字当标题、在同一个屏幕右边两列处——所以它和简介
+   里的「N 个词可测」按同一条规则处理：侧栏看得见时不画，侧栏被 `Layout.mobileBreakpoint`
+   收走时才补回来。一个数字只有一份。
    连带清掉 12 个只被标题栏读过的 i18n key（`home.title`/`home.subtitle`/`words.title`/
    `words.pageSubtitle`/`flashcards.title`/`flashcards.subtitle`/`quiz.title`/`quiz.subtitle`/
    `stats.title`/`stats.subtitle`/`settings.title`/`settings.subtitle`）。`words.subtitle`

@@ -198,7 +198,6 @@ class _QuizPageState extends State<QuizPage> {
             questionLabel: questionLabel,
             directionLabel: directionLabel,
             score: score,
-            side: side,
           ),
           side: side,
         ),
@@ -214,7 +213,6 @@ class _QuizPageState extends State<QuizPage> {
             ringMax: answeredCount > 1 ? answeredCount : 1,
             perfect: _vm.perfect,
             endedEarly: _vm.endedEarly,
-            side: side,
           ),
           side: side,
         ),
@@ -368,7 +366,6 @@ class _QuizPageState extends State<QuizPage> {
     required String questionLabel,
     required String directionLabel,
     required int score,
-    required Widget side,
   }) {
     final Palette p = Palette.of(context);
     final bool answered = _vm.answered;
@@ -392,8 +389,16 @@ class _QuizPageState extends State<QuizPage> {
             const SizedBox(width: Sp.x2),
             StatusChip(label: directionLabel, tone: 'meta'),
             const Spacer(),
-            StatusChip(label: '${t('quiz.score')} $score', tone: 'reviewed'),
-            const SizedBox(width: Sp.x2),
+            // The side panel already states the score as its headline figure
+            // two columns to the right, on the same screen, so the chip is a
+            // second copy of one number — but the panel is hidden below
+            // `Layout.mobileBreakpoint`, and there this is the only place the
+            // score appears while a round is running. Same rule as the
+            // eligible-count chip in the intro: one copy, never two.
+            if (!_showsSidePanel) ...[
+              StatusChip(label: '${t('quiz.score')} $score', tone: 'reviewed'),
+              const SizedBox(width: Sp.x2),
+            ],
             // Ending the round early used to be a button in the page bar. The
             // bar is gone, and this is where it belongs anyway: beside the
             // progress it abandons, on the same line as the score it has earned
@@ -586,7 +591,6 @@ class _QuizPageState extends State<QuizPage> {
     required int ringMax,
     required bool perfect,
     required bool endedEarly,
-    required Widget side,
   }) {
     final Palette p = Palette.of(context);
     final List<QuizMistake> mistakes = _vm.mistakes;
