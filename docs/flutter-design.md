@@ -81,7 +81,7 @@ flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 
         zh_cn.dart     411 条键
         en.dart        同键英文（键集由 i18n_test 强制一致）
       widgets/
-        widgets.dart   PageShell / Segmented / EmptyState / ProgressBar / Ring / StatusChip / StatTile / ShortcutRow / Kbd / Card
+        widgets.dart   PageShell / Segmented / EmptyState / ProgressBar / Ring / StatusChip / StatTile / ShortcutRow / Kbd / Card / HairlineList / HairlineRow / SectionTitle / PillField / FloatingAction
         controls.dart  LexButton / LexInput / LexTextArea / LexSelect / showLexModal / confirmLex / ContentCenter / LexField
         density.dart   触控密度：isTouchPlatform / TouchDensity extension / TapTarget
         lex_icon.dart  图标系统：Ic 常量 + LexIcon
@@ -149,7 +149,9 @@ localStorage——都是浏览器白送的，这里都要自己写。
 | --- | --- | --- |
 | `--bg` `--surface` `--surface-2` … | `Palette.of(context).bg` / `.surface` / `.surface2` | `Palette` 是 `ThemeExtension`，随亮暗主题切换 |
 | `--sp-1` … `--sp-16` | `Sp.x1` … `Sp.x16` | 4 / 8 / 12 / 16 / 20 / 24 / 28 / 32 / 40 / 48 / 64 |
-| `--r-2xs` … `--r-full` | `R.x2xs` … `R.full` + `R.borderXs/sm/md/lg/xl` | 后一组是 `BorderRadius` 现成对象 |
+| `--r-2xs` … `--r-full` | `R.x2xs` … `R.pill` / `R.borderPill` + `R.borderXs/sm/md/lg/xl` | `R.pill`（= `R.full` 999）是胶囊档：按钮、输入框、chip、选中标签、FAB 用它；`R.*` 的方角档留给「装东西的容器」（列表行、面板、对话框）。后一组是 `BorderRadius` 现成对象 |
+| `--row-min` `--rule-w` | `Layout.listRowMin` / `Layout.listRuleW` | 列表行最小高 76（> 2× `controlH`）、左缘强调线宽 2 |
+| `--fab` `--fab-inset` | `Layout.fab` / `Layout.fabInset` | 56 / 24，`fab >= Layout.tap` 由 `tokens_test` 守着 |
 | `--fs-xs` … `--fs-3xl` | `Fs.xs` … `Fs.x3xl` | 12 / 13 / 15 / 16 / 19 / 24 / 30 / 38 |
 | `--lh-*` | `Lh.none/display/title/tight/snug/body/loose` | 1 / 1.05 / 1.15 / 1.2 / 1.4 / 1.6 / 1.7 |
 | `--font-display/ui/mono` | `Fonts.display/ui/mono` | IBM Plex Serif / Sans / Mono |
@@ -167,6 +169,34 @@ localStorage——都是浏览器白送的，这里都要自己写。
 **故意不带 User-Agent**，这样返回的 `src` 是 `.ttf` 而不是 `.woff2`（Flutter 只吃前者），
 然后把二进制直接写到 `flutter/assets/fonts/`。Web 版用的是 woff2（`src/styles/fonts.css`），
 所以这是一份独立的取字流程，不是复用。
+
+### 3.1 版式：列表在纸上，不在卡片里
+
+0.2.6 之后的一次版式重做（用户拿了一张参考图说「做成这种效果的」）。调色板没动
+（仍是石框 + 纸面 + 石青 `--accent`），换的是**构图**，四条规则：
+
+1. **卡片退场，列表上台。** 一页里成组的东西不再各装一张带边框的卡片，而是
+   `SectionTitle` + `HairlineList`：标题一行小字（`Fs.sm` w600 字距 0.04 `ink3`），
+   下面是一串 `HairlineRow`，行与行之间只有一条 1px `line`。列表左缘有一条
+   `Layout.listRuleW`（2dp）的强调竖线，**画在整张列表上而不是逐行画**——逐行画会
+   在每条 hairline 处断 1dp，看起来像虚线。`HairlineList` 把这条线放进 `Stack` 的
+   最后一个 child，压在上层，所以行的 hover 底色盖不住它。
+2. **行要高。** `Layout.listRowMin = 76`，大于两倍 `controlH`（36）。这个数字是这一版
+   最容易被后人「优化」掉的东西，所以 `tokens_test` 直接断言它 `> controlH * 2`。
+3. **胶囊只给「一个东西」，方角留给「装东西的东西」。** 按钮、输入框、chip、选中的
+   标签、FAB 是 `R.borderPill`（999）；列表行、面板、对话框仍是 `R.borderLg/Xl`。
+   输入框的胶囊化有个陷阱：外层容器画圆角时，里面的 `TextField` 必须保持
+   `filled: false` + `BorderInput.none`，否则主题里的 `enabledBorder`/`focusedBorder`
+   会在胶囊里再画一个方框——0.2.5 修过的「两层边框」就是这个坑，改圆角时不要把它改回去。
+4. **页面标题变大，正文其实没变。** `_TopBar` 的标题从 `Fs.lg`（19）提到 `Fs.x2xl`（30），
+   并且**去掉了标题下的分隔线**：标题直接坐在纸上。手机上标题占掉 34.5 + 18.2dp，
+   所以 `mobile_layout_test` 的「页头 ≤ 84dp」预算里只留下 12dp 上下留白——
+   这条预算就是在拦「把页头做成一张海报」。
+
+配套的两个新原语：`PageShell(bleed: true)` 让 body 去掉左右内边距，好让列表贴到
+纸的边（各页自己用 `_gutter()` 给非列表块补回 `Sp.x6`）；`PageShell(fab:)` 在右下角
+浮一个 `FloatingAction`，`bottom` 会按 `context.isTouch` 再抬高 `Layout.tap`，
+不让它压在触屏的底部标签栏上。
 
 ---
 

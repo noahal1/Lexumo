@@ -528,7 +528,10 @@ class _NavItemState extends State<_NavItem> {
             child: Container(
               height: _rowH,
               padding: EdgeInsets.symmetric(horizontal: Sp.x3),
-              decoration: BoxDecoration(color: bg, borderRadius: R.borderSm),
+              // A capsule, like every other selected thing in the app. The
+              // pill is the system's word for "this one", so the sidebar's
+              // current page wears one rather than a soft-cornered tile.
+              decoration: BoxDecoration(color: bg, borderRadius: R.borderPill),
               child: Stack(
                 alignment: Alignment.centerLeft,
                 children: [
@@ -648,10 +651,13 @@ class _StreakCard extends StatelessWidget {
     final p = Palette.of(context);
     return Container(
       padding: const EdgeInsets.all(Sp.x3),
+      // A filled block, no outline: on the stone frame a hairline border read
+      // as a second edge next to the sidebar's own right edge. The figure is
+      // the only thing here that needs weight, and it carries the display face
+      // like every other figure in the app.
       decoration: BoxDecoration(
         color: p.frame2,
-        borderRadius: R.borderMd,
-        border: Border.all(color: p.frameLine),
+        borderRadius: R.borderLg,
       ),
       child: Row(
         children: [
@@ -669,10 +675,11 @@ class _StreakCard extends StatelessWidget {
                     Text(
                       '$streak',
                       style: TextStyle(
-                        fontSize: Fs.lg,
+                        fontFamily: Fonts.display,
+                        fontSize: Fs.xl,
                         height: Lh.title,
                         fontWeight: FontWeight.w600,
-                        letterSpacing: -0.1,
+                        letterSpacing: -0.02,
                         color: p.frameInk,
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
@@ -760,12 +767,11 @@ class _TabItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final color = active ? p.frameAccent : p.frameInk3;
-    // The current tab is declared by the accent on its own icon and label plus a
-    // rule under them — not by a filled tile. The filled tile was the loudest
-    // shape on the bar and it read as a *button* sitting inside a row of tabs,
-    // which made the other five look disabled. A tint plus a rule is how the rest
-    // of the app marks a selection; the bar was the one place that invented a
-    // second vocabulary for the same idea.
+    // The current tab wears a capsule of accent-soft, exactly like the sidebar's
+    // current row and the segmented control. A tint plus a 2dp rule was the
+    // previous vocabulary — a third one, since nothing else in the app marked a
+    // selection with a line under it — and at phone size the rule read as an
+    // underline belonging to the label rather than as "you are here".
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -773,10 +779,11 @@ class _TabItem extends StatelessWidget {
         duration: Motion.dur2,
         curve: Motion.easeOut,
         constraints: const BoxConstraints(minHeight: 52),
+        margin: const EdgeInsets.symmetric(horizontal: 2, vertical: Sp.x1),
         padding: const EdgeInsets.symmetric(vertical: Sp.x1, horizontal: Sp.x2),
         decoration: BoxDecoration(
-          color: Colors.transparent,
-          borderRadius: R.borderMd,
+          color: active ? p.frameAccentSoft : Colors.transparent,
+          borderRadius: R.borderPill,
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -853,20 +860,9 @@ class _TabItem extends StatelessWidget {
                 color: color,
               ),
             ),
-            // The rule that says "you are here". Two dp tall, the width of the
-            // glyphs above it, and the only thing about a tab that changes
-            // shape on selection.
-            const SizedBox(height: 3),
-            AnimatedContainer(
-              duration: Motion.dur2,
-              curve: Motion.easeOut,
-              width: active ? 16 : 0,
-              height: 2,
-              decoration: BoxDecoration(
-                color: p.frameAccent,
-                borderRadius: BorderRadius.circular(R.full),
-              ),
-            ),
+            // The capsule behind the whole tab is the selection mark now, so the
+            // 2dp rule that used to sit under the label is gone: two marks for
+            // one state is how a bar starts looking decorated.
           ],
         ),
       ),

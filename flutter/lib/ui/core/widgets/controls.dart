@@ -177,7 +177,10 @@ class _LexButtonState extends State<LexButton> {
               padding: EdgeInsets.symmetric(horizontal: padH),
               decoration: BoxDecoration(
                 color: bg,
-                borderRadius: R.borderSm,
+                // Every button is a capsule. The page's reading surface is the
+                // only square-cornered thing left, so a button reads as an
+                // object you press rather than a piece of the page.
+                borderRadius: R.borderPill,
                 border: Border.all(color: line),
               ),
               child: ContentCenter(child: content),
@@ -277,23 +280,27 @@ class _LexInputState extends State<LexInput> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    return Container(
+    return AnimatedContainer(
+      duration: Motion.dur1,
+      curve: Curves.easeOut,
       // A field you type into is the one control a phone cannot shrink: the
       // finger has to land in it before the keyboard appears.
       height: context.controlH,
       decoration: BoxDecoration(
+        // A pill: the reference's field is a filled capsule with no outline of
+        // its own. Focus is the only time a line appears.
         color: _focus ? p.surface : p.surface2,
-        borderRadius: R.borderSm,
-        border: Border.all(color: _focus ? p.accent : p.lineControl),
+        borderRadius: R.borderPill,
+        border: Border.all(color: _focus ? p.accent : Colors.transparent),
       ),
       child: Row(
         children: [
           if (widget.prefix != null) ...[
-            const SizedBox(width: Sp.x3),
+            const SizedBox(width: Sp.x4),
             widget.prefix!,
             const SizedBox(width: Sp.x2),
           ] else
-            const SizedBox(width: Sp.x3),
+            const SizedBox(width: Sp.x4),
           Expanded(
             child: Focus(
               onFocusChange: (v) => setState(() => _focus = v),
@@ -311,6 +318,10 @@ class _LexInputState extends State<LexInput> {
                 style: TextStyle(fontSize: Fs.base, color: p.ink),
                 decoration: InputDecoration(
                   isDense: true,
+                  // The theme's decoration draws its own fill and borders; a
+                  // call-site `border` alone does NOT suppress the theme's
+                  // enabled/focused borders, which is how every field ended up
+                  // with two outlines. All of it is pinned off here.
                   filled: false,
                   border: InputBorder.none,
                   hintText: widget.placeholder,
@@ -324,7 +335,7 @@ class _LexInputState extends State<LexInput> {
             widget.suffix!,
             const SizedBox(width: Sp.x2),
           ] else
-            const SizedBox(width: Sp.x3),
+            const SizedBox(width: Sp.x4),
         ],
       ),
     );
@@ -356,13 +367,16 @@ class _LexTextAreaState extends State<LexTextArea> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    return Container(
+    return AnimatedContainer(
+      duration: Motion.dur1,
+      curve: Curves.easeOut,
       constraints: BoxConstraints(minHeight: widget.minHeight),
-      padding: const EdgeInsets.symmetric(horizontal: Sp.x3, vertical: Sp.x2),
+      padding: const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x3),
       decoration: BoxDecoration(
         color: _focus ? p.surface : p.surface2,
-        borderRadius: R.borderSm,
-        border: Border.all(color: _focus ? p.accent : p.lineControl),
+        // Same capsule as [LexInput] — a multi-line field is still a field.
+        borderRadius: R.borderLg,
+        border: Border.all(color: _focus ? p.accent : Colors.transparent),
       ),
       child: Focus(
         onFocusChange: (v) => setState(() => _focus = v),

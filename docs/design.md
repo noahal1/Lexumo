@@ -45,9 +45,14 @@ records the decisions those values encode.
   and self-hosted (128 KB total, `public/fonts/`).
 - Scale — 12 / 13 / 15 / 16 / 19 / 24 / 30 / 38, ratio 1.2. Line height
   `--lh-tight` 1.2 for display, `--lh-snug` 1.4, `--lh-body` 1.6.
-- Radii — 2 / 3 / 4 / 6 / 8 / 10. Nothing is a pill except a switch track.
-- Elevation — one overlay shadow, one pop shadow. Cards carry a hairline and no
-  shadow; only a floating thing (modal, toast, bulk bar) lifts.
+- Radii — 2 / 3 / 4 / 8 / 10 / full. A control that *is one thing* (a button, a
+  field, a chip, the selected tab, the floating action) is a capsule; a surface
+  that *holds things* (a list row, a panel, a dialog) keeps a square rung. The
+  distinction is the verb: a capsule is something you act on, a rectangle is
+  something that acts as a surface.
+- Elevation — one overlay shadow, one pop shadow. A surface carries a hairline and
+  no shadow; only a floating thing (modal, toast, bulk bar, the action button)
+  lifts. A list of rows is separated by hairlines only — no panel around it.
 - Spacing — 4 / 8 / 12 / 16 / 20 / 24 / 28 / 32 / 40 / 48 / 64. Every value is a
   multiple of 4.
 

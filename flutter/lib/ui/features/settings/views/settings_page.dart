@@ -545,12 +545,13 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: Sp.x5),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 880),
-              child: Card(
-                // A stable handle for the widget tests: the card's own identity
-                // is private to this file, and matching on its button label
-                // would tie the tests to copy that is expected to change.
+              // No box: the update block heads itself (a name row plus a
+              // version), and every other settings section is a heading over
+              // rows on the page, not a panel. The key stays — it is the widget
+              // tests' handle on this block, and matching on the button's label
+              // would tie them to copy that is expected to change.
+              child: KeyedSubtree(
                 key: const ValueKey('update-card'),
-                padding: EdgeInsets.zero,
                 child: _UpdateSection(
                   service: vm.updateService,
                   state: vm.updateState,
@@ -597,24 +598,57 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    // A settings group is a list of rows, not a box holding rows: the heading
+    // names it, a hairline separates each row, and the page itself is the
+    // container. The card that used to wrap them added a border around a
+    // borderless thing and made every group read as a widget.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionHeading(title: title, note: note),
-        const SizedBox(height: Sp.x3),
-        Card(
-          padding: EdgeInsets.zero,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var i = 0; i < children.length; i++) ...[
-                if (i > 0) const SizedBox(height: 2),
-                children[i],
-              ],
-            ],
+        SectionTitle(label: title, trailing: note == null ? null : Text(
+          note!,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: Fonts.mono,
+            fontSize: Fs.xs,
+            height: Lh.tight,
+            color: p.ink4,
           ),
+        )),
+        HairlineList(
+          rule: false,
+          padded: false,
+          children: [
+            for (var i = 0; i < children.length; i++)
+              _RowSlot(last: i == children.length - 1, child: children[i]),
+          ],
         ),
       ],
+    );
+  }
+}
+
+/// A row plus the hairline that separates it from the next one.
+///
+/// The divider lives here rather than in `_Row` so a control that is not a
+/// `_Row` (a preview, a notice) still gets the same separator between it and
+/// its neighbours.
+class _RowSlot extends StatelessWidget {
+  const _RowSlot({required this.last, required this.child});
+
+  final bool last;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: last ? null : Border(bottom: BorderSide(color: p.line)),
+      ),
+      child: child,
     );
   }
 }
@@ -643,13 +677,14 @@ class _RowState extends State<_Row> {
       child: AnimatedContainer(
         duration: Motion.dur1,
         curve: Motion.ease,
-        padding: const EdgeInsets.symmetric(horizontal: Sp.x3, vertical: Sp.x2),
+        constraints: const BoxConstraints(minHeight: Layout.tap),
+        padding: const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x3),
         decoration: BoxDecoration(
           // `null` rather than a literal transparent: the row has no fill at
           // rest, and the only colour this decoration ever carries comes from
           // the palette.
-          color: _hover ? p.surface2 : null,
-          borderRadius: R.borderSm,
+          color: _hover ? p.surfaceHover : null,
+          borderRadius: R.borderMd,
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -1496,165 +1531,139 @@ class _AboutCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: R.borderLg,
-        border: Border.all(color: p.line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Sp.x5, Sp.x4, Sp.x5, Sp.x4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  context.t('settings.about'),
-                  style: TextStyle(
-                    fontSize: Fs.md,
-                    height: Lh.tight,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.005,
-                    color: p.ink,
+    // Same shape as every other settings section: a heading over content that
+    // sits directly on the page. The box this used to draw put the app's own
+    // name inside a frame, one frame away from the frame around the page.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionTitle(label: context.t('settings.about')),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Sp.x4, Sp.x2, Sp.x4, Sp.x4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${context.t('common.appName')} · \u8bcd\u781a',
+                style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink3),
+              ),
+              const SizedBox(height: Sp.x4),
+              Wrap(
+                spacing: Sp.x2,
+                runSpacing: Sp.x2,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  // The running build, read from the platform rather than
+                  // typed here. `pubspec.yaml` is the one place a version is
+                  // written; a literal in this file was a second one that
+                  // would silently disagree with the manifest the updater
+                  // compares against.
+                  _Chip(text: '${context.t('settings.version')} $version'),
+                  // The web build hardcoded its own stack names here rather
+                  // than routing them through `t()` — they are proper nouns
+                  // and read the same in both locales. The port states its
+                  // own stack for the same reason.
+                  Text(
+                    'Flutter · Dart',
+                    style: TextStyle(fontFamily: Fonts.mono, fontSize: Fs.xs, height: Lh.tight, color: p.ink3),
                   ),
+                ],
+              ),
+              const SizedBox(height: Sp.x4),
+              Text(
+                context.t('settings.madeWith'),
+                style: TextStyle(fontSize: Fs.sm, height: Lh.loose, color: p.ink2),
+              ),
+              const SizedBox(height: Sp.x4),
+              /* AGPL-3.0 §7(b) additional term: this attribution must stay
+                 visible. It is not decoration — do not remove or collapse it. */
+              Container(
+                padding: const EdgeInsets.all(Sp.x3),
+                decoration: BoxDecoration(
+                  color: p.surface2,
+                  borderRadius: R.borderSm,
+                  border: Border.all(color: p.line),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '${context.t('common.appName')} · \u8bcd\u781a',
-                  style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink3),
-                ),
-              ],
-            ),
-          ),
-          Container(height: 1, color: p.line),
-          Padding(
-            padding: const EdgeInsets.all(Sp.x5),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Wrap(
-                  spacing: Sp.x2,
-                  runSpacing: Sp.x2,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // The running build, read from the platform rather than
-                    // typed here. `pubspec.yaml` is the one place a version is
-                    // written; a literal in this file was a second one that
-                    // would silently disagree with the manifest the updater
-                    // compares against.
-                    _Chip(text: '${context.t('settings.version')} $version'),
-                    // The web build hardcoded its own stack names here rather
-                    // than routing them through `t()` — they are proper nouns
-                    // and read the same in both locales. The port states its
-                    // own stack for the same reason.
                     Text(
-                      'Flutter · Dart',
-                      style: TextStyle(fontFamily: Fonts.mono, fontSize: Fs.xs, height: Lh.tight, color: p.ink3),
+                      'Lingueez, created by Yurii Lysak',
+                      style: TextStyle(
+                        fontSize: Fs.sm,
+                        height: Lh.snug,
+                        fontWeight: FontWeight.w500,
+                        color: p.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      context.t('settings.licenseNote'),
+                      style: TextStyle(fontSize: Fs.sm, height: Lh.body, color: p.ink2),
                     ),
                   ],
                 ),
-                const SizedBox(height: Sp.x4),
+              ),
+              // No keyboard, no legend: the whole section is a keycap
+              // reference and would be unactionable on a phone.
+              if (context.showsKeyHints) ...[
+                const SizedBox(height: Sp.x6),
                 Text(
-                  context.t('settings.madeWith'),
-                  style: TextStyle(fontSize: Fs.sm, height: Lh.loose, color: p.ink2),
-                ),
-                const SizedBox(height: Sp.x4),
-                /* AGPL-3.0 §7(b) additional term: this attribution must stay
-                   visible. It is not decoration — do not remove or collapse it. */
-                Container(
-                  padding: const EdgeInsets.all(Sp.x3),
-                  decoration: BoxDecoration(
-                    color: p.surface2,
-                    borderRadius: R.borderSm,
-                    border: Border.all(color: p.line),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Lingueez, created by Yurii Lysak',
-                        style: TextStyle(
-                          fontSize: Fs.sm,
-                          height: Lh.snug,
-                          fontWeight: FontWeight.w500,
-                          color: p.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        context.t('settings.licenseNote'),
-                        style: TextStyle(fontSize: Fs.sm, height: Lh.body, color: p.ink2),
-                      ),
-                    ],
+                  context.t('settings.shortcuts'),
+                  style: TextStyle(
+                    fontSize: Fs.sm,
+                    height: Lh.tight,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.04,
+                    color: p.ink3,
                   ),
                 ),
-                // No keyboard, no legend: the whole section is a keycap
-                // reference and would be unactionable on a phone.
-                if (context.showsKeyHints) ...[
-                  const SizedBox(height: Sp.x4),
-                  Container(height: 1, color: p.line),
-                  const SizedBox(height: Sp.x4),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: Sp.x2),
-                    child: Text(
-                      context.t('settings.shortcuts'),
-                      style: TextStyle(
-                        fontSize: Fs.sm,
-                        height: Lh.tight,
-                        fontWeight: FontWeight.w500,
-                        color: p.ink2,
-                      ),
-                    ),
-                  ),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final columns = constraints.maxWidth >= 700 ? 2 : 1;
-                      if (columns == 1) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                const SizedBox(height: Sp.x2),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final columns = constraints.maxWidth >= 700 ? 2 : 1;
+                    if (columns == 1) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final row in _kShortcuts)
+                            ShortcutRow(keys: row.keys, label: context.t(row.labelKey)),
+                        ],
+                      );
+                    }
+                    final rows = <Widget>[];
+                    for (var i = 0; i < _kShortcuts.length; i += columns) {
+                      rows.add(
+                        Row(
                           children: [
-                            for (final row in _kShortcuts)
-                              ShortcutRow(keys: row.keys, label: context.t(row.labelKey)),
+                            Expanded(
+                              child: ShortcutRow(
+                                keys: _kShortcuts[i].keys,
+                                label: context.t(_kShortcuts[i].labelKey),
+                              ),
+                            ),
+                            const SizedBox(width: Sp.x6),
+                            Expanded(
+                              child: i + 1 < _kShortcuts.length
+                                  ? ShortcutRow(
+                                      keys: _kShortcuts[i + 1].keys,
+                                      label: context.t(_kShortcuts[i + 1].labelKey),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
                           ],
-                        );
-                      }
-                      final rows = <Widget>[];
-                      for (var i = 0; i < _kShortcuts.length; i += columns) {
-                        rows.add(
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ShortcutRow(
-                                  keys: _kShortcuts[i].keys,
-                                  label: context.t(_kShortcuts[i].labelKey),
-                                ),
-                              ),
-                              const SizedBox(width: Sp.x6),
-                              Expanded(
-                                child: i + 1 < _kShortcuts.length
-                                    ? ShortcutRow(
-                                        keys: _kShortcuts[i + 1].keys,
-                                        label: context.t(_kShortcuts[i + 1].labelKey),
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
-                    },
-                  ),
-                ],
+                        ),
+                      );
+                    }
+                    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+                  },
+                ),
               ],
-            ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

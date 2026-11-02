@@ -92,6 +92,18 @@ void main() {
             reason: 'radius $i must be larger than ${i - 1}');
       }
     });
+
+    test('the pill is fully round and clears the tallest control', () {
+      // A pill has to be rounder than half of any box it is drawn in, or the
+      // corners square off. The FAB is the tallest pill in the app, so that is
+      // the floor this value has to clear.
+      expect(R.pill, greaterThan(Layout.fab));
+      expect(R.pill, greaterThan(R.xl));
+      expect(R.borderPill, BorderRadius.all(Radius.circular(R.pill)));
+      // `full` is the name `theme.dart` and the switch track still use; the two
+      // must stay the same shape or those surfaces stop matching the pills.
+      expect(R.full, R.pill);
+    });
   });
 
   group('Layout', () {
@@ -103,6 +115,22 @@ void main() {
 
     test('the breakpoints are ordered', () {
       expect(Layout.mobileBreakpoint < Layout.railBreakpoint, isTrue);
+    });
+
+    test('the list rhythm keeps a row taller than two control heights', () {
+      // The reference's word rows are deliberately airy. If the minimum ever
+      // drops to a control height the list reverts to looking like a table.
+      expect(Layout.listRowMin, greaterThan(Layout.controlH * 2));
+      // The accent rule is a rule, not a border: thin enough to read as ink.
+      expect(Layout.listRuleW, lessThanOrEqualTo(2));
+      expect(Layout.listRuleW, greaterThan(0));
+      // And the gap has to be on the 4px grid like every other space value.
+      expect(Layout.listRuleGap % 4, 0);
+    });
+
+    test('the floating action button is a fingertip-sized target', () {
+      expect(Layout.fab, greaterThanOrEqualTo(Layout.tap));
+      expect(Layout.fabInset % 4, 0);
     });
   });
 

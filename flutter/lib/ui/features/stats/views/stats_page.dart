@@ -81,19 +81,17 @@ class _StatsPageState extends State<StatsPage> {
             subtitle: subtitle,
             controller: widget.controller,
             children: [
-              Card(
-                child: EmptyState(
-                  icon: Ic.words,
-                  title: context.t('stats.noData'),
-                  text: context.t('stats.emptyHint'),
-                  action: vm.canNavigate
-                      ? LexButton(
-                          label: context.t('stats.addWords'),
-                          kind: BtnKind.primary,
-                          onPressed: vm.goToWords,
-                        )
-                      : null,
-                ),
+              EmptyState(
+                icon: Ic.words,
+                title: context.t('stats.noData'),
+                text: context.t('stats.emptyHint'),
+                action: vm.canNavigate
+                    ? LexButton(
+                        label: context.t('stats.addWords'),
+                        kind: BtnKind.primary,
+                        onPressed: vm.goToWords,
+                      )
+                    : null,
               ),
             ],
           );
@@ -339,64 +337,58 @@ class _HeadCard extends StatelessWidget {
         ],
       ],
     );
-    return Container(
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: R.borderLg,
-        border: Border.all(color: p.line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Sp.x5, Sp.x4, Sp.x5, Sp.x4),
-            // A head with no control has no arrangement to decide, so it skips
-            // the builder below. That is not just one widget saved: a
-            // LayoutBuilder cannot report an intrinsic height, and `_Split`
-            // wraps these cards in an `IntrinsicHeight` to give a pair of them
-            // one shared height. A builder in that path throws "LayoutBuilder
-            // does not support returning intrinsic dimensions" and the whole
-            // dashboard fails to lay out.
-            child: trailing == null
-                ? heading
-                // A trailing control sits on the title's line on a wide window
-                // and takes the line below it on a phone. Side by side on a
-                // 363dp card the window picker is 224dp of the 323dp inside the
-                // padding, which left 85dp for a 128dp heading and a 159dp
-                // sub-line: "近 30 天复习" broke after "近" and the count broke
-                // mid-phrase. Stacking costs one line of height and gives both
-                // the width they need.
-                : LayoutBuilder(
-                    builder: (BuildContext context, BoxConstraints constraints) {
-                      if (constraints.maxWidth < 520) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            heading,
-                            const SizedBox(height: Sp.x3),
-                            trailing!,
-                          ],
-                        );
-                      }
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // The card is gone with its border: a statistics block is a heading and
+        // the figure under it, and the page is already the box. What used to be
+        // three vertical lines per card (border, head rule, body edge) is now
+        // one heading sitting directly on the page.
+        Padding(
+          padding: const EdgeInsets.only(bottom: Sp.x3),
+          // A head with no control has no arrangement to decide, so it skips
+          // the builder below. That is not just one widget saved: a
+          // LayoutBuilder cannot report an intrinsic height, and `_Split`
+          // wraps these blocks in an `IntrinsicHeight` to give a pair of them
+          // one shared height. A builder in that path throws "LayoutBuilder
+          // does not support returning intrinsic dimensions" and the whole
+          // dashboard fails to lay out.
+          child: trailing == null
+              ? heading
+              // A trailing control sits on the title's line on a wide window
+              // and takes the line below it on a phone. Side by side on a
+              // 363dp column the window picker is 224dp of the 323dp inside the
+              // padding, which left 85dp for a 128dp heading and a 159dp
+              // sub-line: "近 30 天复习" broke after "近" and the count broke
+              // mid-phrase. Stacking costs one line of height and gives both
+              // the width they need.
+              : LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    if (constraints.maxWidth < 520) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Expanded(child: heading),
-                          const SizedBox(width: Sp.x3),
+                          heading,
+                          const SizedBox(height: Sp.x3),
                           trailing!,
                         ],
                       );
-                    },
-                  ),
-          ),
-          // The head's own rule was the third vertical line in a card that
-          // already has a border and a fill change below it. Dropping it lets
-          // the heading sit on the card and the body sit in it, which is the
-          // same order the settings groups use.
-          Padding(padding: const EdgeInsets.all(Sp.x5), child: child),
-        ],
-      ),
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(child: heading),
+                        const SizedBox(width: Sp.x3),
+                        trailing!,
+                      ],
+                    );
+                  },
+                ),
+        ),
+        child,
+      ],
     );
   }
 }
@@ -462,38 +454,59 @@ class _TileGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = Palette.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final perRow = constraints.maxWidth >= 860 ? 4 : 2;
         final rows = <Widget>[];
         for (var i = 0; i < tiles.length; i += perRow) {
-          if (i > 0) rows.add(const SizedBox(height: Sp.x4));
           final row = tiles.sublist(i, (i + perRow).clamp(0, tiles.length));
           rows.add(
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (var j = 0; j < row.length; j++) ...[
-                    if (j > 0) const SizedBox(width: Sp.x4),
-                    Expanded(
-                      // The web's `tile-in` (`9px`, `dur-4`) staggered per tile
-                      // by `--stagger`, capped at four so a long grid does not
-                      // finish arriving after the user has already read it.
-                      //
-                      // Safe inside the `IntrinsicHeight` above: [FadeRise] wraps
-                      // in `Opacity`/`Transform`, both of which proxy intrinsic
-                      // dimensions straight through. A `LayoutBuilder` here would
-                      // be the thing that throws.
-                      child: FadeRise(
-                        offset: 9,
-                        duration: Motion.dur4,
-                        delay: Motion.stagger * (i + j < _kStaggerTiles ? i + j : _kStaggerTiles),
-                        child: row[j],
+            // The figures share a line and a rule, not a box: one hairline
+            // between two figures separates them better than a border around
+            // each, and it is the same rule the lists on other pages use.
+            DecoratedBox(
+              decoration: BoxDecoration(
+                border: i == 0 ? null : Border(top: BorderSide(color: p.line)),
+              ),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var j = 0; j < row.length; j++) ...[
+                      if (j > 0)
+                        VerticalDivider(
+                          width: 1,
+                          thickness: 1,
+                          color: p.line,
+                        ),
+                      Expanded(
+                        // The web's `tile-in` (`9px`, `dur-4`) staggered per
+                        // tile by `--stagger`, capped at four so a long grid
+                        // does not finish arriving after the user has already
+                        // read it.
+                        //
+                        // Safe inside the `IntrinsicHeight` above: [FadeRise]
+                        // wraps in `Opacity`/`Transform`, both of which proxy
+                        // intrinsic dimensions straight through. A
+                        // `LayoutBuilder` here would be the thing that throws.
+                        child: FadeRise(
+                          offset: 9,
+                          duration: Motion.dur4,
+                          delay: Motion.stagger *
+                              (i + j < _kStaggerTiles ? i + j : _kStaggerTiles),
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              left: j == 0 ? 0 : Sp.x4,
+                              right: Sp.x4,
+                            ),
+                            child: row[j],
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           );

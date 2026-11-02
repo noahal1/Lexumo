@@ -277,17 +277,15 @@ class _QuizPageState extends State<QuizPage> {
   ) {
     if (!enough) {
       return _studySplit(
-        main: Card(
-          child: EmptyState(
-            icon: Ic.quiz,
-            title: t('quiz.noWords'),
-            text: t('quiz.noWordsHint'),
-            action: LexButton(
-              label: t('words.addWord'),
-              kind: BtnKind.primary,
-              icon: Ic.plus,
-              onPressed: context.canNavigate ? () => context.goTo('words') : null,
-            ),
+        main: EmptyState(
+          icon: Ic.quiz,
+          title: t('quiz.noWords'),
+          text: t('quiz.noWordsHint'),
+          action: LexButton(
+            label: t('words.addWord'),
+            kind: BtnKind.primary,
+            icon: Ic.plus,
+            onPressed: context.canNavigate ? () => context.goTo('words') : null,
           ),
         ),
         side: side,
@@ -296,96 +294,102 @@ class _QuizPageState extends State<QuizPage> {
 
     final Palette p = Palette.of(context);
     final int count = QUIZ_ROUND < eligibleCount ? QUIZ_ROUND : eligibleCount;
-    final Widget intro = Card(
-      padding: const EdgeInsets.all(Sp.x6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          // Same change as the flashcards intro: a 26dp glyph above a heading
-          // is a template habit, and the heading drops from Fs.x2xl to Fs.xl so
-          // a card title cannot compete with the page headline. Both intros are
-          // the same object now, which is why they are edited together.
-          Text(
-            t('quiz.start'),
-            style: TextStyle(
-              fontFamily: Fonts.display,
-              fontSize: Fs.xl,
-              height: Lh.tight,
-              fontWeight: FontWeight.w600,
-              letterSpacing: -0.015,
-              color: p.ink,
-            ),
+    final Widget intro = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        // Same change as the flashcards intro: a 26dp glyph above a heading
+        // is a template habit, and the heading drops from Fs.x2xl to Fs.xl so
+        // a section title cannot compete with the page headline. Both intros
+        // are the same object now, which is why they are edited together.
+        Text(
+          t('quiz.start'),
+          style: TextStyle(
+            fontFamily: Fonts.display,
+            fontSize: Fs.xl,
+            height: Lh.tight,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.015,
+            color: p.ink,
           ),
-          const SizedBox(height: Sp.x2),
-          Text(
-            '$directionLabel · ${t('quiz.chooseCount')} $count',
-            style: TextStyle(fontSize: Fs.base, height: Lh.loose, color: p.ink2),
+        ),
+        const SizedBox(height: Sp.x2),
+        Text(
+          '$directionLabel · ${t('quiz.chooseCount')} $count',
+          style: TextStyle(fontSize: Fs.base, height: Lh.loose, color: p.ink2),
+        ),
+        const SizedBox(height: Sp.x5),
+        // On a phone the picker lives here rather than in the page bar; see
+        // the `actions` comment above. It replaces the direction chip, which
+        // said the same thing in less useful form — a chip reports, a picker
+        // changes.
+        if (context.isTouch) ...<Widget>[
+          // Scrollable, not stretched: at a 2x accessibility text scale the
+          // two labels measure ~388dp against the 305dp this column has, and
+          // a RenderFlex overflowed by 83. The strip keeps its natural width
+          // and scrolls instead of truncating a label it was built to show.
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Segmented<QuizDirection>(
+              value: _vm.direction,
+              options: <SegOption<QuizDirection>>[
+                SegOption<QuizDirection>(
+                  value: QuizDirection.termToDef,
+                  label: t('quiz.termToDef'),
+                ),
+                SegOption<QuizDirection>(
+                  value: QuizDirection.defToTerm,
+                  label: t('quiz.defToTerm'),
+                ),
+              ],
+              onChanged: (QuizDirection value) => _vm.setDirection(value),
+            ),
           ),
           const SizedBox(height: Sp.x4),
-          // On a phone the picker lives here rather than in the page bar; see
-          // the `actions` comment above. It replaces the direction chip, which
-          // said the same thing in less useful form — a chip reports, a picker
-          // changes.
-          if (context.isTouch) ...<Widget>[
-            // Scrollable, not stretched: at a 2x accessibility text scale the
-            // two labels measure ~388dp against the 305dp this column has, and
-            // a RenderFlex overflowed by 83. The strip keeps its natural width
-            // and scrolls instead of truncating a label it was built to show.
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Segmented<QuizDirection>(
-                value: _vm.direction,
-                options: <SegOption<QuizDirection>>[
-                  SegOption<QuizDirection>(
-                    value: QuizDirection.termToDef,
-                    label: t('quiz.termToDef'),
-                  ),
-                  SegOption<QuizDirection>(
-                    value: QuizDirection.defToTerm,
-                    label: t('quiz.defToTerm'),
-                  ),
-                ],
-                onChanged: (QuizDirection value) => _vm.setDirection(value),
-              ),
-            ),
-            const SizedBox(height: Sp.x4),
-          ],
-          Wrap(
-            spacing: Sp.x2,
-            runSpacing: Sp.x2,
-            children: <Widget>[
-              if (!context.isTouch) StatusChip(label: directionLabel, tone: 'meta'),
-              StatusChip(
-                label: t('quiz.eligible', <String, Object>{'n': eligibleCount}),
-                tone: 'new',
-              ),
-            ],
-          ),
-          const SizedBox(height: Sp.x4),
-          Row(
-            children: <Widget>[
-              LexButton(
-                label: t('quiz.start'),
-                kind: BtnKind.primary,
-                size: BtnSize.lg,
-                onPressed: () => _vm.start(_vm.direction),
-                trailing: LexIcon(Ic.arrowRight, size: 17, color: p.onAccent),
-              ),
-            ],
-          ),
-          if (context.showsKeyHints) ...<Widget>[
-            const SizedBox(height: Sp.x3),
-            Text(
-              t('quiz.keyboardHint'),
-              style: TextStyle(fontSize: Fs.xs, height: Lh.body, color: p.ink3),
-            ),
-          ],
         ],
-      ),
+        Wrap(
+          spacing: Sp.x2,
+          runSpacing: Sp.x2,
+          children: <Widget>[
+            if (!context.isTouch) StatusChip(label: directionLabel, tone: 'meta'),
+            StatusChip(
+              label: t('quiz.eligible', <String, Object>{'n': eligibleCount}),
+              tone: 'new',
+            ),
+          ],
+        ),
+        const SizedBox(height: Sp.x5),
+        Row(
+          children: <Widget>[
+            LexButton(
+              label: t('quiz.start'),
+              kind: BtnKind.primary,
+              size: BtnSize.lg,
+              onPressed: () => _vm.start(_vm.direction),
+              trailing: LexIcon(Ic.arrowRight, size: 17, color: p.onAccent),
+            ),
+          ],
+        ),
+        if (context.showsKeyHints) ...<Widget>[
+          const SizedBox(height: Sp.x3),
+          Text(
+            t('quiz.keyboardHint'),
+            style: TextStyle(fontSize: Fs.xs, height: Lh.body, color: p.ink3),
+          ),
+        ],
+      ],
     );
 
     return _studySplit(
-      main: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: <Widget>[intro]),
+      main: Align(
+        alignment: AlignmentDirectional.centerStart,
+        // Same measure cap as the flashcards intro: both intros are one
+        // object, and a decision column stretched across a wide pane leaves
+        // its right half empty.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: intro,
+        ),
+      ),
       side: side,
     );
   }
@@ -692,28 +696,27 @@ class _QuizPageState extends State<QuizPage> {
           icon: Ic.target,
         ),
         const SizedBox(height: Sp.x4),
-        if (context.showsKeyHints)
-          Card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  t('settings.shortcuts'),
-                  style: TextStyle(
-                    fontSize: Fs.md,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.005,
-                    color: Palette.of(context).ink,
-                  ),
-                ),
-                const SizedBox(height: Sp.x2),
-                ShortcutRow(keys: const <String>['A', 'B', 'C', 'D'], label: t('quiz.chooseAnswer')),
-                ShortcutRow(keys: const <String>['1', '2', '3', '4'], label: t('quiz.chooseAnswerNum')),
-                ShortcutRow(keys: const <String>['Enter'], label: t('quiz.next')),
-              ],
+        if (context.showsKeyHints) ...[
+          Text(
+            t('settings.shortcuts'),
+            style: TextStyle(
+              fontSize: Fs.sm,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.04,
+              color: Palette.of(context).ink3,
             ),
-        ),
+          ),
+          const SizedBox(height: Sp.x2),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ShortcutRow(keys: const <String>['A', 'B', 'C', 'D'], label: t('quiz.chooseAnswer')),
+              ShortcutRow(keys: const <String>['1', '2', '3', '4'], label: t('quiz.chooseAnswerNum')),
+              ShortcutRow(keys: const <String>['Enter'], label: t('quiz.next')),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -732,7 +735,20 @@ class _QuizPageState extends State<QuizPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           main,
-          if (showSide) ...<Widget>[const SizedBox(height: Sp.x4), side],
+          if (showSide) ...<Widget>[
+            const SizedBox(height: Sp.x4),
+            // Stacked under the main column the panel is still a *panel*: a
+            // 296dp column of labels and keycaps stretched to the full page
+            // width puts each row’s key at the far right of a very long gap.
+            // It keeps a readable measure and stays left-aligned instead.
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: side,
+              ),
+            ),
+          ],
         ],
       );
     }
@@ -912,51 +928,49 @@ class _MistakeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Palette p = Palette.of(context);
-    return Card(
-      padding: EdgeInsets.zero,
-      tight: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Sp.x5, vertical: Sp.x4),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    t('quiz.missed'),
-                    style: TextStyle(
-                      fontSize: Fs.md,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.005,
-                      color: p.ink,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${mistakes.length}',
-                  style: TextStyle(fontSize: Fs.sm, height: Lh.tight, color: p.ink3),
-                ),
-              ],
+    // The round's misses are a list of rows, so they are drawn as one: a label
+    // with the count, then a hairline between each miss. The card that used to
+    // hold them drew a border, a head rule and a divider between rows — three
+    // vertical lines for a list that needs one.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        SectionTitle(
+          label: t('quiz.missed'),
+          trailing: Text(
+            '${mistakes.length}',
+            style: TextStyle(
+              fontFamily: Fonts.mono,
+              fontSize: Fs.xs,
+              height: Lh.tight,
+              color: p.ink4,
             ),
           ),
-          Container(height: 1, color: p.line),
-          for (int i = 0; i < mistakes.length; i++) ...<Widget>[
-            if (i > 0) Container(height: 1, color: p.line),
-            _MistakeRow(t: t, mistake: mistakes[i]),
+        ),
+        HairlineList(
+          rule: false,
+          padded: false,
+          children: <Widget>[
+            for (int i = 0; i < mistakes.length; i++)
+              _MistakeRow(
+                t: t,
+                mistake: mistakes[i],
+                last: i == mistakes.length - 1,
+              ),
           ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
 class _MistakeRow extends StatelessWidget {
-  const _MistakeRow({required this.t, required this.mistake});
+  const _MistakeRow({required this.t, required this.mistake, this.last = false});
 
   final String Function(String, [Map<String, Object>?]) t;
   final QuizMistake mistake;
+  final bool last;
 
   @override
   Widget build(BuildContext context) {
@@ -968,7 +982,8 @@ class _MistakeRow extends StatelessWidget {
         : question.options[answer];
     final String correctAnswer = question.options[question.answerIndex];
 
-    return Padding(
+    return HairlineRow(
+      last: last,
       padding: const EdgeInsets.symmetric(horizontal: Sp.x5, vertical: Sp.x4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

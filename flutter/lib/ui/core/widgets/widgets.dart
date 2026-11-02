@@ -28,6 +28,8 @@ class PageShell extends StatelessWidget {
     required this.children,
     this.wide = false,
     this.controller,
+    this.fab,
+    this.bleed = false,
   });
 
   final String title;
@@ -39,10 +41,18 @@ class PageShell extends StatelessWidget {
   final bool wide;
   final ScrollController? controller;
 
+  /// A [FloatingAction] to hang over the bottom-right corner.
+  final Widget? fab;
+
+  /// Drop the body's horizontal padding so a [HairlineList] can run from the
+  /// window edge to the window edge, which is what the reference does. The
+  /// header keeps its own padding either way.
+  final bool bleed;
+
   @override
   Widget build(BuildContext context) {
     final maxWidth = wide ? 1360.0 : Layout.contentMax;
-    return Column(
+    final body = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _TopBar(title: title, subtitle: subtitle, actions: actions, maxWidth: maxWidth),
@@ -56,13 +66,15 @@ class PageShell extends StatelessWidget {
                 child: ConstrainedBox(
                   constraints: BoxConstraints(maxWidth: maxWidth),
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      Sp.x6,
-                      Sp.x6,
-                      Sp.x6,
+                    padding: EdgeInsetsDirectional.only(
+                      start: bleed ? 0 : Sp.x6,
+                      end: bleed ? 0 : Sp.x6,
+                      top: Sp.x6,
                       // Room for the phone tab bar so the last card can scroll
-                      // clear of it.
-                      Layout.tap + Sp.x6,
+                      // clear of it. With a FAB the tail has to clear the
+                      // button too, or the last row hides under it.
+                      bottom: (fab != null ? Layout.fab + Layout.fabInset : Sp.x6) +
+                          (context.isTouch ? Layout.tap : 0),
                     ),
                     // Every page fades in on navigation. Opacity only — no
                     // travel — for the same reason the web build restricted
@@ -81,6 +93,20 @@ class PageShell extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ],
+    );
+
+    if (fab == null) return body;
+    return Stack(
+      children: [
+        Positioned.fill(child: body),
+        Positioned(
+          right: Layout.fabInset,
+          // Clear the phone tab bar. The shell reserves its own strip there and
+          // a button sitting on it would be under the user's thumb.
+          bottom: Layout.fabInset + (context.isTouch ? Layout.tap + Sp.x2 : 0),
+          child: fab!,
         ),
       ],
     );
@@ -104,32 +130,35 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return Container(
-      decoration: BoxDecoration(
-        color: p.bg,
-        border: Border(bottom: BorderSide(color: p.line)),
-      ),
+      // No hairline under the header. The reference sets its title straight on
+      // the page with nothing drawn around it, and a rule here made the bar
+      // read as a separate toolbar rather than as the opening line of the page.
+      // The header still sits above the scroll view, so nothing slides under it.
+      color: p.bg,
       child: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
           child: Padding(
-            // The header is chrome, and chrome sits below the work: the page's
-            // own first block is what the eye should land on, so the title is a
-            // 19dp serif line over a 12dp grey one rather than a second display
-            // size competing with the content (on the dashboard it was exactly
-            // the same size as the headline directly under it).
+            // The title is a display line again. It had been pulled down to
+            // 19dp to stop the dashboard's header competing with the headline
+            // directly beneath it; the fix for that belongs in the dashboard's
+            // own first block, not in a page title that every screen renders.
+            // At 30dp serif the header speaks once and the content below it
+            // starts lower, which is the rhythm the reference has.
             //
-            // The padding is the other half of that. A phone spends 87dp of an
-            // 866dp screen on this bar; 16/12 makes it 71dp, and 16dp of that
-            // is the difference between the first card sitting above the fold
-            // and being cut by it.
+            // The phone pad is deliberately tighter than the desktop one. A
+            // 30dp title already spends the whole header budget — the type is
+            // 34.5 + 18.2dp of it — so the phone keeps 12dp above and below
+            // and lets the size do the talking, instead of spending an
+            // 866dp screen's first 91dp on a title block.
             padding: EdgeInsets.fromLTRB(
               Sp.x6,
-              context.isTouch ? Sp.x3 : Sp.x4,
+              context.isTouch ? Sp.x3 : Sp.x7,
               Sp.x6,
-              context.isTouch ? Sp.x2 + 2 : Sp.x3,
+              context.isTouch ? Sp.x3 : Sp.x4,
             ),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: Column(
@@ -140,25 +169,28 @@ class _TopBar extends StatelessWidget {
                         title,
                         style: TextStyle(
                           fontFamily: Fonts.display,
-                          fontSize: Fs.lg,
+                          fontSize: Fs.x2xl,
                           height: Lh.title,
                           fontWeight: FontWeight.w600,
-                          letterSpacing: -0.01,
+                          letterSpacing: -0.02,
                           color: p.ink,
                         ),
                       ),
                       if (subtitle != null) ...[
-                        const SizedBox(height: 2),
+                        const SizedBox(height: Sp.x1 + 2),
                         // The subtitle counts and describes; it is not content
                         // to read. Left to wrap, a phone-width header spends
                         // three lines on 「14 词，今日待复习 9」 while the page
-                        // below it loses that height, so it yields with an
-                        // ellipsis and the bar keeps its measured 71dp.
+                        // below it loses that height.
                         Text(
                           subtitle!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: Fs.xs, color: p.ink3, height: Lh.snug),
+                          style: TextStyle(
+                            fontSize: Fs.sm,
+                            color: p.ink3,
+                            height: Lh.snug,
+                          ),
                         ),
                       ],
                     ],
@@ -203,18 +235,17 @@ class Segmented<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return Container(
-      // The 2dp inset around the selected pill exists to keep its own border
-      // from touching the track's. On touch the buttons grow to the 44dp floor
-      // and the inset has to give way, or the strip would stand 4dp taller
-      // than the row that holds it.
+      // The 2dp inset keeps the selected pill's tint off the track's outline.
+      // On touch the buttons grow to the 44dp floor and the inset has to give
+      // way, or the strip would stand 4dp taller than the row that holds it.
       padding: EdgeInsets.all(context.isTouch ? 0 : 2),
-      decoration: BoxDecoration(color: p.surfaceSunken, borderRadius: R.borderMd),
+      decoration: BoxDecoration(color: p.surfaceSunken, borderRadius: R.borderPill),
       // The track outline is painted *over* the children rather than as part of
       // the box decoration, because a border consumes layout space: with a real
       // 1dp border the tallest a chip could be inside a 44dp track is 42. Drawn
       // as a foreground decoration the chips get the whole 44.
       foregroundDecoration: BoxDecoration(
-        borderRadius: R.borderMd,
+        borderRadius: R.borderPill,
         border: Border.all(color: p.line),
       ),
       child: Row(
@@ -292,10 +323,13 @@ class _SegButtonState<T> extends State<_SegButton<T>> {
                 : _hover
                     ? p.surfaceHover
                     : const Color(0x00000000),
-            borderRadius: R.borderSm,
-            border: Border.all(
-              color: selected ? p.accent : const Color(0x00000000),
-            ),
+            borderRadius: R.borderPill,
+            // No per-chip outline. The track draws its own 1dp outline as a
+            // *foreground* decoration, so an outlined selected chip sat 2dp
+            // inside that line and read as a double border — the same defect
+            // class as the two-border text fields of 0.2.5. The tint plus the
+            // heavier label is the whole selection signal, which is also what
+            // the reference does with its selected tab.
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -580,10 +614,10 @@ class StatusChip extends StatelessWidget {
 /// The order is label, figure, note — not icon, figure, note. A figure is the
 /// thing this app is made of (words counted, days counted, percentages), and it
 /// was being set one step smaller than the serif page furniture around it while
-/// an icon carried the colour. The figure now leads in tabular monospace so two
-/// tiles side by side line up digit for digit even when the numbers differ in
-/// width, and the icon — where a caller still passes one — is a 13dp muted mark
-/// inside the label row rather than a tinted badge above the number.
+/// an icon carried the colour. The figure now leads in the display face so two
+/// tiles side by side read as two statements rather than two readouts, and the
+/// icon — where a caller still passes one — is a 13dp muted mark inside the
+/// label row rather than a tinted badge above the number.
 ///
 /// The icon trails its label rather than leading it. Leading it pushed the
 /// label 19dp to the right of the figure underneath, so the two left edges of a
@@ -591,6 +625,10 @@ class StatusChip extends StatelessWidget {
 /// 「连续学习」 starting at x1156 above a figure starting at x1129. A mark that
 /// sits ahead of the words it describes moves the words; a mark that follows
 /// them perturbs nothing that has to line up.
+///
+/// There is no box here. A tile is a figure on the page and the page is already
+/// the container; the grid that lays these out draws the hairlines between them,
+/// which is the only separation four numbers need.
 class StatTile extends StatelessWidget {
   const StatTile({
     super.key,
@@ -610,13 +648,8 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    return Container(
-      padding: const EdgeInsets.all(Sp.x4),
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: R.borderLg,
-        border: Border.all(color: p.line),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Sp.x4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -633,7 +666,8 @@ class StatTile extends StatelessWidget {
                     fontSize: Fs.xs,
                     color: p.ink3,
                     height: Lh.tight,
-                    letterSpacing: 0.02,
+                    letterSpacing: 0.04,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -648,7 +682,7 @@ class StatTile extends StatelessWidget {
             value,
             maxLines: 1,
             style: TextStyle(
-              fontFamily: Fonts.mono,
+              fontFamily: Fonts.display,
               fontSize: Fs.x2xl,
               height: Lh.tight,
               fontWeight: FontWeight.w600,
@@ -816,5 +850,345 @@ class Card extends StatelessWidget {
       ),
       child: child,
     );
+  }
+}
+
+/// ---------------------------------------------------------------------------
+/// The hairline list — the app's content surface.
+///
+/// The design system used to group everything into a [Card]: a bordered rounded
+/// rectangle per block, so a page was a stack of boxes. The reference draws no
+/// boxes at all. Its word list is one full-width column divided by hairlines,
+/// with a single accent rule down the left edge, and the effect is that the
+/// page reads as a page rather than as a dashboard of widgets.
+///
+/// So a list is [HairlineList] holding [HairlineRow]s. The row paints the rule
+/// and the divider itself; the list only decides which row is last.
+/// ---------------------------------------------------------------------------
+
+/// A column of [HairlineRow]s: full-width, separated by hairlines, with the
+/// accent rule running down the left edge of the whole list.
+///
+/// The rule is painted once for the list rather than per row: the reference's
+/// rule is a single unbroken line from the first entry to the last, and a
+/// per-row segment would show a 1dp gap at every hairline.
+class HairlineList extends StatelessWidget {
+  const HairlineList({
+    super.key,
+    required this.children,
+    this.rule = true,
+    this.padded = true,
+  });
+
+  final List<Widget> children;
+
+  /// Whether the list draws the accent rule down its left edge.
+  final bool rule;
+
+  /// Whether the list contributes the outer horizontal padding. A page that
+  /// already pads its body leaves this on so the rule is inset from the window
+  /// edge; a list that must bleed edge to edge turns it off.
+  final bool padded;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final column = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: children,
+    );
+    final body = rule
+        ? Stack(
+            children: [
+              column,
+              // Drawn last so a row's hover fill cannot paint over it: the rule
+              // is the list's edge, not part of whichever row the pointer is on.
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(width: Layout.listRuleW, color: p.accent),
+              ),
+            ],
+          )
+        : column;
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: padded ? Sp.x6 : 0),
+      child: body,
+    );
+  }
+}
+
+/// One entry in a [HairlineList]: airy, full-width, hairline underneath.
+///
+/// There is no box, no radius and no fill — [onTap] adds hover and press
+/// feedback and nothing else. Row height comes from its content, with
+/// [Layout.listRowMin] as the floor so a one-line entry still breathes.
+class HairlineRow extends StatefulWidget {
+  const HairlineRow({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.last = false,
+    this.padding,
+    this.trailing,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+
+  /// The final row draws no divider; the list ends there.
+  final bool last;
+  final EdgeInsets? padding;
+
+  /// Anything pinned to the right of the row — a star, a speaker, a chevron.
+  /// It is laid out beside [child], which gets the remaining width.
+  final Widget? trailing;
+
+  @override
+  State<HairlineRow> createState() => _HairlineRowState();
+}
+
+class _HairlineRowState extends State<HairlineRow> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final content = Container(
+      constraints: const BoxConstraints(minHeight: Layout.listRowMin),
+      padding: widget.padding ??
+          const EdgeInsets.symmetric(vertical: Sp.x4, horizontal: Sp.x4),
+      decoration: BoxDecoration(
+        color: _hover ? p.surfaceHover : Colors.transparent,
+        border: widget.last ? null : Border(bottom: BorderSide(color: p.line)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(child: widget.child),
+          if (widget.trailing != null) ...[
+            const SizedBox(width: Sp.x3),
+            widget.trailing!,
+          ],
+        ],
+      ),
+    );
+
+    if (widget.onTap == null) return content;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(onTap: widget.onTap, child: content),
+    );
+  }
+}
+
+/// A section heading inside a page: a small label, optionally with a count and
+/// a trailing action, sitting directly on the page above its list.
+///
+/// This replaces the "card with a title" pattern. A section title is one line
+/// of small caps-ish text; the content under it owns the width.
+class SectionTitle extends StatelessWidget {
+  const SectionTitle({
+    super.key,
+    required this.label,
+    this.trailing,
+    this.padded = true,
+  });
+
+  final String label;
+  final Widget? trailing;
+  final bool padded;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Padding(
+      padding: EdgeInsets.only(
+        left: padded ? Sp.x6 : 0,
+        right: padded ? Sp.x6 : 0,
+        top: Sp.x6,
+        bottom: Sp.x2,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: Fs.sm,
+                height: Lh.snug,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.04,
+                color: p.ink3,
+              ),
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+}
+
+/// A round filled field — the reference's search box.
+///
+/// A bare [TextField] wrapped in a pill, with its own focus ring. The fill is
+/// [Palette.surface2] (the warm sunken tone) rather than a white card, so the
+/// field reads as a place to type rather than as another block of content.
+class PillField extends StatelessWidget {
+  const PillField({
+    super.key,
+    required this.child,
+    this.icon,
+    this.focused = false,
+    this.height,
+    this.padding,
+  });
+
+  final Widget child;
+  final String? icon;
+  final bool focused;
+  final double? height;
+  final EdgeInsets? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return AnimatedContainer(
+      duration: Motion.dur2,
+      curve: Motion.ease,
+      height: height ?? context.controlH,
+      padding: padding ??
+          EdgeInsets.symmetric(horizontal: Sp.x4),
+      decoration: BoxDecoration(
+        color: p.surface2,
+        borderRadius: R.borderPill,
+        // The focused field keeps the accent outline. It is the one input the
+        // user is in the middle of, and the reference's unfocused field has no
+        // outline at all — so the transition is from "no line" to "accent line",
+        // which is a stronger signal than the old grey-to-accent swap.
+        border: Border.all(
+          color: focused ? p.accent : Colors.transparent,
+        ),
+      ),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            LexIcon(icon!, size: 16, color: focused ? p.accent : p.ink3),
+            const SizedBox(width: Sp.x2),
+          ],
+          Expanded(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+/// The floating action button: a round accent-filled pill with a mark inside.
+///
+/// It floats over the scroll view in the bottom-right of the page, above the
+/// phone tab bar. [PageShell] positions it; a page supplies it via
+/// `PageShell.fab`.
+class FloatingAction extends StatefulWidget {
+  const FloatingAction({
+    super.key,
+    required this.onPressed,
+    this.icon = Ic.plus,
+    this.label,
+    this.tooltip,
+  });
+
+  final VoidCallback onPressed;
+
+  /// The mark inside. When [label] is set the button is a stadium, not a circle.
+  final String icon;
+  final String? label;
+  final String? tooltip;
+
+  @override
+  State<FloatingAction> createState() => _FloatingActionState();
+}
+
+class _FloatingActionState extends State<FloatingAction> {
+  bool _hover = false;
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final hasLabel = widget.label != null;
+
+    final button = AnimatedScale(
+      scale: _pressed ? 0.96 : (_hover ? 1.03 : 1),
+      duration: _pressed ? Motion.dur1 : Motion.dur2,
+      curve: Motion.ease,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          onTapDown: (_) => setState(() => _pressed = true),
+          onTapUp: (_) => setState(() => _pressed = false),
+          onTapCancel: () => setState(() => _pressed = false),
+          child: AnimatedContainer(
+            duration: Motion.dur2,
+            curve: Motion.ease,
+            height: Layout.fab,
+            padding: hasLabel
+                ? const EdgeInsets.symmetric(horizontal: Sp.x5)
+                : EdgeInsets.zero,
+            constraints: hasLabel
+                ? null
+                : const BoxConstraints(minWidth: Layout.fab),
+            decoration: BoxDecoration(
+              color: _hover ? p.accentHover : p.accent,
+              borderRadius: R.borderPill,
+              // Soft and diffuse, not a drop shadow with an edge. The reference's
+              // button sits above the page rather than on it, and a tight shadow
+              // read as a second border around an already-bordered shape.
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: p.accent.withValues(alpha: _hover ? 0.34 : 0.26),
+                  offset: const Offset(0, 8),
+                  blurRadius: 22,
+                  spreadRadius: -6,
+                ),
+              ],
+            ),
+            child: Center(
+              widthFactor: 1,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LexIcon(widget.icon, size: 22, color: p.onAccent),
+                  if (hasLabel) ...[
+                    const SizedBox(width: Sp.x2),
+                    Text(
+                      widget.label!,
+                      style: TextStyle(
+                        fontSize: Fs.base,
+                        height: Lh.tight,
+                        fontWeight: FontWeight.w600,
+                        color: p.onAccent,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    return widget.tooltip == null
+        ? button
+        : Tooltip(message: widget.tooltip!, child: button);
   }
 }

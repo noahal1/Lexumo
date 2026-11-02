@@ -421,7 +421,23 @@ abstract final class R {
   static const md = 6.0;
   static const lg = 8.0;
   static const xl = 10.0;
-  static const full = 999.0;
+
+  /// The pill. Every control that is a *shape* rather than a box takes this:
+  /// the search field, the filter chip, the floating action button, the
+  /// selected item in a navigation rail or tab bar.
+  ///
+  /// This used to be `full`, documented as "a switch track and nothing else".
+  /// The reference the app now follows is pill-led — its search box, filter,
+  /// FAB and selected nav item are all capsules — so the shape is promoted to
+  /// a real rung and the old restriction retired. The number is unchanged
+  /// (999 reads as "fully rounded" at every size from a 32dp chip to a 72dp
+  /// action pill), so nothing measured against `full` moved.
+  static const pill = 999.0;
+
+  /// The old name for [pill], kept because the Material `ThemeData` in
+  /// `theme.dart` and the switch track in `settings_page.dart` spell the
+  /// shape this way. Prefer [pill] in new code.
+  static const full = pill;
 
   static const border2xs = BorderRadius.all(Radius.circular(x2xs));
   static const borderXs = BorderRadius.all(Radius.circular(xs));
@@ -429,6 +445,7 @@ abstract final class R {
   static const borderMd = BorderRadius.all(Radius.circular(md));
   static const borderLg = BorderRadius.all(Radius.circular(lg));
   static const borderXl = BorderRadius.all(Radius.circular(xl));
+  static const borderPill = BorderRadius.all(Radius.circular(pill));
 }
 
 /// ---------------------------------------------------------------------------
@@ -537,6 +554,35 @@ abstract final class Layout {
   /// Breakpoints, matching the media queries in the web build.
   static const railBreakpoint = 1000.0;
   static const mobileBreakpoint = 720.0;
+
+  /// The floating action button. One size for both platforms: it is a
+  /// fingertip-first control that survives on a desktop, so it is measured
+  /// against the thumb (56) rather than the mouse.
+  static const fab = 56.0;
+
+  /// Space a floating action button keeps from the page corner.
+  static const fabInset = 24.0;
+
+  /// Minimum height of one row in a hairline list — the words page, the
+  /// settings sections, the review queue.
+  ///
+  /// The reference sets its word rows very tall: two lines of type with room
+  /// to breathe, roughly 76dp at a 15px body. The old table packed the same
+  /// two lines into 56 and read as a spreadsheet; a list you scan wants air
+  /// between entries more than it wants density.
+  static const listRowMin = 76.0;
+
+  /// The vertical accent rule that runs down the left edge of a list.
+  ///
+  /// Two pixels: any wider and it reads as a border, which would put a box
+  /// around content the whole point of which is to have no box. Length is the
+  /// row's own height, and it is drawn per row so a twelve-word list paints
+  /// twelve short segments rather than one long line that the rows then have
+  /// to be re-measured to fit.
+  static const listRuleW = 2.0;
+
+  /// Gap between that rule and the row's text.
+  static const listRuleGap = 16.0;
 }
 
 /// ---------------------------------------------------------------------------

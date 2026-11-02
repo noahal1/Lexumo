@@ -78,19 +78,17 @@ class _HomePageState extends State<HomePage> {
             subtitle: subtitle,
             controller: widget.controller,
             children: <Widget>[
-              Card(
-                child: EmptyState(
-                  icon: Ic.words,
-                  title: context.t('home.emptyTitle'),
-                  text: context.t('home.emptyHint'),
-                  action: vm.canNavigate
-                      ? LexButton(
-                          label: context.t('home.addWords'),
-                          kind: BtnKind.primary,
-                          onPressed: vm.addWords,
-                        )
-                      : null,
-                ),
+              EmptyState(
+                icon: Ic.words,
+                title: context.t('home.emptyTitle'),
+                text: context.t('home.emptyHint'),
+                action: vm.canNavigate
+                    ? LexButton(
+                        label: context.t('home.addWords'),
+                        kind: BtnKind.primary,
+                        onPressed: vm.addWords,
+                      )
+                    : null,
               ),
             ],
           );
@@ -100,36 +98,55 @@ class _HomePageState extends State<HomePage> {
           title: title,
           subtitle: subtitle,
           controller: widget.controller,
+          // The dashboard is a stack of lists, not a stack of boxes: every band
+          // below runs edge to edge with hairlines between its rows, and the
+          // accent rule marks the two lists that are actually lists of things.
+          bleed: true,
           children: _stacked(<Widget>[
-            _Hero(vm: vm),
-            _Section(
+            _gutter(_Hero(vm: vm)),
+            _ListBlock(
               title: context.t('home.todayTitle'),
-              child: _Today(vm: vm),
+              children: _todayRows(context, vm),
             ),
             if (vm.focusList != null && vm.focusDue > 0)
-              _Section(
+              _ListBlock(
                 title: context.t('home.focusTitle'),
-                child: _Focus(vm: vm),
+                rule: false,
+                children: <Widget>[_Focus(vm: vm)],
               ),
-            _Section(
+            _ListBlock(
               title: context.t('home.weekTitle'),
-              note: vm.hasReviews
-                  ? context.t('home.weekTotal', {'n': vm.seriesTotal})
-                  : null,
-              action: vm.canNavigate
-                  ? LexButton(
+              rule: false,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (vm.hasReviews)
+                    Text(
+                      context.t('home.weekTotal', {'n': vm.seriesTotal}),
+                      style: TextStyle(
+                        fontFamily: Fonts.mono,
+                        fontSize: Fs.xs,
+                        height: Lh.tight,
+                        color: Palette.of(context).ink4,
+                      ),
+                    ),
+                  if (vm.canNavigate) ...<Widget>[
+                    const SizedBox(width: Sp.x3),
+                    LexButton(
                       label: context.t('home.openStats'),
                       kind: BtnKind.ghost,
                       size: BtnSize.sm,
                       onPressed: vm.openStats,
-                    )
-                  : null,
-              child: _WeekCard(vm: vm),
+                    ),
+                  ],
+                ],
+              ),
+              children: <Widget>[_WeekCard(vm: vm)],
             ),
             if (vm.listCount > 0)
-              _Section(
+              _ListBlock(
                 title: context.t('home.listsTitle'),
-                child: _Libraries(vm: vm),
+                children: _libraryRows(context, vm),
               ),
           ]),
         );
@@ -148,7 +165,7 @@ class _HomePageState extends State<HomePage> {
 List<Widget> _stacked(List<Widget> blocks) {
   final out = <Widget>[];
   for (var i = 0; i < blocks.length; i++) {
-    if (i > 0) out.add(const SizedBox(height: Sp.x5));
+    if (i > 0) out.add(const SizedBox(height: Sp.x2));
     out.add(
       FadeRise(
         offset: 8,
@@ -159,6 +176,17 @@ List<Widget> _stacked(List<Widget> blocks) {
   }
   return out;
 }
+
+/// The page's own horizontal gutter.
+///
+/// The shell is [PageShell.bleed] here so the hairline lists can reach the window
+/// edge; everything that is not a list has to re-add the gutter by hand, and it
+/// has to be the same [Sp.x6] the lists use or the headings stop aligning with
+/// the content under them.
+Widget _gutter(Widget child) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Sp.x6),
+      child: child,
+    );
 
 /// How many blocks keep staggering before the delay stops growing.
 ///
@@ -171,35 +199,43 @@ const int _staggeredBlocks = 4;
 /* Named sections                                                      */
 /* ------------------------------------------------------------------ */
 
-/// A named block: the heading, then the thing it names.
+/// A named block: a small heading, then a hairline list of rows.
 ///
 /// The dashboard used to lay five unnamed bands on top of each other, and the
 /// only thing separating one idea from the next was the border of whichever card
 /// happened to be there — which is why the page read as a stack of boxes rather
 /// than as a set of answers. A block that says its own name can be found without
 /// being read.
-class _Section extends StatelessWidget {
-  const _Section({
+///
+/// The rows are separated by hairlines rather than enclosed in a box, so the
+/// block reads as a run of items on the page. [rule] adds the vertical accent
+/// down the left for the blocks that really are lists of things.
+class _ListBlock extends StatelessWidget {
+  const _ListBlock({
     required this.title,
-    required this.child,
-    this.note,
-    this.action,
+    required this.children,
+    this.trailing,
+    this.rule = true,
   });
 
   final String title;
-  final String? note;
-  final Widget? action;
-  final Widget child;
+  final List<Widget> children;
+  final Widget? trailing;
+
+  /// Paint the accent rule down the left edge of the list.
+  final bool rule;
 
   @override
   Widget build(BuildContext context) {
+    // HairlineList owns the horizontal gutter, so the heading sits in the same
+    // [Sp.x6] and lines up with the list's own left edge. The rule then runs
+    // inside that gutter, which is what puts it in the page margin.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        SectionHeading(title: title, note: note, action: action),
-        const SizedBox(height: Sp.x3),
-        child,
+        SectionTitle(label: title, trailing: trailing),
+        HairlineList(rule: rule, children: children),
       ],
     );
   }
@@ -378,125 +414,39 @@ class _Pill extends StatelessWidget {
 /* Today: the goal, then the two headline figures                       */
 /* ------------------------------------------------------------------ */
 
-/// The goal and the two figures it sits beside.
+/// The three things "today" means, as rows of one hairline list.
 ///
-/// The old arrangement put a centred 120dp ring in a card twice the width of its
-/// two neighbours and then used `IntrinsicHeight` to make all three the same
-/// height — so the two `StatTile`s were stretched to the ring's height and left
-/// ~50% of themselves empty, while the ring floated in 75% dead width. The ring
-/// is now 84dp and sits *beside* its numbers rather than above them, which makes
-/// the three cards naturally similar in height, so nothing has to be stretched
-/// and nothing is left blank.
-class _Today extends StatelessWidget {
-  const _Today({required this.vm});
-
-  final HomeViewModel vm;
-
-  /// Below this the ring card takes the full width and the two figures share the
-  /// line under it; above, all three share one line at 2:1:1.
-  static const double _kBreakpoint = 640;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    final Widget goal = _GoalCard(vm: vm);
-    final Widget figures = Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Expanded(
-          child: StatTile(
-            label: context.t('stats.streak'),
-            value: '${vm.streak}',
-            sub: context.t('home.streakUnit'),
-            icon: Ic.flame,
-            accent: vm.streak > 0 ? p.accent : null,
-          ),
-        ),
-        const SizedBox(width: Sp.x4),
-        Expanded(
-          child: StatTile(
-            label: context.t('stats.mastered'),
-            value: '${vm.masteryPct}%',
-            sub: context.t('stats.masteryShare', {'n': vm.masteryPct}),
-            icon: Ic.target,
-          ),
-        ),
-      ],
-    );
-
-    // `LayoutBuilder` is safe here because nothing above asks this subtree for
-    // an intrinsic size: it is a direct child of the page column. The reverse —
-    // a `LayoutBuilder` *inside* an `IntrinsicHeight` — throws, which is why the
-    // cards below are built without one.
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        if (constraints.maxWidth < _kBreakpoint) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[goal, const SizedBox(height: Sp.x4), figures],
-          );
-        }
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Expanded(flex: 2, child: goal),
-              const SizedBox(width: Sp.x4),
-              Expanded(flex: 3, child: figures),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// The daily-goal card: a ring, the count, and one sentence.
-///
-/// Laid out horizontally — ring on the left, numbers on the right — because the
-/// figure and its explanation belong on one line, and because a card that is
-/// wide should use its width rather than centre a circle in it. The ring keeps
-/// its job (a proportion you can read without doing arithmetic) at a size that
-/// leaves room for the words that say what the proportion means.
-class _GoalCard extends StatelessWidget {
-  const _GoalCard({required this.vm});
-
-  final HomeViewModel vm;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    final bool done = vm.reached;
-    return Card(
+/// The old arrangement was a centred ring in a card twice the width of its two
+/// neighbours, with `IntrinsicHeight` stretching all three to the ring's height
+/// — so the two figures were half empty and the ring floated in 75% dead width.
+/// A row per fact needs no other row to agree with it: each is as tall as its
+/// own content, and they align because they share a left edge, not a height.
+List<Widget> _todayRows(BuildContext context, HomeViewModel vm) {
+  final p = Palette.of(context);
+  final bool done = vm.reached;
+  return <Widget>[
+    // The goal first: it is the answer to "what now", and it is the only row
+    // with a proportion you can read without doing arithmetic.
+    HairlineRow(
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
           Ring(
             value: vm.goalPct,
             max: 1,
-            size: 84,
-            stroke: 8,
+            size: 56,
+            stroke: 6,
             children: <Widget>[
               Text(
                 '${vm.today}',
                 style: TextStyle(
                   fontFamily: Fonts.mono,
-                  fontSize: Fs.lg,
+                  fontSize: Fs.md,
                   height: Lh.title,
                   fontWeight: FontWeight.w600,
-                  fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                  fontFeatures: const <FontFeature>[
+                    FontFeature.tabularFigures(),
+                  ],
                   color: p.ink,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '/ ${vm.goal}',
-                style: TextStyle(
-                  fontFamily: Fonts.mono,
-                  fontSize: Fs.xs,
-                  height: Lh.tight,
-                  color: p.ink3,
                 ),
               ),
             ],
@@ -517,7 +467,7 @@ class _GoalCard extends StatelessWidget {
                     color: p.ink3,
                   ),
                 ),
-                const SizedBox(height: Sp.x1 + 2),
+                const SizedBox(height: Sp.x1),
                 Text(
                   done
                       ? context.t('home.goalDone')
@@ -526,17 +476,118 @@ class _GoalCard extends StatelessWidget {
                     fontSize: Fs.md,
                     height: Lh.snug,
                     fontWeight: FontWeight.w500,
-                    // The accent marks the one thing that is *good news* on this
-                    // page. A missed goal is stated in ordinary ink rather than
-                    // in a warning colour: it is not an error, it is a Tuesday.
+                    // The accent marks the one thing that is *good news* on
+                    // this page. A missed goal is stated in ordinary ink rather
+                    // than in a warning colour: it is not an error, Tuesday.
                     color: done ? p.accent : p.ink,
                   ),
                 ),
               ],
             ),
           ),
+          Text(
+            '/ ${vm.goal}',
+            style: TextStyle(
+              fontFamily: Fonts.mono,
+              fontSize: Fs.xs,
+              height: Lh.tight,
+              color: p.ink3,
+            ),
+          ),
         ],
       ),
+    ),
+    HairlineRow(
+      child: _FigureRow(
+        icon: Ic.flame,
+        label: context.t('stats.streak'),
+        value: '${vm.streak}',
+        sub: context.t('home.streakUnit'),
+        accent: vm.streak > 0 ? p.accent : null,
+      ),
+    ),
+    HairlineRow(
+      last: true,
+      child: _FigureRow(
+        icon: Ic.target,
+        label: context.t('stats.mastered'),
+        value: '${vm.masteryPct}%',
+        sub: context.t('stats.masteryShare', {'n': vm.masteryPct}),
+      ),
+    ),
+  ];
+}
+
+/// One figure as a list row: label and sub-line on the left, the number on the
+/// right at display size.
+///
+/// The figure is the reason the row exists, so it takes the serif at the size a
+/// heading would use; the label is the caption that tells you what it counts.
+class _FigureRow extends StatelessWidget {
+  const _FigureRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.sub,
+    this.accent,
+  });
+
+  final String icon;
+  final String label;
+  final String value;
+  final String sub;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Row(
+      children: <Widget>[
+        LexIcon(icon, size: 16, color: p.ink4),
+        const SizedBox(width: Sp.x3),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: Fs.sm,
+                  height: Lh.tight,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.02,
+                  color: p.ink2,
+                ),
+              ),
+              const SizedBox(height: Sp.x1),
+              Text(
+                sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: Fs.xs,
+                  height: Lh.snug,
+                  color: p.ink3,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: Sp.x3),
+        Text(
+          value,
+          style: TextStyle(
+            fontFamily: Fonts.display,
+            fontSize: Fs.xl,
+            height: Lh.tight,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.01,
+            fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+            color: accent ?? p.ink,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -671,33 +722,16 @@ class _Focus extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final WordList list = vm.focusList!;
-    return _TapRow(
+    return HairlineRow(
+      last: true,
       onTap: () => vm.openList(list.id),
-      child: Row(
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Expanded(
-            // The caption that used to sit here said 「接着上次的」, which is
-            // exactly what the section heading above the card now says — the
-            // same sentence twice, 70dp apart, once as a heading and once as a
-            // label. The heading names the block, so the card names the thing
-            // itself: the list, at the size a row's own name deserves.
-            child: Text(
-              list.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: Fs.md,
-                height: Lh.snug,
-                fontWeight: FontWeight.w500,
-                color: p.ink,
-              ),
-            ),
-          ),
-          const SizedBox(width: Sp.x3),
           Text(
             '${vm.focusDue}',
             style: TextStyle(
-              fontFamily: Fonts.mono,
+              fontFamily: Fonts.display,
               fontSize: Fs.lg,
               height: Lh.title,
               fontWeight: FontWeight.w600,
@@ -705,7 +739,26 @@ class _Focus extends StatelessWidget {
               color: p.accent,
             ),
           ),
+          const SizedBox(width: Sp.x2),
+          LexIcon(Ic.chevronRight, size: 16, color: p.ink4),
         ],
+      ),
+      // The caption that used to sit here said 「接着上次的」, which is exactly
+      // what the section heading above the list now says — the same sentence
+      // twice, 70dp apart. The heading names the block, so the row names the
+      // thing itself: the list, at the size its own name deserves.
+      child: Text(
+        list.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontFamily: Fonts.display,
+          fontSize: Fs.lg,
+          height: Lh.tight,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.005,
+          color: p.ink,
+        ),
       ),
     );
   }
@@ -734,10 +787,17 @@ class _WeekCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // The title, the running total and the way out to the stats page all live in
-    // the section heading above this card now, so the card holds only the plot.
-    // Before, the same three facts were printed inside the card while the card
-    // had no name at all — the heading repeated what the card said.
-    return Card(
+    // the block heading above this row now, so the row holds only the plot.
+    // Before, the same three facts were printed inside a card while the card had
+    // no name at all — the heading repeated what the card said.
+    return HairlineRow(
+      last: true,
+      // The plot needs the full width, so it skips the row's text column and
+      // sits in `child` with no trailing widget.
+      padding: const EdgeInsets.symmetric(
+        vertical: Sp.x4,
+        horizontal: Sp.x4,
+      ),
       child: vm.hasReviews
           ? _Spark(series: vm.series, max: vm.seriesMax)
           : _NoReviews(vm: vm),
@@ -903,208 +963,76 @@ class _NoReviews extends StatelessWidget {
 /* Libraries                                                           */
 /* ------------------------------------------------------------------ */
 
-/// Up to four libraries: a column of rows on a phone, a row of cards wide.
-class _Libraries extends StatelessWidget {
-  const _Libraries({required this.vm});
-
-  final HomeViewModel vm;
-
-  /// How many lists the strip shows before it stops being a summary.
-  static const int _kShown = 4;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    final List<WordList> shown = vm.lists.take(_kShown).toList();
-
-    // The heading above supplies the name of this block, so the strip is nothing
-    // but the lists themselves.
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        // The shell's own breakpoint, so the strip changes shape at the same
-        // width the chrome does rather than at a number invented here.
-        if (constraints.maxWidth < Layout.mobileBreakpoint) {
-          return Card(
-            padding: EdgeInsets.zero,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                for (var i = 0; i < shown.length; i++) ...<Widget>[
-                  if (i > 0) Container(height: 1, color: p.line),
-                  _ListRow(
-                    list: shown[i],
-                    words: vm.listWords(shown[i].id),
-                    due: vm.listDue(shown[i].id),
-                    onTap: () => vm.openList(shown[i].id),
-                  ),
-                ],
-              ],
-            ),
-          );
-        }
-        // One shared height so four cards read as one row of cards rather than
-        // four boxes that happen to be beside each other. `Intrinsic` is fine
-        // here: no descendant of these cards builds a `LayoutBuilder`, which is
-        // the one thing it cannot measure.
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              for (var i = 0; i < shown.length; i++) ...<Widget>[
-                if (i > 0) const SizedBox(width: Sp.x3),
-                Expanded(
-                  child: Card(
-                    padding: EdgeInsets.zero,
-                    child: _ListRow(
-                      list: shown[i],
-                      words: vm.listWords(shown[i].id),
-                      due: vm.listDue(shown[i].id),
-                      onTap: () => vm.openList(shown[i].id),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
+/// Up to four libraries, one hairline row each.
+///
+/// The strip used to be four cards on a wide window and a stack of rows inside
+/// one card on a phone — two different objects for the same four facts. A row
+/// is right at both widths, so there is one arrangement now.
+List<Widget> _libraryRows(BuildContext context, HomeViewModel vm) {
+  final List<WordList> shown = vm.lists.take(_kShownLibraries).toList();
+  return <Widget>[
+    for (var i = 0; i < shown.length; i++)
+      _ListRow(
+        list: shown[i],
+        words: vm.listWords(shown[i].id),
+        due: vm.listDue(shown[i].id),
+        last: i == shown.length - 1,
+        onTap: () => vm.openList(shown[i].id),
+      ),
+  ];
 }
 
-/// One library: name, how big it is, how much of it is waiting.
-class _ListRow extends StatefulWidget {
+/// How many lists the strip shows before it stops being a summary.
+const int _kShownLibraries = 4;
+
+/// One library: name and size on the left, how much of it is waiting on the
+/// right.
+class _ListRow extends StatelessWidget {
   const _ListRow({
     required this.list,
     required this.words,
     required this.due,
+    required this.last,
     required this.onTap,
   });
 
   final WordList list;
   final int words;
   final int due;
+  final bool last;
   final VoidCallback onTap;
-
-  @override
-  State<_ListRow> createState() => _ListRowState();
-}
-
-class _ListRowState extends State<_ListRow> {
-  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        // Opaque so the padding around the text is part of the target: a row
-        // whose only live pixels are the glyphs is a row you have to aim at.
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: Motion.dur1,
-          curve: Motion.ease,
-          // The 44dp floor, held as a *minimum* rather than a fixed height.
-          // `TapTarget` is the wrong tool for a full-width row — it pins a
-          // 44x44 box and centres the child inside it, which would clip a row
-          // that has to grow at a 2.0 text scale. Extending the target, not
-          // fixing its shape, is what this row needs.
-          constraints: const BoxConstraints(minHeight: Layout.tap),
-          padding: const EdgeInsets.symmetric(horizontal: Sp.x4, vertical: Sp.x3),
-          decoration: BoxDecoration(
-            color: _hover ? p.surfaceHover : const Color(0x00000000),
-            borderRadius: R.borderLg,
+    return HairlineRow(
+      last: last,
+      onTap: onTap,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            context.t('home.listMeta', {'words': words, 'due': due}),
+            style: TextStyle(
+              fontFamily: Fonts.mono,
+              fontSize: Fs.xs,
+              height: Lh.snug,
+              color: due > 0 ? p.accent : p.ink3,
+            ),
           ),
-          child: Row(
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      widget.list.name,
-                      style: TextStyle(
-                        fontSize: Fs.base,
-                        height: Lh.snug,
-                        fontWeight: FontWeight.w500,
-                        color: p.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      context.t('home.listMeta', {
-                        'words': widget.words,
-                        'due': widget.due,
-                      }),
-                      style: TextStyle(
-                        fontFamily: Fonts.mono,
-                        fontSize: Fs.xs,
-                        height: Lh.snug,
-                        color: widget.due > 0 ? p.accent : p.ink3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: Sp.x2),
-              LexIcon(Ic.chevronRight, size: 16, color: p.ink4),
-            ],
-          ),
-        ),
+          const SizedBox(width: Sp.x2),
+          LexIcon(Ic.chevronRight, size: 16, color: p.ink4),
+        ],
       ),
-    );
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* A tappable hairline row                                             */
-/* ------------------------------------------------------------------ */
-
-/// A one-line tappable block on a hairline card.
-///
-/// Shared by the "continue" suggestion. It is not the `_ListRow` above because
-/// that one is a *card* or a *row inside a card* depending on the window, while
-/// this is always its own card.
-class _TapRow extends StatefulWidget {
-  const _TapRow({required this.onTap, required this.child});
-
-  final VoidCallback onTap;
-  final Widget child;
-
-  @override
-  State<_TapRow> createState() => _TapRowState();
-}
-
-class _TapRowState extends State<_TapRow> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: Motion.dur1,
-          curve: Motion.ease,
-          constraints: const BoxConstraints(minHeight: Layout.tap),
-          padding: const EdgeInsets.all(Sp.x4),
-          decoration: BoxDecoration(
-            color: _hover ? p.surfaceHover : p.surface,
-            borderRadius: R.borderLg,
-            border: Border.all(color: p.line),
-          ),
-          child: widget.child,
+      child: Text(
+        list.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: Fs.md,
+          height: Lh.snug,
+          fontWeight: FontWeight.w500,
+          color: p.ink,
         ),
       ),
     );

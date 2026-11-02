@@ -185,58 +185,64 @@ class _WordsPageState extends State<WordsPage> {
                 'due': _vm.dueCount,
               }),
               controller: widget.controller,
-              actions: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  LexButton(
-                    label: context.t('common.list'),
-                    icon: Ic.layers,
-                    size: BtnSize.sm,
-                    kind: BtnKind.ghost,
-                    onPressed: _openListManager,
-                  ),
-                  const SizedBox(width: Sp.x2),
-                  LexButton(
-                    label: context.t('words.addWord'),
-                    icon: Ic.plus,
-                    kind: BtnKind.primary,
-                    onPressed: () => _openEditor(),
-                  ),
-                ],
+              // The list runs edge to edge and wears the accent rule on the
+              // page's own left margin, so the shell stops padding the body and
+              // every other block here adds its own gutter. That is what makes
+              // the rule read as the list's spine rather than as a border on a
+              // floating box, which is what it was before.
+              bleed: true,
+              // Adding a word is the page's one action, so it gets the corner
+              // where a thumb already is instead of a button in the header that
+              // competes with the title.
+              fab: FloatingAction(
+                icon: Ic.plus,
+                tooltip: context.t('words.addWord'),
+                onPressed: () => _openEditor(),
+              ),
+              actions: LexButton(
+                label: context.t('common.list'),
+                icon: Ic.layers,
+                size: BtnSize.sm,
+                kind: BtnKind.ghost,
+                onPressed: _openListManager,
               ),
               children: [
-                _ListTabs(
-                  lists: context.data.lists,
-                  activeId: _vm.listId,
-                  counts: _vm.index.byList,
-                  onSelect: _vm.selectList,
-                  onManage: _openListManager,
+                _gutter(
+                  _ListTabs(
+                    lists: context.data.lists,
+                    activeId: _vm.listId,
+                    counts: _vm.index.byList,
+                    onSelect: _vm.selectList,
+                    onManage: _openListManager,
+                  ),
                 ),
                 const SizedBox(height: Sp.x4),
-                _QueryBar(
-                  controller: _search,
-                  focusNode: _searchFocus,
-                  query: _vm.filters.query ?? '',
-                  status: _vm.filters.status,
-                  sort: _vm.filters.sort ?? SortKey.recent,
-                  favoriteOnly: _vm.filters.favoriteOnly,
-                  counts: _vm.counts,
-                  matchCount: filtered.length,
-                  selectMode: _vm.selectMode,
-                  onQuery: _vm.setQuery,
-                  onStatus: _vm.setStatus,
-                  onSort: _vm.setSort,
-                  onToggleFavorite: _vm.toggleFavoriteOnly,
-                  onToggleSelect: _vm.toggleSelectMode,
-                  onReset: () {
-                    _search.clear();
-                    _vm.resetFilters();
-                  },
+                _gutter(
+                  _QueryBar(
+                    controller: _search,
+                    focusNode: _searchFocus,
+                    query: _vm.filters.query ?? '',
+                    status: _vm.filters.status,
+                    sort: _vm.filters.sort ?? SortKey.recent,
+                    favoriteOnly: _vm.filters.favoriteOnly,
+                    counts: _vm.counts,
+                    matchCount: filtered.length,
+                    selectMode: _vm.selectMode,
+                    onQuery: _vm.setQuery,
+                    onStatus: _vm.setStatus,
+                    onSort: _vm.setSort,
+                    onToggleFavorite: _vm.toggleFavoriteOnly,
+                    onToggleSelect: _vm.toggleSelectMode,
+                    onReset: () {
+                      _search.clear();
+                      _vm.resetFilters();
+                    },
+                  ),
                 ),
                 const SizedBox(height: Sp.x4),
                 if (_vm.isListEmpty)
-                  Card(
-                    child: EmptyState(
+                  _gutter(
+                    EmptyState(
                       icon: Ic.words,
                       title: context.t('words.noWords'),
                       text: context.t('words.noWordsHint'),
@@ -249,8 +255,8 @@ class _WordsPageState extends State<WordsPage> {
                     ),
                   )
                 else if (!_vm.hasResults)
-                  Card(
-                    child: EmptyState(
+                  _gutter(
+                    EmptyState(
                       icon: Ic.search,
                       title: context.t('words.noResults'),
                       text: context.t('words.noResultsHint'),
@@ -283,23 +289,27 @@ class _WordsPageState extends State<WordsPage> {
                   // entrance: the bar appears where the footer hint was, so a
                   // long rise makes the swap read as one thing rather than as
                   // two unrelated footers trading places.
-                  FadeRise(
-                    offset: 14,
-                    child: _BulkBar(
-                      count: _vm.selectedCount,
-                      allSelected: _vm.allVisibleSelected,
-                      onSelectAll: _vm.selectAllVisible,
-                      onFavorite: _vm.favoriteSelected,
-                      onDelete: _vm.deleteSelected,
-                      onCancel: _vm.exitSelect,
+                  _gutter(
+                    FadeRise(
+                      offset: 14,
+                      child: _BulkBar(
+                        count: _vm.selectedCount,
+                        allSelected: _vm.allVisibleSelected,
+                        onSelectAll: _vm.selectAllVisible,
+                        onFavorite: _vm.favoriteSelected,
+                        onDelete: _vm.deleteSelected,
+                        onCancel: _vm.exitSelect,
+                      ),
                     ),
                   ),
                 ],
                 if (_vm.hasResults && !_vm.selectMode) ...[
                   const SizedBox(height: Sp.x4),
-                  _FooterHint(
-                    shown: filtered.length,
-                    total: _vm.listCount,
+                  _gutter(
+                    _FooterHint(
+                      shown: filtered.length,
+                      total: _vm.listCount,
+                    ),
                   ),
                 ],
               ],
@@ -408,7 +418,7 @@ class _ListTabState extends State<_ListTab> {
             horizontal: Sp.x3,
             vertical: context.isTouch ? 0 : Sp.x2,
           ),
-          decoration: BoxDecoration(color: bg, borderRadius: R.borderSm),
+          decoration: BoxDecoration(color: bg, borderRadius: R.borderPill),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -474,9 +484,12 @@ class _AddTabButtonState extends State<_AddTabButton> {
               height: Layout.controlHSm,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: _hover ? p.surfaceHover : Colors.transparent,
-                borderRadius: R.borderSm,
-                border: Border.all(color: p.line),
+                // A filled chip rather than an outlined square: the outline was
+                // the only 1px rectangle left in a row of pills, so it read as
+                // an empty slot. The fill is the same `surface2` the search
+                // capsule wears, which says "this is a control" without a border.
+                color: _hover ? p.surfaceHover : p.surface2,
+                borderRadius: R.borderPill,
               ),
               child: LexIcon(Ic.plus, size: 14, color: p.ink3),
             ),
@@ -533,50 +546,47 @@ class _QueryBar extends StatelessWidget {
     final filtersActive =
         trimmed.isNotEmpty || status != null || favoriteOnly;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: p.surface,
-        borderRadius: R.borderMd,
-        border: Border.all(color: p.line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _buildToolbarRow(context, trimmed),
-          if (filtersActive)
-            Container(
-              padding: const EdgeInsets.fromLTRB(Sp.x3, 0, Sp.x3, Sp.x3),
-              child: Wrap(
-                spacing: Sp.x2,
-                runSpacing: Sp.x2,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (trimmed.isNotEmpty)
-                    Text(
-                      context.t('words.matches', {'n': matchCount}),
-                      style: TextStyle(
-                        fontFamily: Fonts.mono,
-                        fontSize: Fs.xs,
-                        height: Lh.none,
-                        color: p.ink3,
-                      ),
+    // No frame. The bar is a row of pills sitting on the page, not a form in a
+    // box: the search capsule, the sort capsule and the chips already say
+    // "these are controls", and the border around them was a second, empty
+    // container drawn just to hold them.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildToolbarRow(context, trimmed),
+        if (filtersActive)
+          Padding(
+            padding: const EdgeInsets.only(top: Sp.x2, left: Sp.x1),
+            child: Wrap(
+              spacing: Sp.x2,
+              runSpacing: Sp.x2,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (trimmed.isNotEmpty)
+                  Text(
+                    context.t('words.matches', {'n': matchCount}),
+                    style: TextStyle(
+                      fontFamily: Fonts.mono,
+                      fontSize: Fs.xs,
+                      height: Lh.none,
+                      color: p.ink3,
                     ),
-                  if (status != null)
-                    _FilterToken(
-                      label: context.t(_kStatusLabelKey[status!]!),
-                      onRemove: () => onStatus(null),
-                    ),
-                  if (favoriteOnly)
-                    _FilterToken(
-                      label: context.t('words.filterFavorites'),
-                      onRemove: onToggleFavorite,
-                    ),
-                  _ResetButton(onTap: onReset),
-                ],
-              ),
+                  ),
+                if (status != null)
+                  _FilterToken(
+                    label: context.t(_kStatusLabelKey[status!]!),
+                    onRemove: () => onStatus(null),
+                  ),
+                if (favoriteOnly)
+                  _FilterToken(
+                    label: context.t('words.filterFavorites'),
+                    onRemove: onToggleFavorite,
+                  ),
+                _ResetButton(onTap: onReset),
+              ],
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
@@ -654,7 +664,7 @@ class _QueryBar extends StatelessWidget {
       builder: (BuildContext context, BoxConstraints constraints) {
         if (constraints.maxWidth >= _kCompactBreakpoint) {
           return Padding(
-            padding: const EdgeInsets.all(Sp.x3),
+            padding: EdgeInsets.zero,
             child: Row(
               children: [
                 Expanded(flex: 3, child: search),
@@ -682,10 +692,10 @@ class _QueryBar extends StatelessWidget {
             ),
           );
         }
-        // The two rows keep their height fixed so the card does not jump as
+        // The two rows keep their height fixed so the bar does not jump as
         // the search field gains focus and the chips change count.
         return Padding(
-          padding: const EdgeInsets.all(Sp.x3),
+          padding: EdgeInsets.zero,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -766,22 +776,15 @@ class _SearchFieldState extends State<_SearchField> {
     final p = Palette.of(context);
     final hasText = widget.controller.text.isNotEmpty;
 
-    return AnimatedContainer(
-      duration: Motion.dur1,
-      curve: Motion.ease,
-      height: context.controlH,
-      decoration: BoxDecoration(
-        color: p.surface2,
-        borderRadius: R.borderSm,
-        border: Border.all(
-          color: _focused ? p.accent : p.lineControl,
-        ),
-      ),
+    // A capsule, like the filter beside it and the control that adds a word.
+    // The field used to be a rounded rectangle with a full outline in the
+    // idle state, which made the query bar — the one thing on the page that is
+    // *not* a container — look like the most boxed thing on it.
+    return PillField(
+      focused: _focused,
+      icon: Ic.search,
       child: Row(
         children: [
-          const SizedBox(width: Sp.x3),
-          LexIcon(Ic.search, size: 15, color: p.ink3),
-          const SizedBox(width: Sp.x2),
           Expanded(
             child: TextField(
               controller: widget.controller,
@@ -808,9 +811,7 @@ class _SearchFieldState extends State<_SearchField> {
               tooltip: context.t('common.clear'),
               size: 13,
               onTap: widget.onClear,
-            )
-          else
-            const SizedBox(width: Sp.x2),
+            ),
         ],
       ),
     );
@@ -853,10 +854,10 @@ class _SortMenu extends StatelessWidget {
       ],
       child: Container(
         height: context.controlH,
-        padding: const EdgeInsets.symmetric(horizontal: Sp.x3),
+        padding: const EdgeInsets.symmetric(horizontal: Sp.x4),
         decoration: BoxDecoration(
-          borderRadius: R.borderSm,
-          border: Border.all(color: p.line),
+          color: p.surface2,
+          borderRadius: R.borderPill,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -922,7 +923,7 @@ class _QbarIconButtonState extends State<_QbarIconButton> {
             width: Layout.controlHSm,
             height: Layout.controlHSm,
             alignment: Alignment.center,
-            decoration: BoxDecoration(color: bg, borderRadius: R.borderSm),
+            decoration: BoxDecoration(color: bg, borderRadius: R.borderPill),
             child: LexIcon(widget.icon, size: widget.size, color: fg),
           ),
         ),
@@ -1052,77 +1053,80 @@ class _WordTable extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < _kCompactBreakpoint;
-        return Card(
-          padding: EdgeInsets.zero,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // A phone row already reads as two stacked lines, so a header
-              // would just eat vertical space and repeat itself.
-              if (!compact)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: Sp.x4,
-                    vertical: Sp.x3,
-                  ),
-                  decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: p.line)),
-                  ),
-                  child: Row(
-                    children: [
-                      if (selectMode) const SizedBox(width: Sp.x6),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _HeadCell(label: context.t('words.term')),
-                            _HeadCell(label: context.t('common.definition')),
-                          ],
-                        ),
-                      ),
-                      SizedBox(
-                        width: _kStatusColW,
-                        child: _HeadCell(label: context.t('common.status')),
-                      ),
-                      SizedBox(
-                        width: selectMode ? 0 : _actionsColW(context),
-                        child: _HeadCell(
-                          label: context.t('common.actions'),
-                          align: TextAlign.right,
-                        ),
-                      ),
-                    ],
-                  ),
+        // No card. A library is a list, and a list is hairlines on the page —
+        // the card wrapper put 400 rows inside a rounded rectangle that said
+        // nothing except "a component lives here", and its inset edges fought
+        // the accent rule that now runs down the page's own margin.
+        return HairlineList(
+          padded: false,
+          children: [
+            // A phone row already reads as two stacked lines, so a header
+            // would just eat vertical space and repeat itself.
+            if (!compact)
+              Container(
+                padding: const EdgeInsets.only(
+                  left: Sp.x4 + Layout.listRuleGap,
+                  right: Sp.x4,
+                  top: Sp.x3,
+                  bottom: Sp.x3,
                 ),
-              for (var i = 0; i < words.length; i++)
-                FadeRise(
-                  // The key moves to the wrapper: it is what lets a row that
-                  // survives a filter keep its finished entrance instead of
-                  // replaying it, and what lets a genuinely new row play one.
-                  key: ValueKey<String>(words[i].id),
-                  offset: 6,
-                  delay: Motion.stagger * (i < _kStaggerRows ? i : _kStaggerRows),
-                  child: _WordRow(
-                    word: words[i],
-                    query: query,
-                    lang: lang,
-                    now: now,
-                    selectMode: selectMode,
-                    compact: compact,
-                    picked: selected.contains(words[i].id),
-                    last: i == words.length - 1,
-                    index: i,
-                    onTap: () => selectMode
-                        ? onToggleSelected(words[i].id)
-                        : onOpen(words[i]),
-                    onFavorite: () => onFavorite(words[i]),
-                    onPlay: () => onPlay(words[i]),
-                    onEdit: () => onOpen(words[i]),
-                    onDelete: () => onDelete(words[i]),
-                  ),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: p.line)),
                 ),
-            ],
-          ),
+                child: Row(
+                  children: [
+                    if (selectMode) const SizedBox(width: Sp.x6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _HeadCell(label: context.t('words.term')),
+                          _HeadCell(label: context.t('common.definition')),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      width: _kStatusColW,
+                      child: _HeadCell(label: context.t('common.status')),
+                    ),
+                    SizedBox(
+                      width: selectMode ? 0 : _actionsColW(context),
+                      child: _HeadCell(
+                        label: context.t('common.actions'),
+                        align: TextAlign.right,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            for (var i = 0; i < words.length; i++)
+              FadeRise(
+                // The key moves to the wrapper: it is what lets a row that
+                // survives a filter keep its finished entrance instead of
+                // replaying it, and what lets a genuinely new row play one.
+                key: ValueKey<String>(words[i].id),
+                offset: 6,
+                delay: Motion.stagger * (i < _kStaggerRows ? i : _kStaggerRows),
+                child: _WordRow(
+                  word: words[i],
+                  query: query,
+                  lang: lang,
+                  now: now,
+                  selectMode: selectMode,
+                  compact: compact,
+                  picked: selected.contains(words[i].id),
+                  last: i == words.length - 1,
+                  index: i,
+                  onTap: () => selectMode
+                      ? onToggleSelected(words[i].id)
+                      : onOpen(words[i]),
+                  onFavorite: () => onFavorite(words[i]),
+                  onPlay: () => onPlay(words[i]),
+                  onEdit: () => onOpen(words[i]),
+                  onDelete: () => onDelete(words[i]),
+                ),
+              ),
+          ],
         );
       },
     );
@@ -1131,6 +1135,16 @@ class _WordTable extends StatelessWidget {
 
 /// Below this content width the row folds into a phone-shaped two-liner.
 const double _kCompactBreakpoint = 640;
+
+/// The page's horizontal gutter.
+///
+/// The shell runs `bleed: true` so that the list's accent rule can sit on the
+/// page's own left margin; every block that is *not* the list re-adds the
+/// gutter here rather than each one inventing its own padding.
+Widget _gutter(Widget child) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Sp.x6),
+      child: child,
+    );
 
 /// How many rows keep a growing entrance delay before it stops increasing.
 ///
@@ -1236,15 +1250,21 @@ class _WordRowState extends State<_WordRow> {
         child: AnimatedContainer(
           duration: Motion.dur1,
           curve: Motion.ease,
+          constraints: const BoxConstraints(minHeight: Layout.listRowMin),
           decoration: BoxDecoration(
             color: bg,
             border: widget.last
                 ? null
                 : Border(bottom: BorderSide(color: p.line)),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: Sp.x4,
-            vertical: Sp.x3,
+          // The left inset is the rule's lane plus air. The rule is drawn by
+          // [HairlineList] on the page margin, so a row that started at x=0
+          // would print its own text on top of it.
+          padding: const EdgeInsets.only(
+            left: Sp.x4 + Layout.listRuleGap,
+            right: Sp.x4,
+            top: Sp.x4,
+            bottom: Sp.x4,
           ),
           child: widget.compact
               ? _buildCompact(context, p, w)
@@ -1438,10 +1458,11 @@ class _TermLine extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
-        if (word.favorite) ...[
-          LexIcon(Ic.starFilled, size: 12, color: p.accent),
-          const SizedBox(width: Sp.x2),
-        ],
+        // The favourite star is not drawn inline here: inline it pushed this
+        // one headword ~20dp right of every other headword, so a single
+        // starred word broke the left edge the whole list is read down. The
+        // actions column already shows the same star in the same place for
+        // every row, which is where a per-row state belongs.
         Expanded(
           child: _Highlighted(
             text: word.term,
@@ -1449,10 +1470,15 @@ class _TermLine extends StatelessWidget {
             maxLines: maxLines,
             style: TextStyle(
               fontFamily: Fonts.display,
-              fontSize: Fs.lg,
+              // The headword is the largest thing on the page below the title.
+              // At 19 it sat a single step above the gloss and a list of four
+              // hundred entries read as uniform grey; at 24 the eye lands on the
+              // word first and the meaning second, which is the order a
+              // vocabulary list is scanned in.
+              fontSize: Fs.xl,
               height: Lh.title,
-              fontWeight: FontWeight.w500,
-              letterSpacing: -0.005,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.01,
               color: p.ink,
             ),
           ),

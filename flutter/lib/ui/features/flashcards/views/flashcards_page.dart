@@ -278,142 +278,143 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     Widget side,
   ) {
     if (data.words.isEmpty) {
-      return Card(
-        child: EmptyState(
-          icon: Ic.cards,
-          title: t('words.noWords'),
-          text: t('words.noWordsHint'),
-          action: _addFirstWordButton(t),
-        ),
+      return EmptyState(
+        icon: Ic.cards,
+        title: t('words.noWords'),
+        text: t('words.noWordsHint'),
+        action: _addFirstWordButton(t),
       );
     }
 
-    final Widget intro = Card(
-      padding: const EdgeInsets.all(Sp.x6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          // The 26dp card glyph that used to open this card is gone: an icon
-          // above a heading is a template habit, and this screen already says
-          // what it is with words. The heading is one step below the home
-          // hero (Fs.x2xl) because this is a card title, not a page statement.
-          Text(
-            t('flashcards.start'),
-            style: TextStyle(
-              fontFamily: Fonts.display,
-              fontSize: Fs.xl,
-              height: Lh.tight,
-              fontWeight: FontWeight.w600,
-              letterSpacing: -0.015,
-              color: Palette.of(context).ink,
+    final Palette p = Palette.of(context);
+    final Widget intro = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        // The 26dp card glyph that used to open this card is gone: an icon
+        // above a heading is a template habit, and this screen already says
+        // what it is with words. The heading is one step below the home
+        // hero (Fs.x2xl) because this is a section title, not a page statement.
+        Text(
+          t('flashcards.start'),
+          style: TextStyle(
+            fontFamily: Fonts.display,
+            fontSize: Fs.xl,
+            height: Lh.tight,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.015,
+            color: p.ink,
+          ),
+        ),
+        // The subtitle used to be printed here as well, so the same sentence
+        // appeared twice on one screen — once in the page header and once
+        // inside this block. It now lives only in the header, where it names
+        // the page; the block goes straight to the decision it holds.
+        const SizedBox(height: Sp.x5),
+        Text(
+          t('flashcards.buildDeck'),
+          style: TextStyle(
+            fontSize: Fs.sm,
+            height: Lh.tight,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.04,
+            color: p.ink3,
+          ),
+        ),
+        const SizedBox(height: Sp.x3),
+        // The segmented control is one row; on a phone the four deck names do
+        // not fit, so it scrolls sideways instead of overflowing.
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Segmented<DeckSource>(
+            value: _vm.deck,
+            options: <SegOption<DeckSource>>[
+              for (final DeckSource s in DeckSource.values)
+                SegOption<DeckSource>(
+                  value: s,
+                  label: t(_kDeckLabelKey[s]!),
+                  count: summary.counts[s],
+                ),
+            ],
+            onChanged: _vm.setDeck,
+          ),
+        ),
+        const SizedBox(height: Sp.x5),
+        // Three tinted pills used to sit here. A count is a figure, and the
+        // app-scope rule for figures is the same on every screen: the number
+        // leads, the word follows, and colour marks state only when there is
+        // state to mark. So the pills became one strip of figures.
+        Row(
+          children: <Widget>[
+            _DeckFigure(
+              value: '${summary.dueReview}',
+              label: t('flashcards.figureDue'),
+              strong: summary.dueReview > 0,
+            ),
+            const SizedBox(width: Sp.x6),
+            _DeckFigure(
+              value: '${summary.counts[DeckSource.fresh] ?? 0}',
+              label: t('flashcards.figureNew'),
+            ),
+            const SizedBox(width: Sp.x6),
+            _DeckFigure(
+              value: '$deckSize',
+              label: t('flashcards.figureCards'),
+            ),
+          ],
+        ),
+        if (summary.capReached && !summary.caughtUp) ...<Widget>[
+          const SizedBox(height: Sp.x4),
+          _Notice(
+            text: t('flashcards.newCapReached', <String, Object>{
+              'n': settings.newCardsPerDay,
+            }),
+          ),
+        ],
+        const SizedBox(height: Sp.x5),
+        if (deckSize == 0)
+          _emptyDeck(t, summary.caughtUp)
+        else
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: LexButton(
+              label: t('flashcards.start'),
+              size: BtnSize.lg,
+              kind: BtnKind.primary,
+              onPressed: _vm.startSession,
+              trailing: LexIcon(
+                Ic.arrowRight,
+                size: 17,
+                color: p.onAccent,
+              ),
             ),
           ),
-          // `flashcards.subtitle` used to be printed here as well, so the same
-          // sentence appeared twice on one screen — once in the page header and
-          // once inside the card. It now lives only in the header, where it
-          // names the page; the card goes straight to the decision it holds.
-          const SizedBox(height: Sp.x5),
+        // Key legends are meaningless without a keyboard, so the whole block
+        // (spacing included) is dropped on touch devices.
+        if (context.showsKeyHints) ...<Widget>[
+          const SizedBox(height: Sp.x3),
           Text(
-            t('flashcards.buildDeck'),
+            t('flashcards.keyboardHint'),
             style: TextStyle(
               fontSize: Fs.xs,
-              height: Lh.tight,
-              fontWeight: FontWeight.w500,
-              letterSpacing: 0.02,
-              color: Palette.of(context).ink3,
+              height: Lh.body,
+              color: p.ink3,
             ),
           ),
-          const SizedBox(height: Sp.x2),
-          // The segmented control is one row; on a phone the four deck names do
-          // not fit, so it scrolls sideways instead of overflowing.
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Segmented<DeckSource>(
-              value: _vm.deck,
-              options: <SegOption<DeckSource>>[
-                for (final DeckSource s in DeckSource.values)
-                  SegOption<DeckSource>(
-                    value: s,
-                    label: t(_kDeckLabelKey[s]!),
-                    count: summary.counts[s],
-                  ),
-              ],
-              onChanged: _vm.setDeck,
-            ),
-          ),
-          const SizedBox(height: Sp.x4),
-          // Three tinted pills used to sit here. A count is a figure, and the
-          // app-scope rule for figures is the same on every screen: the number
-          // leads in tabular mono, the word follows in the label size, and
-          // colour marks state only when there is state to mark. So the pills
-          // became one strip of figures with the same three numbers and the
-          // same three words.
-          Row(
-            children: <Widget>[
-              _DeckFigure(
-                value: '${summary.dueReview}',
-                label: t('flashcards.figureDue'),
-                strong: summary.dueReview > 0,
-              ),
-              const SizedBox(width: Sp.x6),
-              _DeckFigure(
-                value: '${summary.counts[DeckSource.fresh] ?? 0}',
-                label: t('flashcards.figureNew'),
-              ),
-              const SizedBox(width: Sp.x6),
-              _DeckFigure(
-                value: '$deckSize',
-                label: t('flashcards.figureCards'),
-              ),
-            ],
-          ),
-          if (summary.capReached && !summary.caughtUp) ...<Widget>[
-            const SizedBox(height: Sp.x4),
-            _Notice(
-              text: t('flashcards.newCapReached', <String, Object>{
-                'n': settings.newCardsPerDay,
-              }),
-            ),
-          ],
-          const SizedBox(height: Sp.x4),
-          if (deckSize == 0)
-            _emptyDeck(t, summary.caughtUp)
-          else
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: LexButton(
-                label: t('flashcards.start'),
-                size: BtnSize.lg,
-                kind: BtnKind.primary,
-                onPressed: _vm.startSession,
-                trailing: LexIcon(
-                  Ic.arrowRight,
-                  size: 17,
-                  color: Palette.of(context).onAccent,
-                ),
-              ),
-            ),
-          // Key legends are meaningless without a keyboard, so the whole block
-          // (spacing included) is dropped on touch devices.
-          if (context.showsKeyHints) ...<Widget>[
-            const SizedBox(height: Sp.x3),
-            Text(
-              t('flashcards.keyboardHint'),
-              style: TextStyle(
-                fontSize: Fs.xs,
-                height: Lh.body,
-                color: Palette.of(context).ink3,
-              ),
-            ),
-          ],
         ],
-      ),
+      ],
     );
 
     return _studySplit(
-      main: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[intro],
+      main: Align(
+        alignment: AlignmentDirectional.centerStart,
+        // The intro is a column of decisions, not a page-wide band. Stretched
+        // to the full pane its text runs left while its controls stop after
+        // ~500dp, leaving the right half of the screen empty; the measure is
+        // capped so the block reads as one column on any window width.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: intro,
+        ),
       ),
       side: side,
     );
@@ -494,15 +495,13 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
               onUndo: onUndo,
               onExit: onExit),
           const SizedBox(height: Sp.x4),
-          Card(
-            child: EmptyState(
-              icon: Ic.cards,
-              title: t('flashcards.emptyDeck'),
-              text: t('flashcards.emptyDeckHint'),
-              action: LexButton(
-                label: t('flashcards.restart'),
-                onPressed: _vm.startSession,
-              ),
+          EmptyState(
+            icon: Ic.cards,
+            title: t('flashcards.emptyDeck'),
+            text: t('flashcards.emptyDeckHint'),
+            action: LexButton(
+              label: t('flashcards.restart'),
+              onPressed: _vm.startSession,
             ),
           ),
         ],
@@ -1079,31 +1078,30 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
           icon: Ic.flame,
         ),
         const SizedBox(height: Sp.x4),
-        if (context.showsKeyHints)
-          Card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(
-                  t('settings.shortcuts'),
-                  style: TextStyle(
-                    fontSize: Fs.md,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.005,
-                    color: Palette.of(context).ink,
-                  ),
-                ),
-                const SizedBox(height: Sp.x2),
-                ShortcutRow(keys: const <String>['空格'], label: t('settings.shortcutFlip')),
-                ShortcutRow(keys: const <String>['1'], label: t('flashcards.gradeHard')),
-                ShortcutRow(keys: const <String>['2'], label: t('flashcards.gradeGood')),
-                ShortcutRow(keys: const <String>['3'], label: t('flashcards.gradeEasy')),
-                ShortcutRow(keys: const <String>['←', '→'], label: t('quiz.skip')),
-                ShortcutRow(keys: const <String>['Ctrl', 'Z'], label: t('flashcards.undo')),
-              ],
+        if (context.showsKeyHints) ...[
+          Text(
+            t('settings.shortcuts'),
+            style: TextStyle(
+              fontSize: Fs.sm,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.04,
+              color: Palette.of(context).ink3,
             ),
           ),
+          const SizedBox(height: Sp.x2),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              ShortcutRow(keys: const <String>['空格'], label: t('settings.shortcutFlip')),
+              ShortcutRow(keys: const <String>['1'], label: t('flashcards.gradeHard')),
+              ShortcutRow(keys: const <String>['2'], label: t('flashcards.gradeGood')),
+              ShortcutRow(keys: const <String>['3'], label: t('flashcards.gradeEasy')),
+              ShortcutRow(keys: const <String>['←', '→'], label: t('quiz.skip')),
+              ShortcutRow(keys: const <String>['Ctrl', 'Z'], label: t('flashcards.undo')),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -1122,7 +1120,20 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           main,
-          if (showSide) ...<Widget>[const SizedBox(height: Sp.x4), side],
+          if (showSide) ...<Widget>[
+            const SizedBox(height: Sp.x4),
+            // Stacked under the main column the panel is still a *panel*: a
+            // 296dp column of labels and keycaps stretched to the full page
+            // width puts each row’s key at the far right of a very long gap.
+            // It keeps a readable measure and stays left-aligned instead.
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: side,
+              ),
+            ),
+          ],
         ],
       );
     }
@@ -1339,7 +1350,7 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
             padding: const EdgeInsets.fromLTRB(Sp.x7, Sp.x6, Sp.x7, Sp.x5),
             decoration: BoxDecoration(
               color: p.surface,
-              borderRadius: R.borderLg,
+              borderRadius: R.borderXl,
               border: Border.all(color: _hover ? p.lineStrong : p.line),
             ),
             child: Column(
