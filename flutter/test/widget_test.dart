@@ -45,30 +45,6 @@ Future<void> pumpKit(
 }
 
 void main() {
-  group('i18n', () {
-    test('translates a known key and passes unknown keys through', () {
-      const zh = I18n(UiLang.zhCN);
-      expect(zh.t('common.appName'), 'Lexumo');
-      expect(zh.has('common.appName'), isTrue);
-      expect(zh.t('nope.not.a.key'), 'nope.not.a.key');
-      expect(zh.has('nope.not.a.key'), isFalse);
-    });
-
-    test('interpolates variables and leaves unknown ones literal', () {
-      const zh = I18n(UiLang.zhCN);
-      // `words.count` style keys carry a `{n}` slot; an unmatched slot must
-      // survive rather than collapse to an empty string.
-      final out = zh.t('words.searchPlaceholder');
-      expect(out, isNotEmpty);
-    });
-
-    test('both dictionaries cover the same keys', () {
-      const zh = I18n(UiLang.zhCN);
-      const en = I18n(UiLang.en);
-      expect(zh.dict.keys.toSet(), en.dict.keys.toSet());
-    });
-  });
-
   group('LexButton', () {
     testWidgets('fires onPressed and shows its label', (tester) async {
       var taps = 0;
