@@ -37,3 +37,4 @@ server/data/
 .winrun.err
 probe_ws.txt
 
+__pycache__/
