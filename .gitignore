@@ -21,9 +21,10 @@ src-tauri/gen
 .shots
 
 server/data/
-.hallmark/
-.vscode/
+.hallmark
+.vscode
 
+.tmp-opencode-state
 # Flutter 工具链与运行期状态（本地，不入库）
 .flutter-sdk/
 .flutter-home/
