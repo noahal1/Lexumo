@@ -398,5 +398,207 @@ void main() {
         reason: 'search still owns most of the row',
       );
     });
+
+    testWidgets('the tab bar folds into a capsule while the page scrolls down', (
+      WidgetTester tester,
+    ) async {
+      // The bar is full-width chrome at rest and has to stop being that the
+      // moment the reader moves into the page — a phone spends a fifth of its
+      // glass on a paper strip that repeats what the page already says. It
+      // folds to a floating capsule of icons and comes back on the way up.
+      //
+      // Both halves are asserted here because either alone is a regression the
+      // eye forgives: a bar that never collapses is the old design, and a bar
+      // that collapses and stays gone is a trap.
+      await pumpPhone(tester, const AppShell());
+
+      // Labels are only checked inside the bar: a page is allowed to name a
+      // destination in its own copy, and scoping the finder to the bar is what
+      // keeps this test about the chrome.
+      Finder barLabels(String label) => find.descendant(
+        of: find.byKey(kTabBarKey),
+        matching: find.text(label),
+      );
+
+      // The capsule is always in the tree — folding is a continuous morph of
+      // one object now, not a widget swapped in when a bool flips. Existence is
+      // therefore the wrong thing to assert: at rest the same container is
+      // full-width, square and shadowless, which is a bar. The shape is what
+      // separates the two states.
+      final Finder capsule = find.byKey(kTabBarCapsuleKey);
+      expect(capsule, findsOneWidget);
+
+      BoxDecoration capsuleDeco() =>
+          tester.widget<Container>(capsule).decoration! as BoxDecoration;
+      BorderRadius capsuleRadius() =>
+          capsuleDeco().borderRadius! as BorderRadius;
+      double capsuleWidth() =>
+          tester.renderObject<RenderBox>(capsule).size.width;
+      // The shadow is faded by alpha rather than removed, so "no shadow" is a
+      // transparent shadow, not an empty list. That is deliberate: a list that
+      // appears on one frame pops, an alpha that reaches zero does not.
+      double capsuleShadowAlpha() {
+        final List<BoxShadow> shadows =
+            capsuleDeco().boxShadow ?? const <BoxShadow>[];
+        return shadows.isEmpty ? 0 : shadows.first.color.a;
+      }
+
+      expect(
+        capsuleWidth(),
+        greaterThan(kPhone.width - 2 * Sp.x2 - 1),
+        reason: 'at rest the capsule is the full width of the bar',
+      );
+      expect(capsuleRadius().topLeft.x, 0, reason: 'a bar has square corners');
+      expect(
+        capsuleShadowAlpha(),
+        0,
+        reason: 'a bar does not float',
+      );
+      expect(barLabels('词库'), findsOneWidget, reason: 'labels while at rest');
+
+      // Scroll the current page down. The controller belongs to the shell, so
+      // this is the same path a thumb takes.
+      await tester.dragFrom(const Offset(205, 500), const Offset(0, -400));
+      await tester.pumpAndSettle();
+
+      final RenderBox slot = tester.renderObject<RenderBox>(
+        find.byKey(kTabBarKey),
+      );
+      final RenderBox box = tester.renderObject<RenderBox>(capsule);
+      // Narrower than the window, with air on both sides: a capsule that spans
+      // the full width is the bar with rounded ends, which is the exact
+      // regression the sidebar rail shipped with.
+      expect(box.size.width, lessThan(kPhone.width - 2 * Sp.x1));
+      expect(
+        (kPhone.width - box.size.width) / 2,
+        greaterThanOrEqualTo(Sp.x2),
+        reason: 'the capsule floats, it does not touch the edges',
+      );
+      // And it is above the bottom edge rather than glued to it.
+      expect(slot.size.height, greaterThan(box.size.height));
+      expect(capsuleRadius().topLeft.x, R.pill, reason: 'fully rounded');
+      expect(
+        capsuleShadowAlpha(),
+        greaterThan(0),
+        reason: 'it floats above the page, so it casts',
+      );
+
+      // Icons only: a 48dp column cannot hold a label.
+      expect(
+        barLabels('词库'),
+        findsNothing,
+        reason: 'the folded capsule drops its labels',
+      );
+
+      // Coming back up unfolds it. A bar that only ever folds is a bar the
+      // reader loses.
+      await tester.dragFrom(const Offset(205, 300), const Offset(0, 400));
+      await tester.pumpAndSettle();
+      expect(capsuleRadius().topLeft.x, 0);
+      expect(capsuleWidth(), greaterThan(kPhone.width - 2 * Sp.x2 - 1));
+      expect(barLabels('词库'), findsOneWidget);
+    });
+
+    testWidgets('the fold is drawn, not cut', (WidgetTester tester) async {
+      // The first implementation swapped a subtree on the frame the flag
+      // flipped and only tweened the slot's colour: the bar went from "full
+      // width" to "capsule" between two frames, so the motion the user asked
+      // for was never on screen. This test walks the tween frame by frame and
+      // insists the shape is somewhere in between — a mid-fold width strictly
+      // between the two resting widths, and a corner radius strictly between
+      // square and the pill.
+      await pumpPhone(tester, const AppShell());
+
+      final Finder capsule = find.byKey(kTabBarCapsuleKey);
+      double width() => tester.renderObject<RenderBox>(capsule).size.width;
+      double radius() =>
+          ((tester.widget<Container>(capsule).decoration! as BoxDecoration)
+                  .borderRadius! as BorderRadius)
+              .topLeft
+              .x;
+
+      final double restWidth = width();
+      expect(radius(), 0);
+
+      await tester.dragFrom(const Offset(205, 500), const Offset(0, -400));
+
+      // Mid-flight: the tween is 420ms, so ~180ms is unambiguously inside it.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 180));
+
+      final double midWidth = width();
+      final double midRadius = radius();
+      expect(
+        midWidth,
+        lessThan(restWidth),
+        reason: 'by the middle of the fold the capsule has started narrowing',
+      );
+      expect(
+        midRadius,
+        greaterThan(0),
+        reason: 'the corners are being rounded over time, not snapped',
+      );
+
+      await tester.pumpAndSettle();
+      // Fully folded: strictly narrower again, and fully round.
+      expect(width(), lessThan(midWidth));
+      expect(radius(), R.pill);
+    });
+
+    testWidgets('the strip behind the capsule gives the page back', (
+      WidgetTester tester,
+    ) async {
+      // "Transparent" was the complaint, and the cause was a slot painted in
+      // paper: paper over paper is a hole the reader cannot see through. With
+      // `extendBody` the page really does continue under the bar, so the slot
+      // must reach zero alpha — anything above zero is a strip that hides it.
+      await pumpPhone(tester, const AppShell());
+      await tester.dragFrom(const Offset(205, 500), const Offset(0, -400));
+      await tester.pumpAndSettle();
+
+      final Container slot = tester.widget<Container>(find.byKey(kTabBarKey));
+      final BoxDecoration deco = slot.decoration! as BoxDecoration;
+      expect(
+        deco.color!.a,
+        0,
+        reason: 'the folded slot must not paint over the page it floats on',
+      );
+    });
+
+    testWidgets('changing destination unfolds the bar', (
+      WidgetTester tester,
+    ) async {
+      // A new page starts at its own top, so its bar starts unfolded. Without
+      // this the bar would stay folded across a navigation and the reader would
+      // land on a page whose chrome was still hidden.
+      await pumpPhone(tester, const AppShell());
+      await tester.dragFrom(const Offset(205, 500), const Offset(0, -400));
+      await tester.pumpAndSettle();
+
+      final Finder capsule = find.byKey(kTabBarCapsuleKey);
+      double capsuleWidth() =>
+          tester.renderObject<RenderBox>(capsule).size.width;
+      expect(
+        capsuleWidth(),
+        lessThan(kPhone.width - 2 * Sp.x1),
+        reason: 'precondition: the bar is folded',
+      );
+
+      // While folded there are no labels left to tap, so the destination is
+      // reached the way the user reaches it: the second icon in the capsule.
+      final Finder items = find.descendant(
+        of: find.byKey(kTabBarKey),
+        matching: find.byType(GestureDetector),
+      );
+      expect(items, findsNWidgets(PageId.values.length));
+      await tester.tap(items.at(1));
+      await tester.pumpAndSettle();
+
+      expect(
+        capsuleWidth(),
+        greaterThan(kPhone.width - 2 * Sp.x2 - 1),
+        reason: 'a destination opens with its chrome showing',
+      );
+    });
   });
 }

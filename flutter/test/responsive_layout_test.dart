@@ -185,6 +185,52 @@ void main() {
     });
   });
 
+  group('the collapsed menu is a capsule, not a narrowed slab', () {
+    // Collapsing used to draw the same full-height stone wall at 64dp: the
+    // menu stopped being labelled but kept being a slab. The redesign makes
+    // the collapsed state one object — a lozenge that floats in the rail's
+    // slot — so the shape rules are the thing to pin, not just the width.
+    testWidgets('the rail draws a pill with a margin inside its slot', (
+      WidgetTester tester,
+    ) async {
+      await _pump(tester, const AppShell(), size: const Size(866, 411));
+      expect(tester.takeException(), isNull);
+
+      final Finder capsule = find.byKey(kRailCapsuleKey);
+      expect(capsule, findsOneWidget, reason: 'the collapsed rail is a capsule');
+
+      // A capsule is narrower than the slot it floats in, on both sides. If
+      // the margin were dropped the shape would still be rounded but the
+      // "floating object" reading would be gone — it would be a slab with
+      // rounded ends again.
+      final RenderBox slot = tester.renderObject<RenderBox>(
+        find.byKey(kSidebarKey),
+      );
+      final RenderBox box = tester.renderObject<RenderBox>(capsule);
+      expect(box.size.width, lessThan(slot.size.width));
+      expect(
+        (slot.size.width - box.size.width) / 2,
+        greaterThanOrEqualTo(Sp.x1),
+        reason: 'the capsule keeps a visible margin inside its slot',
+      );
+
+      // Fully rounded: the corner radius is the pill, not a soft corner. A
+      // capsule whose radius is smaller than half its width is a rounded
+      // rectangle, which is the exact regression this asserts against.
+      final BoxDecoration deco =
+          tester.widget<Container>(capsule).decoration! as BoxDecoration;
+      final BorderRadius radius = deco.borderRadius! as BorderRadius;
+      expect(radius.topLeft.x, R.pill);
+      expect(box.size.width / 2, lessThan(R.pill));
+
+      // It floats: the pop shadow is what puts it above the stone rather than
+      // being a hole in it.
+      expect(deco.boxShadow, isNotNull);
+      expect(deco.boxShadow, isNotEmpty);
+      expect(deco.border, isNotNull, reason: 'the edge must be drawn, not implied');
+    });
+  });
+
   group('the status chips survive a wide touch viewport', () {
     // A tablet is `isTouch` (so chips grow to 44dp) *and* wide (so the query
     // bar takes its single-row branch). That combination is what overflowed by

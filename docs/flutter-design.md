@@ -633,9 +633,85 @@ foundation 的 debug 变量已复位，用 `addTearDown` 会让测试因为「�
 
 | 宽度 | 模式 | 谁来画侧栏 |
 | --- | --- | --- |
-| ≤ 720（`Layout.mobileBreakpoint`） | mobile | 底栏 tab |
-| 720 – 1000（`Layout.railBreakpoint`） | rail | 64dp 图标栏 |
-| > 1000 | full | 248dp 完整侧栏 |
+| ≤ 720（`Layout.mobileBreakpoint`） | mobile | 纸面底栏 tab（滚动时折成浮起的白胶囊） |
+| 720 – 1000（`Layout.railBreakpoint`） | rail | 64dp 槽位里的一枚胶囊 |
+| > 1000 | full | 232dp 完整侧栏 |
+
+**rail 是一枚胶囊，不是压窄的板。** 收起态原先把同一面石墙窄成 64dp——标签没了，但
+仍然是一块从顶到底的板，读起来是「侧栏还在，只是闭嘴了」。现在收起态是**一个东西**：
+槽位宽度不变（切换时旁边的页面不许移动），但胶囊在槽位里浮动——`R.pill` 的圆角、
+`frameLine` 描边、`Shadows.popFor` 的投影，两侧各留 `Sp.x1` 的边距。
+
+**槽位必须交出石面、退成纸面（`p.bg`），否则胶囊不存在。** 第一版让槽位和胶囊都用
+`p.frame`，理由是「形状和投影就够了，填色会翻倍对比预算」。截图量下来是决定性的反证：
+整个窗口宽 785dp 时，y=15% 那行是从 x=0 起满铺的 `#252c28`，y=50% 那行才出现 80px 宽的
+`#252c28` ——**同色的胶囊和同色的槽位拼成一块从顶到底的板，圆角、描边、投影全都画了
+但一个都看不见**。视觉模型独立复核，答的是「a tall, narrow dark rectangular slab ...
+no bottom margin ... no obvious rounded outline, border, or drop shadow」。形状要读得
+出来，前提是它压在一个**别的东西**上；一个跟背景同色的形状不是形状。换成纸面槽位后，
+同一位置的量测变成纸面 `#f9f7f3` + 深色胶囊（纵向 y 203–640，上下各留白），视觉模型也
+改口为「a floating rounded capsule/lozenge」。代价可以接受：胶囊内部仍是 `p.frame`，
+所有行内对比（azurite-soft 的当前页填充、`frame2` 的 hover、`frameInk` 的标签）都还是
+对着 `frame` 调的，一个色都没动；只有槽位这一个新底色需要跟纸面对齐，而它跟原来的
+石面对纸面是同一个对比关系。
+
+两处细节写进了测试（`responsive_layout_test.dart` 的「the collapsed menu is a
+capsule, not a narrowed slab」）：胶囊必须**比槽位窄**（边距掉了就退回「圆角板」），
+圆角必须是 `R.pill` 本体而不是小半径。还有一个坑：`Container(margin:)` 会在自身
+**外面**包一层 `Padding`，把 key 打在那种 container 上，量到的是「边距 + 形状」，于是
+「胶囊比槽位窄吗」会被答成否——边距因此移到独立的 `Padding` 上，带 key 的 container
+才是胶囊本体。注意这条测试**结构上测不出配色**：它能证明胶囊比槽位窄，但证明不了胶囊
+看得见（同色的两版都通过）。配色只能靠截图量像素，量的是「槽位那一行是不是满铺」。
+
+**手机底栏滚动时也折成同一枚胶囊。** 侧栏胶囊解掉的是「收起后还是一块板」，手机端有
+同一个病但方向相反：411dp 的手机把屏幕高度的**近五分之一**（69dp）常年交给一条重复页面
+内容的条子。现在页面向下滚动时，底栏让位给页面——`Scaffold` 加 `extendBody: mobile`，
+页面纸面一直铺到底边，胶囊浮在它上面 `Sp.x2` 处；向上滚回来、或者切页（新页面从自己的
+顶部开始）时展开。
+
+**底栏退成纸面材质，成为一整套浅色。** 第一版折叠态只是把槽位换成 `p.bg`、胶囊仍是
+`p.frame` 深石，用户看到的却是「除胶囊外都是透明的」——因为脚手架背景是石色，槽位一旦
+不自己填色就透出石面，「让位给页面」和「凭空开了个洞」在观感上是同一件事。正确的解法
+不是把透明调对，而是把材质换掉：底栏（含展开态）不再是深石，槽位用 `p.surface`、胶囊用
+`p.surface` + `p.line` 描边 + `Shadows.popFor`，图标文字改用纸面墨色（未选 `p.ink3`、
+选中 `p.accent`、选中底 `p.accentSoft`），并用 `extendBody` 让页面从胶囊下面穿过去。
+
+**折叠是一个数字的插值，不是换子树。** 第一版 `collapsed ? 胶囊子树 : row` 只在 flag
+翻转的那一帧替换，`AnimatedContainer` 只 tween 了颜色，「条→药丸」的中间态从未被画出来，
+观感就是硬切；而且 `Row(mainAxisSize: collapsed ? min : max)` 与子项
+`collapsed ? SizedBox(48) : Expanded` 也是结构性替换。现在 `TweenAnimationBuilder<double>`
+（`Motion.dur4` = 420ms，`Motion.easeTurn`）把 `fold` 从 0 到 1 推一遍，全程只有一棵树：
+槽位色/顶缝/光晕按 `1-t` 淡出，胶囊圆角与宽度按 `t` 长出来（宽度从满宽插值到
+`5 * _barCapsuleItemW + 2 * Sp.x1`），子项**任何时刻都是 `Expanded`**，靠外层宽度收缩而
+不换位；标签用 `ClipRect + Align(heightFactor: 1 - t) + Opacity` 连续让出高度，静止时
+（`fold == 1`）整块移出树。三个辅助函数：`_fold(from, to, t)`、`_fadedShadows(shadows, a)`
+（投影按 alpha 淡入，而不是某一帧突然出现——所以「无投影」是 alpha 为 0，不是空列表）、
+`_folded({fold, child})`。
+
+阈值两个：`_barCollapseAfter = 24`（前 24dp 是噪声——overscroll 回弹、键盘 inset 都会把
+栏折起来）和 `_barCollapseDelta = 6`（小于这个量的位移是触控板抖动）。滚动监听挂在 shell
+的 `ScrollController` 上（`_scrollerFor` 建 controller 时就 `addListener(_onPageScroll)`），
+因为页面滚动本来就走 shell 那个 controller，不需要页面倒过来向上报告。折叠状态放在
+`_AppShellState` 而不是 `_TabBar` 里，因为系统导航栏图标亮度要跟着翻。
+
+**`shellOverlayStyle` 因此不再收布局模式。** 它原来有个 `tabBar` 参数，论证是「手机底栏
+是石面所以两端都 light」。底栏成为纸面后这个前提没了：每种布局的底边都是纸面，图标只跟
+主题走（`isDark ? light : dark`）。旧参数不只是多余，它**把手机判断错过**——纸的底栏上
+画着浅色图标。签名收成一个 `isDark`，`test/system_ui_test.dart` 里四条按布局断言的用例
+跟着改成按主题断言（手机浅色主题现在是 dark 图标）。
+
+踩到的坑：`SafeArea` 里套 `Center(child: content)` 让**整个底栏撑满了窗口**（tab bar 量出
+411×866），页面的滚动视口被压成 `Size(411, 0)`，于是「滚动」这件事在测试里根本发生不了
+——两条新测试都是这么失败的，而失败信息看起来像「滚动没触发」。`Scaffold` 给
+`bottomNavigationBar` 的约束是松的，`Center` 没有 `heightFactor` 就会吃掉全部高度。修法是
+`Center(heightFactor: 1.0, child: content)`：高度贴着胶囊，不多一像素。这个 bug 只有量渲染
+对象才看得见（`probe` 打出 `box=Size(411, 866)` / `vp=0.0`），`takeException()` 是 null
+——「没报错」不等于「对」。
+
+第二个坑，紧跟第一个：**胶囊改成常驻之后，`find.byKey(kTabBarCapsuleKey)` 的
+`findsNothing` 断言全部失效**——折叠不再改变存在性，只改变形状。断言从「在不在」改成
+「是不是」，量宽度、圆角与投影 alpha 才是状态。同理 `boxShadow` 不能断言 `isEmpty`：
+淡出到 0 的投影仍是列表里的一条，只是颜色 alpha 为 0。
 
 所以 411dp 的测试**在结构上不可能**发现 rail 里的事，无论加多少条断言。补的
 `test/responsive_layout_test.dart` 把六个界面在五个视口（320×568、360×640、

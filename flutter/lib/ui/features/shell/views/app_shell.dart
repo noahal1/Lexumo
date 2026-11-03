@@ -4,7 +4,9 @@
 /// media queries did:
 ///
 ///   · wide (>1000px)   — stone sidebar with labels,
-///   · rail (≤1000px)   — the same sidebar collapsed to icons,
+///   · rail (≤1000px)   — the same destinations collapsed into a floating
+///                        capsule: a pill-shaped stone lozenge that hovers in
+///                        the rail's slot instead of filling it top to bottom,
 ///   · mobile (≤720px)  — no sidebar at all; a stone tab bar at the bottom.
 ///
 /// The collapsed/expanded choice is remembered for the session (in
@@ -52,6 +54,35 @@ export '../view_models/shell_view_model.dart' show PageId;
 /// width rather than growing to fit its contents — widening the rail would
 /// "fix" an overflow by breaking the layout of the page beside it.
 const Key kSidebarKey = ValueKey<String>('app-sidebar');
+
+/// Identity for the collapsed capsule inside the rail.
+///
+/// Separate from [kSidebarKey] because the two are different objects now: the
+/// sidebar *slot* keeps the rail width, and the capsule floats inside it with
+/// a margin on each side. A test that wants the shape has to address the
+/// capsule, and a test that wants the layout budget has to address the slot.
+const Key kRailCapsuleKey = ValueKey<String>('app-rail-capsule');
+
+/// Identity for the phone tab bar's slot: the full-width box that owns the
+/// bottom edge, before the bar collapses.
+///
+/// Same split as [kSidebarKey] / [kRailCapsuleKey], for the same reason. The
+/// slot animates its colour and its margins; the capsule inside it animates its
+/// shape. A test that wants "how wide is the bar" measures the slot's child,
+/// and a test that wants "is it floating" measures the capsule.
+const Key kTabBarKey = ValueKey<String>('app-tab-bar');
+
+/// Identity for the capsule the phone tab bar shrinks into.
+const Key kTabBarCapsuleKey = ValueKey<String>('app-tab-bar-capsule');
+
+/// How far the page has to have been scrolled before the bar is allowed to
+/// collapse. A few pixels in the first frame are noise — an overscroll bounce
+/// or a keyboard inset would otherwise fold the bar away on its own.
+const double _barCollapseAfter = 24.0;
+
+/// The smallest scroll movement that counts as a direction. Below this the two
+/// events are jitter, and a hand resting on a touchpad produces exactly that.
+const double _barCollapseDelta = 6.0;
 
 /// The icon for a destination.
 ///
@@ -120,8 +151,67 @@ class _AppShellState extends State<AppShell> {
   /// framework that defines it.
   final Map<PageId, ScrollController> _scrollers = <PageId, ScrollController>{};
 
-  ScrollController _scrollerFor(PageId page) =>
-      _scrollers.putIfAbsent(page, ScrollController.new);
+  ScrollController _scrollerFor(PageId page) => _scrollers.putIfAbsent(
+    page,
+    () => ScrollController()..addListener(_onPageScroll),
+  );
+
+  /// Re-read the active page's offset every time it scrolls.
+  ///
+  /// The controller is the shell's own, so this is the one place that sees a
+  /// page's movement without each page having to report it. The bar is phone
+  /// chrome only; a wide window has no bar to fold, so it is not tracked there
+  /// and `_barCollapsed` is held open for whenever the window narrows again.
+  void _onPageScroll() {
+    if (!_isMobile) return;
+    final controller = _scrollers[_vm.page];
+    if (controller == null || !controller.hasClients) return;
+    _onScrollPixels(controller.position.pixels);
+  }
+
+  /// Set on every build so a scroll callback knows whether the bar exists.
+  bool _isMobile = true;
+
+  /// Whether the phone tab bar has folded itself into its capsule.
+  ///
+  /// The bar reads a page's scroll direction and gets out of the way while the
+  /// reader is moving down the page, then comes back the moment they move up
+  /// or reach the top. It is shell state rather than bar state because the
+  /// system navigation glyphs have to flip with it: collapsed, the bottom edge
+  /// is paper and the glyphs must go dark in a light theme.
+  bool _barCollapsed = false;
+
+  /// The last scroll offset the bar reacted to, so a direction can be derived
+  /// from the difference between two events rather than from a velocity.
+  double _lastPixels = 0;
+
+  void _setBarCollapsed(bool value) {
+    if (_barCollapsed == value) return;
+    // Called from a scroll notification, which arrives outside the frame's
+    // build phase, so this is a legal place to rebuild.
+    setState(() => _barCollapsed = value);
+  }
+
+  /// Fold or unfold the bar from the page's scroll offset.
+  ///
+  /// Deliberately hysteretic in both directions: a collapse needs the page to
+  /// be past [_barCollapseAfter] and to have moved down by [_barCollapseDelta],
+  /// and an expand needs the same distance back. Without the dead zone the
+  /// bar would flutter open and shut on the jitter of a finger resting on the
+  /// glass.
+  void _onScrollPixels(double pixels) {
+    final delta = pixels - _lastPixels;
+    _lastPixels = pixels;
+    if (pixels <= _barCollapseAfter) {
+      _setBarCollapsed(false);
+      return;
+    }
+    if (delta > _barCollapseDelta) {
+      _setBarCollapsed(true);
+    } else if (delta < -_barCollapseDelta) {
+      _setBarCollapsed(false);
+    }
+  }
 
   @override
   void initState() {
@@ -149,6 +239,11 @@ class _AppShellState extends State<AppShell> {
     // dropped deliberately (the web build reset it too).
     final controller = _scrollers[page];
     if (controller != null && controller.hasClients) controller.jumpTo(0);
+    // A destination starts at its own top, so its bar starts unfolded. The
+    // last offset the bar reacted to belonged to the page we are leaving, and
+    // keeping it would read the new page's first event as a jump.
+    _lastPixels = 0;
+    _setBarCollapsed(false);
   }
 
   @override
@@ -156,6 +251,9 @@ class _AppShellState extends State<AppShell> {
     final width = MediaQuery.sizeOf(context).width;
     final mobile = width <= Layout.mobileBreakpoint;
     final narrow = width <= Layout.railBreakpoint;
+    // A scroll callback has no context of its own; this is what tells it
+    // whether the bar it would fold actually exists right now.
+    _isMobile = mobile;
 
     return ListenableBuilder(
       listenable: _vm,
@@ -183,15 +281,26 @@ class _AppShellState extends State<AppShell> {
             autofocus: true,
             // The window is edge-to-edge (`enableEdgeToEdge` in `main.dart`),
             // so both system bars float over this widget and their glyph
-            // colours have to be republished from here. `shellOverlayStyle`
-            // takes the layout mode because the two edges sit on different
-            // materials: the top is always the stone frame (dark in both
-            // themes), while the bottom is stone only when the phone tab bar is
-            // there and paper otherwise. See `ui/core/system_ui.dart`.
+            // colours have to be republished from here. The top edge is always
+            // the stone frame, dark in both themes, so its glyphs stay light.
+            // The bottom edge is paper in every layout -- the phone tab bar is
+            // paper material, a tablet or desktop window has no bar at all --
+            // so its glyphs follow the theme. `shellOverlayStyle` takes only
+            // `isDark` for that reason; it took the layout mode back when the
+            // bar was stone, which is exactly the assumption this redesign
+            // removed. See `ui/core/system_ui.dart`.
             child: AnnotatedRegion<SystemUiOverlayStyle>(
-              value: shellOverlayStyle(tabBar: mobile, isDark: _vm.isDark),
+              value: shellOverlayStyle(isDark: _vm.isDark),
               child: Scaffold(
                 backgroundColor: Palette.of(context).frame,
+                // The bar owns no strip of its own on a phone: the page's paper
+                // runs to the bottom edge and the capsule floats over it. That
+                // is the difference between "the bar folded away" and "the bar
+                // turned see-through" — the first is a page you can scroll to
+                // the end of, the second is a hole in the chrome. Without this,
+                // a transparent slot would reveal the stone `Scaffold` behind
+                // it instead of the page.
+                extendBody: mobile,
                 body: SafeArea(
                   bottom: false,
                   child: Row(
@@ -211,8 +320,13 @@ class _AppShellState extends State<AppShell> {
                     ],
                   ),
                 ),
-                bottomNavigationBar:
-                    mobile ? _TabBar(vm: _vm, onNavigate: _navigate) : null,
+                bottomNavigationBar: mobile
+                    ? _TabBar(
+                        vm: _vm,
+                        onNavigate: _navigate,
+                        collapsed: _barCollapsed,
+                      )
+                    : null,
                 floatingActionButton: null,
               ),
             ),
@@ -332,18 +446,105 @@ class _Sidebar extends StatelessWidget {
       ),
     ];
 
+    final List<Widget> navItems = <Widget>[
+      for (final item in PageId.values)
+        _NavItem(
+          item: item,
+          active: vm.page == item,
+          rail: rail,
+          badge:
+              item == PageId.practice && vm.dueCount > 0 ? vm.dueCount : null,
+          onTap: () => onNavigate(item),
+        ),
+    ];
+
+    // ---- collapsed: a floating capsule -------------------------------
+    // The rail used to be the full-height slab narrowed to 64dp: the same
+    // stone wall, with the labels removed. That reads as "the sidebar is
+    // still there, it just went quiet" — which is what the web build drew,
+    // and it is why the collapsed state felt like a strip of a slab rather
+    // than a menu in its own right.
+    //
+    // Collapsed, the menu becomes one object: a capsule. It keeps the slot
+    // width (the page beside it must not move when the rail is toggled), but
+    // stops being the slot — it is a lozenge floating inside it.
+    //
+    // The slot gives up the stone for the same reason. A pill drawn in
+    // `p.frame` *on* `p.frame` is invisible: the first pass shipped exactly
+    // that, and the vision read on the running build returned "a tall, narrow
+    // dark rectangular slab ... no obvious rounded outline, border, or drop
+    // shadow" — the rounded ends, the outline and the pop shadow were all
+    // there and none of them could be seen. Shape and lift only read against
+    // a different field, so the rail's field becomes paper and the capsule
+    // keeps the stone. The contrast is then the same one the paper already
+    // has against the slab (roughly 12:1 in light, still clear in dark), and
+    // every colour inside a nav row — the azurite-soft fill that marks the
+    // current page, the `frame2` hover, the `frameInk` labels — keeps working
+    // against the face it was tuned on.
+    if (rail) {
+      return AnimatedContainer(
+        key: kSidebarKey,
+        duration: const Duration(milliseconds: 160),
+        width: Layout.sidebarRailW,
+        color: p.bg,
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: Sp.x4),
+            // The margin lives on its own Padding, not on the keyed container:
+            // `Container(margin:)` builds a Padding *around* itself, so a key
+            // on such a container measures the margin plus the shape, and a
+            // test asking "is the capsule narrower than its slot" would be
+            // told no. Keyed, the container is the capsule.
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Sp.x1),
+              child: Container(
+                key: kRailCapsuleKey,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: Sp.x1, vertical: Sp.x3),
+                decoration: BoxDecoration(
+                  color: p.frame,
+                  borderRadius: R.borderPill,
+                  border: Border.all(color: p.frameLine),
+                  boxShadow: Shadows.popFor(p.isDark),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    ...navItems,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: Sp.x2,
+                        vertical: Sp.x2,
+                      ),
+                      child: Container(height: 1, color: p.frameLine),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: footerButtons,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ---- expanded: the full stone slab -------------------------------
     return AnimatedContainer(
       // Named so a test can measure the sidebar itself rather than whichever
       // AnimatedContainer happens to come first in the tree.
       key: kSidebarKey,
       duration: const Duration(milliseconds: 160),
-      width: rail ? Layout.sidebarRailW : Layout.sidebarW,
+      width: Layout.sidebarW,
       decoration: BoxDecoration(
         color: p.frame,
         border: Border(right: BorderSide(color: p.frameLine)),
       ),
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: Sp.x4, horizontal: rail ? Sp.x2 : Sp.x3),
+        padding: const EdgeInsets.symmetric(vertical: Sp.x4, horizontal: Sp.x3),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -352,75 +553,54 @@ class _Sidebar extends StatelessWidget {
             // tagline, which meant the stone slab identified itself only at the
             // bottom, under a streak counter — the two least consequential
             // things in the column. Wordmark first, destinations under it.
-            if (!rail) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(Sp.x3, 0, Sp.x3, Sp.x4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // The app mark: the same drawing as public/icon.svg — a
-                    // stone frame holding a paper sheet, an azurite spine and
-                    // one ink dot. It is the one mark in the chrome that is
-                    // neither text nor an icon, and it is what makes the slab
-                    // read as a cover rather than a menu.
-                    const LexMark(size: 20, semanticLabel: 'Lexumo'),
-                    const SizedBox(width: Sp.x2),
-                    Expanded(
-                      child: Text(
-                        context.t('common.appName'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: Fonts.display,
-                          fontSize: Fs.md,
-                          height: Lh.tight,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.02,
-                          color: p.frameInk,
-                        ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Sp.x3, 0, Sp.x3, Sp.x4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // The app mark: the same drawing as public/icon.svg — a
+                  // stone frame holding a paper sheet, an azurite spine and
+                  // one ink dot. It is the one mark in the chrome that is
+                  // neither text nor an icon, and it is what makes the slab
+                  // read as a cover rather than a menu.
+                  const LexMark(size: 20, semanticLabel: 'Lexumo'),
+                  const SizedBox(width: Sp.x2),
+                  Expanded(
+                    child: Text(
+                      context.t('common.appName'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: Fonts.display,
+                        fontSize: Fs.md,
+                        height: Lh.tight,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.02,
+                        color: p.frameInk,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-            for (final item in PageId.values)
-              _NavItem(
-                item: item,
-                active: vm.page == item,
-                rail: rail,
-                badge: item == PageId.practice && vm.dueCount > 0
-                    ? vm.dueCount
-                    : null,
-                onTap: () => onNavigate(item),
-              ),
+            ),
+            ...navItems,
             const Spacer(),
-            if (!rail) ...[
-              _StreakCard(streak: stats.streak, today: stats.today),
-              const SizedBox(height: Sp.x2),
-            ],
-            // The footer buttons cannot sit side by side in the 64dp rail:
-            // the rail's inner width is 64 - 2*8 padding - 1 border = 47dp,
-            // while three 44dp touch targets need 132 — an 85dp overflow that
-            // only appears on touch platforms, which is why the desktop-width
-            // tests never saw it. Stacked, each button gets the full width and
-            // the footer's axis becomes the only thing that changes. The web
-            // build made the same call for the same reason (global.css: "The
-            // footer buttons cannot sit side by side in a 64px rail — stack
-            // them"). One list, two axes, so the buttons cannot drift apart.
-            rail
-                ? Column(mainAxisSize: MainAxisSize.min, children: footerButtons)
-                : Row(children: footerButtons),
-            if (!rail) ...[
-              const SizedBox(height: Sp.x2),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: Sp.x2),
-                child: Text(
-                  context.t('common.appTagline'),
-                  style: TextStyle(fontSize: Fs.xs, height: Lh.body, color: p.frameInk3),
-                ),
+            _StreakCard(streak: stats.streak, today: stats.today),
+            const SizedBox(height: Sp.x2),
+            // Expanded, the three footer buttons share one row: the slab is
+            // 232dp wide and each button is a 32dp tile, so they fit with room
+            // to spare. (The collapsed capsule stacks them instead — see the
+            // rail branch above, where 44dp touch targets cannot share a 64dp
+            // slot.) One list, two axes, so the buttons cannot drift apart.
+            Row(children: footerButtons),
+            const SizedBox(height: Sp.x2),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Sp.x2),
+              child: Text(
+                context.t('common.appTagline'),
+                style: TextStyle(fontSize: Fs.xs, height: Lh.body, color: p.frameInk3),
               ),
-            ],
+            ),
           ],
         ),
       ),
@@ -705,64 +885,239 @@ class _StreakCard extends StatelessWidget {
 /* ------------------------------------------------------------------ */
 
 class _TabBar extends StatelessWidget {
-  const _TabBar({required this.vm, required this.onNavigate});
+  const _TabBar({
+    required this.vm,
+    required this.onNavigate,
+    required this.collapsed,
+  });
 
   final ShellViewModel vm;
   final ValueChanged<PageId> onNavigate;
 
+  /// Whether the page is scrolling down, in which case the bar folds itself
+  /// into a floating capsule of icons and gives the page its bottom edge back.
+  final bool collapsed;
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    // The tab bar floats over the page rather than sitting in it, so it gets
-    // the one shadow the design system reserves for that: a hairline of its own
-    // colour plus a soft upward bloom. `Shadows.tabbarFor` was written for this
-    // bar and never wired up — the bar drew a flat `Border(top:)` instead, which
-    // reads as a seam rather than as lift. The border stays (it is what defines
-    // the edge against a same-coloured page in dark mode, where the bloom is
-    // nearly invisible); the shadow is what makes it a surface.
-    return Container(
-      decoration: BoxDecoration(
-        color: p.frame,
-        border: Border(top: BorderSide(color: p.frameLine)),
-        boxShadow: Shadows.tabbarFor(p.isDark),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Sp.x2, vertical: Sp.x1),
-          child: Row(
-            children: [
-              for (final item in PageId.values)
-                Expanded(
-                  child: _TabItem(
-                    item: item,
-                    active: vm.page == item,
-                    badge: item == PageId.practice && vm.dueCount > 0
-                        ? vm.dueCount
-                        : null,
-                    onTap: () => onNavigate(item),
-                  ),
-                ),
-            ],
+    // One number drives the whole fold, and it is a *number*, not a boolean.
+    //
+    // The first pass switched a `collapsed` flag and swapped subtrees on it:
+    // the bar's surface jumped colour, the row's children traded `Expanded`
+    // for fixed boxes, and a capsule appeared in place of the row on the same
+    // frame. Everything that was "animating" was the two colours the slot
+    // tweened; the object the user is supposed to watch — the bar becoming a
+    // pill — was never actually drawn mid-way, so folding read as a cut, not
+    // as motion. A boolean cannot express a shape that is halfway between a
+    // bar and a capsule. `t` can: every property below is a lerp on it.
+    //
+    // The choreography is a single idea: the bar's surface *lifts off* the
+    // bottom edge. At t = 0 the capsule is exactly as wide as the slot and
+    // exactly the slot's colour, so it is invisible — it is the bar. As t
+    // rises, the slot recedes to the page colour while the capsule keeps the
+    // surface colour, narrows to five slots, and grows its shadow. A capsule
+    // that starts as the bar itself cannot pop into existence, and there is no
+    // frame where the user sees "the old bar with rounded ends".
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: collapsed ? 1 : 0),
+      duration: Motion.dur4,
+      curve: Motion.easeTurn,
+      builder: (BuildContext context, double t, Widget? _) {
+        final List<Widget> items = <Widget>[
+          for (final item in PageId.values)
+            _TabItem(
+              item: item,
+              active: vm.page == item,
+              badge: item == PageId.practice && vm.dueCount > 0
+                  ? vm.dueCount
+                  : null,
+              fold: t,
+              onTap: () => onNavigate(item),
+            ),
+        ];
+
+        // The five destinations are `Expanded` at every point of the fold. The
+        // capsule's *own* width is what shrinks (below), so each expanded child
+        // narrows with it and lands on exactly 48dp when the capsule is five
+        // slots wide plus its padding. Nothing trades places mid-animation.
+        final Widget row = Row(
+          children: <Widget>[
+            for (final Widget item in items) Expanded(child: item),
+          ],
+        );
+
+        return Container(
+          key: kTabBarKey,
+          decoration: BoxDecoration(
+            // A surface while it is a bar, and nothing at all once it has
+            // lifted off. Folding to a *paper-coloured* strip is what the first
+            // pass did, and it is why the result looked transparent: paper over
+            // paper is indistinguishable from a hole, so the reader cannot tell
+            // whether the page continues under the bar or stops at it. Going to
+            // zero alpha settles that question — with `extendBody` the page
+            // really does continue, and the capsule really is floating on it.
+            //
+            // `fadeFrom` and not `Colors.transparent`: lerping towards
+            // transparent black drags the mid-points through grey, which on a
+            // light theme is a stain the concept does not have.
+            color: Color.lerp(p.surface, fadeFrom(p.surface), t),
+            // A paper seam, fading out as the slot hands the bottom edge back.
+            //
+            // This replaces the stone `Border(top:)` the bar used to wear. It
+            // exists to define the edge against a same-coloured page; a seam
+            // drawn in stone under a paper bar is a dark line the design system
+            // does not have.
+            border: Border(
+              top: BorderSide(color: Color.lerp(p.line, fadeFrom(p.line), t)!),
+            ),
+            boxShadow: _fadedShadows(Shadows.tabbarFor(p.isDark), 1 - t),
           ),
-        ),
-      ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              // The capsule needs air under it, or it is not floating — it is a
+              // pill glued to the bottom of the window. The margin opens up as
+              // it folds rather than snapping on at the end.
+              padding: EdgeInsets.only(
+                left: Sp.x2,
+                right: Sp.x2,
+                top: _fold(Sp.x1, Sp.x2, t),
+                bottom: _fold(Sp.x1, Sp.x2, t),
+              ),
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  // Full width is whatever the slot offers; compact is five
+                  // slots plus the capsule's own horizontal padding.
+                  final double width = _fold(
+                    constraints.maxWidth,
+                    PageId.values.length * _barCapsuleItemW + 2 * Sp.x1,
+                    t,
+                  );
+                  return Center(
+                    // `heightFactor: 1` is load-bearing. A bare `Center`
+                    // expands to the loose constraints the Scaffold hands its
+                    // bottom bar — the full window height — which collapses the
+                    // page's scroll viewport to 0 and takes the bar's whole
+                    // strip out of the page. Sizing to the child keeps the bar
+                    // as tall as the capsule and no taller.
+                    heightFactor: 1.0,
+                    child: Container(
+                      key: kTabBarCapsuleKey,
+                      width: width,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: _fold(0, Sp.x1, t),
+                        vertical: _fold(0, Sp.x1, t),
+                      ),
+                      decoration: BoxDecoration(
+                        color: p.surface,
+                        // Zero radius and a surface-coloured edge at t = 0:
+                        // the capsule has no outline of its own until it has
+                        // something to be outlined against.
+                        borderRadius: BorderRadius.circular(_fold(0, R.pill, t)),
+                        border: Border.all(
+                          color: Color.lerp(p.surface, p.line, t)!,
+                        ),
+                        boxShadow: _fadedShadows(Shadows.popFor(p.isDark), t),
+                      ),
+                      child: row,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
 
+/// Linear interpolation, the one primitive the tab bar's fold is built on.
+double _fold(double from, double to, double t) => from + (to - from) * t;
+
+/// A child that shrinks and fades as [fold] rises from 0 to 1, taking no space
+/// once it is folded.
+///
+/// `heightFactor` on an [Align] is what makes "no space" continuous: the label
+/// gives up its height a fraction at a time instead of being removed on a
+/// frame. Without it the item's height would jump, and the bar's total height
+/// is exactly what must not jump — it is the one piece of chrome whose size the
+/// page below depends on.
+Widget _folded({required double fold, required Widget child}) {
+  final double t = fold.clamp(0.0, 1.0);
+  return ClipRect(
+    child: Align(
+      alignment: Alignment.topCenter,
+      heightFactor: 1 - t,
+      child: Opacity(
+        opacity: 1 - t,
+        // Folded, the label is off the layout but still hit-testable through a
+        // zero-height box; excluding it keeps taps on the gap from landing on a
+        // text nobody can see.
+        child: IgnorePointer(ignoring: t > 0.999, child: child),
+      ),
+    ),
+  );
+}
+
+/// The same shadows, scaled towards invisible.
+///
+/// `BoxShadow` has no alpha knob and `scale` only touches geometry, so the
+/// colour is rebuilt. Used to fade a shadow in with the fold instead of
+/// switching it on at the last frame — a capsule that gains its shadow in one
+/// frame has not finished folding, it has been replaced.
+List<BoxShadow> _fadedShadows(List<BoxShadow> shadows, double alpha) {
+  final double a = alpha.clamp(0.0, 1.0);
+  return <BoxShadow>[
+    for (final BoxShadow s in shadows)
+      BoxShadow(
+        color: s.color.withValues(alpha: s.color.a * a),
+        offset: s.offset,
+        blurRadius: s.blurRadius,
+        spreadRadius: s.spreadRadius,
+        blurStyle: s.blurStyle,
+      ),
+  ];
+}
+
+/// Width of one destination inside the collapsed capsule.
+///
+/// Fixed rather than intrinsic: five equal 48dp slots keep the icons on the
+/// same rhythm as the expanded bar, and a fixed width is what lets the capsule
+/// be narrower than the window without measuring text that is no longer drawn.
+const double _barCapsuleItemW = 48.0;
+
 class _TabItem extends StatelessWidget {
-  const _TabItem({required this.item, required this.active, required this.badge, required this.onTap});
+  const _TabItem({
+    required this.item,
+    required this.active,
+    required this.badge,
+    required this.fold,
+    required this.onTap,
+  });
 
   final PageId item;
   final bool active;
   final int? badge;
+
+  /// How far the bar has folded into a capsule, 0 (bar) … 1 (capsule).
+  ///
+  /// A double rather than a flag because this widget has to be *midway* — its
+  /// label half-folded, its icon part-way between 48dp and a full share of the
+  /// width. The parent already tweens this value, so nothing here may run an
+  /// implicit animation of its own: two clocks for one gesture is how a fold
+  /// ends up with a part that arrives late.
+  final double fold;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final color = active ? p.frameAccent : p.frameInk3;
+    // Paper ink now, not frame ink. The bar is part of the paper material in
+    // both themes; `frameInk` was for the stone slab that used to sit here, and
+    // on paper it is white-on-white.
+    final Color color = active ? p.accent : p.ink3;
     // The current tab wears a capsule of accent-soft, exactly like the sidebar's
     // current row and the segmented control. A tint plus a 2dp rule was the
     // previous vocabulary — a third one, since nothing else in the app marked a
@@ -771,14 +1126,23 @@ class _TabItem extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: Motion.dur2,
-        curve: Motion.easeOut,
-        constraints: const BoxConstraints(minHeight: 52),
-        margin: const EdgeInsets.symmetric(horizontal: 2, vertical: Sp.x1),
-        padding: const EdgeInsets.symmetric(vertical: Sp.x1, horizontal: Sp.x2),
+      child: Container(
+        constraints: BoxConstraints(
+          minHeight: _fold(52, Layout.tap, fold),
+        ),
+        margin: EdgeInsets.symmetric(
+          horizontal: 2 * (1 - fold),
+          vertical: Sp.x1 * (1 - fold),
+        ),
+        // The folded capsule is 48dp wide with 8dp of its own padding, so the
+        // item has to give up its horizontal padding or the 30dp icon box would
+        // not fit inside it.
+        padding: EdgeInsets.symmetric(
+          vertical: Sp.x1,
+          horizontal: _fold(Sp.x2, Sp.x1, fold),
+        ),
         decoration: BoxDecoration(
-          color: active ? p.frameAccentSoft : fadeFrom(p.frameAccentSoft),
+          color: active ? p.accentSoft : fadeFrom(p.accentSoft),
           borderRadius: R.borderPill,
         ),
         child: Column(
@@ -817,7 +1181,11 @@ class _TabItem extends StatelessWidget {
                         height: 15,
                         padding: const EdgeInsets.symmetric(horizontal: 3),
                         decoration: BoxDecoration(
-                          color: active ? p.frameAccent : p.frame3,
+                          // Paper palette: the count is a quiet footnote filled
+                          // with the accent when its tab is current, and a
+                          // sunken chip otherwise. `frame3` was the stone
+                          // version of that chip and is a black dot here.
+                          color: active ? p.accent : p.surface2,
                           borderRadius: BorderRadius.circular(R.full),
                         ),
                         child: Center(
@@ -827,7 +1195,7 @@ class _TabItem extends StatelessWidget {
                               fontSize: 10,
                               height: 1,
                               fontWeight: FontWeight.w600,
-                              color: active ? p.frame2 : p.frameInk3,
+                              color: active ? p.onAccent : p.ink3,
                               fontFeatures: const [FontFeature.tabularFigures()],
                             ),
                           ),
@@ -837,25 +1205,45 @@ class _TabItem extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: Sp.x1),
-            Text(
-              context.t(item.labelKey),
-              // Five destinations on a 320dp phone leave ~34dp of text column
-              // once the pill's padding is taken. A CJK label is two glyphs and
-              // fits; a longer Latin one has to ellipsize rather than wrap,
-              // because a wrapped label would grow the bar and the bar is the
-              // one piece of chrome that must not change height with language.
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: Fs.xs,
-                height: Lh.title,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-                letterSpacing: 0.01,
-                color: color,
+            // Folded, the capsule is icons only — a 48dp column cannot hold a
+            // label, and five stacked labels are what made the collapsed state
+            // look like the old bar wearing a border radius.
+            //
+            // It folds rather than switching off. The label's height and its
+            // opacity are both lerps on `fold`, so the bar loses its second
+            // line over the same 420ms as everything else. Cutting it on the
+            // frame the flag flipped was half of why folding read as a cut:
+            // five labels vanished while the surface was still mid-tween.
+            //
+            // At rest it is dropped from the tree entirely, which is what makes
+            // "folded" mean folded: an invisible label still occupies a text
+            // layout box and still answers `find.text`.
+            if (fold < 1)
+              _folded(
+                fold: fold,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: Sp.x1),
+                  child: Text(
+                    context.t(item.labelKey),
+                    // Five destinations on a 320dp phone leave ~34dp of text
+                    // column once the pill's padding is taken. A CJK label is
+                    // two glyphs and fits; a longer Latin one has to ellipsize
+                    // rather than wrap, because a wrapped label would grow the
+                    // bar and the bar is the one piece of chrome that must not
+                    // change height with language.
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: Fs.xs,
+                      height: Lh.title,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                      letterSpacing: 0.01,
+                      color: color,
+                    ),
+                  ),
+                ),
               ),
-            ),
             // The capsule behind the whole tab is the selection mark now, so the
             // 2dp rule that used to sit under the label is gone: two marks for
             // one state is how a bar starts looking decorated.

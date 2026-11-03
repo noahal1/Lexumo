@@ -117,25 +117,23 @@ void main() {
 
   group('shellOverlayStyle', () {
     test('both bars are transparent so the app colour reaches the glass', () {
-      for (final bool tabBar in <bool>[true, false]) {
-        for (final bool isDark in <bool>[true, false]) {
-          final style = shellOverlayStyle(tabBar: tabBar, isDark: isDark);
-          expect(
-            style.statusBarColor,
-            Colors.transparent,
-            reason: 'status bar @ tabBar=$tabBar isDark=$isDark',
-          );
-          expect(
-            style.systemNavigationBarColor,
-            Colors.transparent,
-            reason: 'navigation bar @ tabBar=$tabBar isDark=$isDark',
-          );
-          expect(
-            style.systemNavigationBarDividerColor,
-            Colors.transparent,
-            reason: 'divider @ tabBar=$tabBar isDark=$isDark',
-          );
-        }
+      for (final bool isDark in <bool>[true, false]) {
+        final style = shellOverlayStyle(isDark: isDark);
+        expect(
+          style.statusBarColor,
+          Colors.transparent,
+          reason: 'status bar @ isDark=$isDark',
+        );
+        expect(
+          style.systemNavigationBarColor,
+          Colors.transparent,
+          reason: 'navigation bar @ isDark=$isDark',
+        );
+        expect(
+          style.systemNavigationBarDividerColor,
+          Colors.transparent,
+          reason: 'divider @ isDark=$isDark',
+        );
       }
     });
 
@@ -143,8 +141,8 @@ void main() {
       // Android 10+ defaults `systemNavigationBarContrastEnforced` to true when
       // the bar is transparent, which paints a translucent scrim in a colour no
       // design token owns. Same for the status bar from Android 11.
-      for (final bool tabBar in <bool>[true, false]) {
-        final style = shellOverlayStyle(tabBar: tabBar, isDark: false);
+      for (final bool isDark in <bool>[true, false]) {
+        final style = shellOverlayStyle(isDark: isDark);
         expect(style.systemStatusBarContrastEnforced, isFalse);
         expect(style.systemNavigationBarContrastEnforced, isFalse);
       }
@@ -157,30 +155,26 @@ void main() {
       // status icons ever followed the theme, one of the two modes would put
       // dark glyphs on dark stone.
       for (final bool isDark in <bool>[true, false]) {
-        final style = shellOverlayStyle(tabBar: true, isDark: isDark);
+        final style = shellOverlayStyle(isDark: isDark);
         expect(style.statusBarIconBrightness, Brightness.light);
         // iOS spells the same intent inverted: `dark` means "light content".
         expect(style.statusBarBrightness, Brightness.dark);
       }
     });
 
-    test('the tab bar gets light nav glyphs, paper follows the theme', () {
-      // The tab bar is stone, so light glyphs — the same as the top edge.
+    test('nav glyphs follow the theme, because the bottom edge is always paper',
+        () {
+      // Every layout ends in paper now: the phone's bar is a paper dock with a
+      // paper capsule on it, and the wider layouts have no bar at all. There is
+      // no layout mode left in which the bottom edge is stone, which is why this
+      // function stopped taking one. It used to be told the layout and got the
+      // phone case wrong — it painted light glyphs over a paper bar.
       expect(
-        shellOverlayStyle(tabBar: true, isDark: false)
-            .systemNavigationBarIconBrightness,
-        Brightness.light,
-      );
-      // No tab bar: the paper runs to the bottom edge and paper is light in the
-      // light theme, so the glyphs have to invert.
-      expect(
-        shellOverlayStyle(tabBar: false, isDark: false)
-            .systemNavigationBarIconBrightness,
+        shellOverlayStyle(isDark: false).systemNavigationBarIconBrightness,
         Brightness.dark,
       );
       expect(
-        shellOverlayStyle(tabBar: false, isDark: true)
-            .systemNavigationBarIconBrightness,
+        shellOverlayStyle(isDark: true).systemNavigationBarIconBrightness,
         Brightness.light,
       );
     });
@@ -236,15 +230,29 @@ void main() {
   });
 
   group('the shell publishes the style for its own layout mode', () {
-    testWidgets('a phone gets the tab bar, so both edges are stone',
+    testWidgets('a phone ends in paper too, so nav glyphs are dark',
         (WidgetTester tester) async {
       final style = await _publishedStyle(
         tester,
         size: const Size(411, 866),
       );
+      // The phone used to be the one layout with a stone strip under the page,
+      // so this asserted light glyphs. The bar is a paper dock now — light
+      // glyphs on paper is exactly the failure this line pins.
+      expect(style.systemNavigationBarIconBrightness, Brightness.dark);
+      // The top edge is still stone in every layout.
       expect(style.statusBarIconBrightness, Brightness.light);
-      expect(style.systemNavigationBarIconBrightness, Brightness.light);
       expect(style.statusBarColor, Colors.transparent);
+    });
+
+    testWidgets('a phone in the dark theme flips the nav glyphs back',
+        (WidgetTester tester) async {
+      final style = await _publishedStyle(
+        tester,
+        size: const Size(411, 866),
+        dark: true,
+      );
+      expect(style.systemNavigationBarIconBrightness, Brightness.light);
     });
 
     testWidgets('a tablet has no tab bar, so the bottom edge is paper',
