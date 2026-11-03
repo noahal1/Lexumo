@@ -24,7 +24,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../../../../data/models/sync_config.dart' show kDefaultServer;
+import '../../../../data/models/sync_config.dart'
+    show kDefaultAnonKey, kDefaultServer;
 import '../../../../data/repositories/onboarding_store.dart';
 import '../../../../data/repositories/sync_engine.dart';
 import '../../../../data/services/backend_transport.dart'
@@ -35,20 +36,20 @@ import '../../../core/view_model.dart';
 
 class OnboardingViewModel extends ViewModel {
   OnboardingViewModel({
-    required Feedback feedback,
-    required OnboardingStore onboarding,
-    required SyncEngine engine,
-    required VoidCallback onConfigured,
-  })  : _feedback = feedback,
-        _onboarding = onboarding,
-        _engine = engine,
-        _onConfigured = onConfigured {
-    // The address a returning user already had, or the local dev server. The
-    // engine's status is the only place a saved address can come from before a
-    // session exists, and reading it here means the field is right on the first
-    // frame rather than one rebuild later.
-    final status = engine.status;
+    required this._feedback,
+    required this._onboarding,
+    required this._engine,
+    required this._onConfigured,
+  }) {
+    // The address a returning user already had, or the one this build ships
+    // with. The engine's status is the only place a saved address can come from
+    // before a session exists, and reading it here means the field is right on
+    // the first frame rather than one rebuild later.
+    final status = _engine.status;
     _server = status.server.isEmpty ? kDefaultServer : status.server;
+    // Same for the project key. [SyncStatus] already falls back to the shipped
+    // key when there is no session, so this only guards the empty case a
+    // reference-server session leaves behind.
     _anonKey = status.anonKey;
   }
 
@@ -60,7 +61,7 @@ class OnboardingViewModel extends ViewModel {
   String _server = kDefaultServer;
   String _email = '';
   String _password = '';
-  String _anonKey = '';
+  String _anonKey = kDefaultAnonKey;
   bool _busy = false;
   SyncError? _error;
 
@@ -133,10 +134,17 @@ class OnboardingViewModel extends ViewModel {
   }
 
   /// Check that the address answers `/api/health`.
+  ///
+  /// The key goes with it: a Supabase gateway rejects a keyless request, and
+  /// the transport would report that as a failed connection rather than as a
+  /// missing key.
   Future<void> testConnection() async {
     if (_busy) return;
     update(() => _busy = true);
-    final ok = await _engine.testConnection(_server.trim());
+    final ok = await _engine.testConnection(
+      _server.trim(),
+      anonKey: _anonKey.trim(),
+    );
     if (isDisposed) return;
     update(() => _busy = false);
     _feedback.toast(

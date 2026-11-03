@@ -41,7 +41,7 @@ class SyncStatus {
     this.pending = 0,
     this.email = '',
     this.server = kDefaultServer,
-    this.anonKey = '',
+    this.anonKey = kDefaultAnonKey,
   });
 
   final SyncState state;
@@ -52,7 +52,8 @@ class SyncStatus {
   final String server;
 
   /// The Supabase project key of the saved session, so the sign-in form can
-  /// prefill it. Empty for a reference-server session, which has none.
+  /// prefill it. Falls back to [kDefaultAnonKey] when there is no session, which
+  /// is what a fresh install should show.
   final String anonKey;
 
   bool get isSignedIn => state != SyncState.signedOut;
@@ -154,7 +155,7 @@ class SyncEngine {
       pending: store.pendingChangeCount(),
       email: config?.email ?? '',
       server: config?.server ?? kDefaultServer,
-      anonKey: config?.anonKey ?? '',
+      anonKey: config?.anonKey ?? kDefaultAnonKey,
     );
   }
 
@@ -269,7 +270,15 @@ class SyncEngine {
   /* ---------------------------------------------------------------- */
 
   /// Check that a server answers `/api/health`. Never throws.
-  Future<bool> testConnection(String server) async {
+  ///
+  /// [anonKey] is only meaningful for Supabase, whose gateway rejects every
+  /// request without the project key. It has to be primed here too: a health
+  /// check runs before any [SyncConfig] exists, so nothing has handed the
+  /// transport a key yet, and `BackendTransport` answers a keyless Supabase
+  /// request with `unauthorized` — which would read as "cannot reach the
+  /// server" when the server was fine and only the key was missing.
+  Future<bool> testConnection(String server, {String anonKey = ''}) async {
+    _primeCredentials(anonKey);
     try {
       await transport.request(normalizeServer(server), '/api/health');
       return true;

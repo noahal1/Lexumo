@@ -343,10 +343,10 @@ const Map<String, String> enRaw = {
   'settings.syncIntro': 'Sign in to keep your words, reviews and settings in step across devices.',
   'settings.syncServer': 'Server',
   'settings.syncServerHint':
-      'Address of your self-hosted sync server, e.g. http://127.0.0.1:8787.',
+      'Already points at this app\'s own project. Only change it to reach a self-hosted server.',
   'settings.syncKey': 'Supabase anon key',
   'settings.syncKeyHint':
-      'Only needed for a Supabase project. This is the public anon key, never the service_role key.',
+      'Already filled in for this app\'s project. Change it only when pointing at your own Supabase project. This is the public anon key, never the service_role key.',
   'settings.syncEmail': 'Email',
   'settings.syncPassword': 'Password',
   'settings.syncSignIn': 'Sign in',

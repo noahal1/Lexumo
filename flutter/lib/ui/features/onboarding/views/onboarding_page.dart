@@ -317,7 +317,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         hint: context.t('settings.syncServerHint'),
                         child: LexInput(
                           controller: _server,
-                          placeholder: 'http://127.0.0.1:8787',
+                          placeholder: kDefaultServer,
                           onChanged: _vm.setServer,
                         ),
                       ),

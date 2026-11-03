@@ -26,11 +26,15 @@
 library;
 
 // `Card` is ours (ui/widgets.dart), not Material's.
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart' hide Card;
 
 import '../../../../app/scope.dart';
 import '../../../../app/update_scope.dart';
-import '../../../../data/models/sync_config.dart' show kDefaultServer;
+import '../../../../data/repositories/onboarding_store.dart';
+import '../../../../data/services/app_dir.dart';
 import '../../../../data/repositories/sync_engine.dart';
 import '../../../../data/repositories/update_service.dart';
 import '../../../../data/services/transfer.dart' show ImportResult;
@@ -42,27 +46,11 @@ import '../../../../domain/models/types.dart';
 import '../../../../domain/models/utils.dart';
 import '../../../core/widgets/controls.dart';
 import '../../../core/widgets/density.dart';
-import '../../../core/widgets/keyboard_hints.dart';
 import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../onboarding/views/onboarding_page.dart';
 import '../../update/views/update_sheet.dart';
 import '../view_models/settings_view_model.dart';
-
-/// One row of the shortcut sheet, in the same declaration order as
-/// `src/lib/shortcuts.ts`. Mirrored locally instead of importing
-/// `app/shell.dart`, which imports this page — a back-import would close the
-/// cycle the shell's docs warn about.
-const List<({List<String> keys, String labelKey})> _kShortcuts = [
-  (keys: ['Ctrl', '1…5'], labelKey: 'shortcuts.pageSwitch'),
-  (keys: ['?'], labelKey: 'shortcuts.help'),
-  (keys: ['/'], labelKey: 'settings.shortcutSearch'),
-  (keys: ['n'], labelKey: 'settings.shortcutAdd'),
-  (keys: ['空格'], labelKey: 'settings.shortcutFlip'),
-  (keys: ['1', '2', '3'], labelKey: 'shortcuts.grade'),
-  (keys: ['Ctrl', 'Z'], labelKey: 'shortcuts.undo'),
-  (keys: ['←', '→'], labelKey: 'shortcuts.skip'),
-  (keys: ['Esc'], labelKey: 'shortcuts.closeModal'),
-];
 
 /* ------------------------------------------------------------------ */
 /* Ports: the process-wide singletons, read at call time               */
@@ -325,7 +313,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       // Only note the absence once the engine has actually said
                       // no; before warm-up `supported` answers true on purpose so
                       // the picker does not flash in and out.
-                      note: vm.speechSupported ? null : context.t('settings.noVoice'),
+                      //
+                      // It is a warning, not a note: this is the one sentence
+                      // in the group that changes what the user can do, so it
+                      // gets its own line on the page instead of the tail of
+                      // the heading.
+                      warning: vm.speechSupported ? null : context.t('settings.noVoice'),
                       children: [
                         _Row(
                           label: context.t('settings.ttsVoice'),
@@ -543,24 +536,10 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: Sp.x5),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 880),
-              // No box: the update block heads itself (a name row plus a
-              // version), and every other settings section is a heading over
-              // rows on the page, not a panel. The key stays — it is the widget
-              // tests' handle on this block, and matching on the button's label
-              // would tie them to copy that is expected to change.
-              child: KeyedSubtree(
-                key: const ValueKey('update-card'),
-                child: _UpdateSection(
-                  service: vm.updateService,
-                  state: vm.updateState,
-                ),
-              ),
-            ),
-            const SizedBox(height: Sp.x5),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 880),
-              child: _AboutCard(
+              child: _AboutSection(
                 version: vm.updateState?.current?.name.toString() ?? '—',
+                service: vm.updateService,
+                state: vm.updateState,
               ),
             ),
           ],
@@ -574,13 +553,45 @@ class _SettingsPageState extends State<SettingsPage> {
 /* Section / row / divider — the web build's parts.tsx                  */
 /* ------------------------------------------------------------------ */
 
-/// One named group of settings: a heading, then a card holding its rows.
+/// The left edge every settings column shares.
+///
+/// `SectionTitle` is normally a page eyebrow sitting flush with the page
+/// gutter, while these rows inset their text by `Sp.x4` inside a hover box
+/// that owns the full width. Measured on the running build, that put the
+/// group name 8dp to the left of the labels underneath it — close enough to
+/// read as a rendering slip rather than as an indent. Giving the heading the
+/// same inset costs nothing and puts the name directly over the column it
+/// names.
+const EdgeInsets _kHeadingInset = EdgeInsets.symmetric(horizontal: Sp.x4);
+
+/// The one heading style the page uses.
+///
+/// Three block titles used to be three styles: `SectionTitle` (13dp, `ink3`),
+/// the update block's own display-face 16dp, and the about card's inline
+/// 13dp label. All three name a block, so all three are the same thing.
+Widget _heading(BuildContext context, String label, {Widget? trailing}) {
+  return Padding(
+    padding: _kHeadingInset,
+    child: SectionTitle(
+      label: label,
+      trailing: trailing,
+      padded: false,
+      // `ink3` is the eyebrow level — fainter than the rows it introduces. A
+      // page with no other heading cannot afford that: the group name is the
+      // only thing naming the block and has to outrank its own annotation,
+      // not lose to it.
+      color: Palette.of(context).ink2,
+    ),
+  );
+}
+
+/// One named group of settings: a heading, then its rows directly on the page.
 ///
 /// The page used to be a single 880dp card containing every group, with
 /// full-bleed hairlines between them. That made eight unrelated decisions read
 /// as one form, and the card's own border competed with the dividers inside it
 /// — the eye had no clue where a group started, so it read the page as a wall.
-/// A heading above its own card is the same information with a visible edge:
+/// A heading above its own rows is the same information with a visible edge:
 /// each group is a thing you can find by scanning the left margin, which is how
 /// the rest of the app is organised now.
 ///
@@ -588,10 +599,29 @@ class _SettingsPageState extends State<SettingsPage> {
 /// anything (rows are inset 12dp from the card edge, the icon sat at 20dp), and
 /// a settings group is named by its words, not by a symbol.
 class _Section extends StatelessWidget {
-  const _Section({required this.title, this.note, required this.children});
+  const _Section({
+    required this.title,
+    this.note,
+    this.warning,
+    required this.children,
+  });
 
   final String title;
+
+  /// A short fact about the group, parked opposite its name. One line only:
+  /// anything that needs explaining belongs in a row's hint or in [warning].
   final String? note;
+
+  /// Something the user has to know before the rows below can be trusted —
+  /// a missing engine, a failed warm-up. It gets a whole line of the page,
+  /// not the tail of the heading.
+  ///
+  /// The audio group used to pass "this device has no usable voice" as
+  /// [note]: 22 characters, ellipsised in one line, at `ink4` (the decorative
+  /// grey). The single most consequential sentence in the group was the least
+  /// legible thing on the page.
+  final String? warning;
+
   final List<Widget> children;
 
   @override
@@ -604,17 +634,47 @@ class _Section extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionTitle(label: title, trailing: note == null ? null : Text(
-          note!,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontFamily: Fonts.mono,
-            fontSize: Fs.xs,
-            height: Lh.tight,
-            color: p.ink4,
+        _heading(
+          context,
+          title,
+          trailing: note == null
+              ? null
+              : Text(
+                  note!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: Fonts.mono,
+                    fontSize: Fs.xs,
+                    height: Lh.tight,
+                    color: p.ink3,
+                  ),
+                ),
+        ),
+        if (warning != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Sp.x4, 0, Sp.x4, Sp.x3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: LexIcon(Ic.info, size: 14, color: p.warn),
+                ),
+                const SizedBox(width: Sp.x2),
+                Expanded(
+                  child: Text(
+                    warning!,
+                    style: TextStyle(
+                      fontSize: Fs.sm,
+                      height: Lh.body,
+                      color: p.ink2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        )),
         HairlineList(
           rule: false,
           padded: false,
@@ -1092,146 +1152,11 @@ class _TrackPainter extends CustomPainter {
 /* Account & sync                                                       */
 /* ------------------------------------------------------------------ */
 
-/// The signed-out form: server, email, password, and three buttons.
-///
-/// These controllers exist only while signed out, so a password never sits in
-/// memory past the request that used it — the token is the thing worth keeping.
-/// The *values* they hold are the view model's draft; the controllers are the
-/// widget-layer half of it, which is why they live here.
-class _SignInForm extends StatefulWidget {
-  const _SignInForm({
-    required this.vm,
-    required this.busy,
-  });
-
-  final SettingsViewModel vm;
-  final bool busy;
-
-  @override
-  State<_SignInForm> createState() => _SignInFormState();
-}
-
-class _SignInFormState extends State<_SignInForm> {
-  /// Seeded from the view model's draft, which was itself seeded from the
-  /// session this page was opened with. The field outlives a failed submit, so
-  /// a mistyped password does not clear the address beside it.
-  late final TextEditingController _server;
-  late final TextEditingController _email;
-  late final TextEditingController _password;
-
-  /// The Supabase project key. Seeded from the saved session so a user who
-  /// signed out does not have to paste it again.
-  late final TextEditingController _key;
-
-  @override
-  void initState() {
-    super.initState();
-    final vm = widget.vm;
-    _server = TextEditingController(text: vm.syncServer);
-    _email = TextEditingController(text: vm.syncEmail);
-    _password = TextEditingController(text: vm.syncPassword);
-    _key = TextEditingController(text: vm.syncAnonKey);
-  }
-
-  @override
-  void dispose() {
-    _server.dispose();
-    _email.dispose();
-    _password.dispose();
-    _key.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final vm = widget.vm;
-    final p = Palette.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: Sp.x4, bottom: Sp.x2),
-          child: Text(
-            context.t('settings.syncIntro'),
-            style: TextStyle(fontSize: Fs.sm, height: Lh.body, color: p.ink2),
-          ),
-        ),
-        LexField(
-          label: context.t('settings.syncServer'),
-          hint: context.t('settings.syncServerHint'),
-          child: LexInput(
-            controller: _server,
-            placeholder: kDefaultServer,
-            onChanged: vm.setSyncServer,
-          ),
-        ),
-        // The key field only exists while the server is a Supabase one, so the
-        // visibility follows the draft as the user types the address.
-        if (vm.syncIsSupabase) ...[
-          const SizedBox(height: Sp.x3),
-          LexField(
-            label: context.t('settings.syncKey'),
-            hint: context.t('settings.syncKeyHint'),
-            child: LexInput(
-              controller: _key,
-              placeholder: 'eyJhbGciOi…',
-              onChanged: vm.setSyncAnonKey,
-              onSubmitted: (_) => vm.signIn(),
-            ),
-          ),
-        ],
-        const SizedBox(height: Sp.x3),
-        LexField(
-          label: context.t('settings.syncEmail'),
-          child: LexInput(
-            controller: _email,
-            placeholder: 'you@example.com',
-            onChanged: vm.setSyncEmail,
-            onSubmitted: (_) => vm.signIn(),
-          ),
-        ),
-        const SizedBox(height: Sp.x3),
-        LexField(
-          label: context.t('settings.syncPassword'),
-          hint: context.t('settings.syncPasswordHint'),
-          child: LexInput(
-            controller: _password,
-            obscure: true,
-            onChanged: vm.setSyncPassword,
-            onSubmitted: (_) => vm.signIn(),
-          ),
-        ),
-        const SizedBox(height: Sp.x4),
-        Wrap(
-          spacing: Sp.x2,
-          runSpacing: Sp.x2,
-          children: [
-            LexButton(
-              label: context.t('settings.syncSignIn'),
-              kind: BtnKind.primary,
-              onPressed: widget.busy ? null : vm.signIn,
-            ),
-            LexButton(
-              label: context.t('settings.syncSignUp'),
-              onPressed: widget.busy ? null : vm.signUp,
-            ),
-            LexButton(
-              label: context.t('settings.syncTest'),
-              kind: BtnKind.ghost,
-              onPressed: widget.busy ? null : vm.testConnection,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
 /// Account and sync. Ports `SyncSection.tsx`.
 ///
-/// Two shapes: signed out shows the form, signed in shows who you are, what the
-/// last round did, and the two actions. The state — the draft, the in-flight
-/// latch, the last form error, the status itself — comes from
+/// Two shapes: signed out shows a sign-in button (the form itself is the
+/// first-run gate — see `_openSignIn`), signed in shows who you are, what the
+/// last round did, and the two actions. The state comes from
 /// [SettingsViewModel], which republishes when the engine or the store changes,
 /// so this widget is layout and nothing else.
 class _SyncSection extends StatelessWidget {
@@ -1243,6 +1168,43 @@ class _SyncSection extends StatelessWidget {
 
   final SettingsViewModel vm;
   final bool autoSync;
+
+  /// Opens the first-run gate as a pushed page, reusing the exact form the app
+  /// starts with.
+  ///
+  /// The gate is a whole page, not a dialog: it owns a layout (the framed
+  /// panel beside the form on a wide window), and shrinking it into
+  /// [showLexModal]'s centered card would cut the half that makes it read as
+  /// a deliberate screen rather than a popup.
+  ///
+  /// The store is rebuilt here rather than shared with `main`'s: the sidecar
+  /// is a fact about this install, re-reading it costs one small file read,
+  /// and sharing would mean threading the boot's store through scopes the
+  /// rest of the app has no other use for. [OnboardingPage.onConfigured] pops
+  /// instead of swapping for the shell — the shell is already underneath.
+  Future<void> _openSignIn(BuildContext context) async {
+    final engine = SyncScope.engineWithoutDeps(context);
+    if (engine == null) return;
+    final store = FileOnboardingStore(
+      '${AppDir.dataDir}${Platform.pathSeparator}onboarding.json',
+    );
+    // Not awaited before the push: a pending file read inside the frame
+    // would hold the tap for a real disk round trip, and a store that has
+    // not read its sidecar yet behaves as "not set up", the honest default.
+    unawaited(store.load());
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OnboardingPage(
+          engine: engine,
+          onboarding: store,
+          // The answer is recorded by the page itself; coming back to the
+          // settings page is all the shell needs to do. The status row above
+          // rebuilds through [SettingsViewModel]'s engine subscription.
+          onConfigured: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+  }
   final ValueChanged<bool> onAutoSync;
 
   @override
@@ -1256,9 +1218,37 @@ class _SyncSection extends StatelessWidget {
     return _Section(
       title: context.t('settings.sync'),
       children: [
-        if (!signedIn)
-          _SignInForm(vm: vm, busy: vm.syncBusy)
-        else ...[
+        if (!signedIn) ...[
+          // No form here. The first-run gate already asks for the address, the
+          // email and the password, and it does it before the shell exists —
+          // a second copy of those fields on the settings page was two places
+          // to type one password, and the only thing the copy could do that
+          // the gate cannot is disagree with it about the server.
+          //
+          // What stays is the way back: a device set up as local can still
+          // change its mind, which is what `onboarding.localBody` promises
+          // ("之后随时可以在设置里登录").
+          _Row(
+            label: context.t('settings.syncStatus'),
+            hint: vm.syncSignedInAs,
+            control: _StatusPill(state: state),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: Sp.x4),
+            child: Wrap(
+              spacing: Sp.x2,
+              runSpacing: Sp.x2,
+              children: [
+                LexButton(
+                  label: context.t('settings.syncSignIn'),
+                  kind: BtnKind.primary,
+                  size: BtnSize.sm,
+                  onPressed: () => _openSignIn(context),
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
           _Row(
             label: context.t('settings.syncStatus'),
             hint: vm.syncSignedInAs,
@@ -1368,40 +1358,27 @@ class _StatusPill extends StatelessWidget {
 /* Updates                                                             */
 /* ------------------------------------------------------------------ */
 
-/// The updates card: one row that names the running build and one button that
-/// opens [showUpdateSheet].
+/// The update row: one sentence about the copy that is running and one button
+/// that opens [showUpdateSheet].
 ///
-/// It is a separate card rather than a section of the settings card because an
-/// update is not a preference — nothing here writes to the snapshot, and the
-/// row is the only place in the app that talks to the network on purpose. It
-/// also keeps the settings card's five sections about what the *app* does and
-/// this one about what *the app's copy* is.
-///
-/// When no [UpdateService] is mounted (a widget test, or a stripped build) the
-/// card still renders: it states the version it was compiled with and offers
-/// nothing else, which is honest and keeps the page's shape stable.
+/// It used to be a card of its own below the about block. The argument for
+/// splitting them was that an update is not a preference — nothing here writes
+/// to the snapshot. But both blocks answered the same question ("which copy is
+/// this?"), so the version arrived twice: once as a chip in the about block and
+/// once as this row's heading. Merged, the number is stated once and the action
+/// sits directly under it, which is also the only place it means anything.
 ///
 /// [state] arrives from [SettingsViewModel], which subscribes to the service's
 /// own notifier — so the phase-switch below is a plain read and this widget
 /// holds no subscription of its own.
-class _UpdateSection extends StatelessWidget {
-  const _UpdateSection({required this.service, required this.state});
+class _UpdateRow extends StatelessWidget {
+  const _UpdateRow({required this.service, required this.state});
 
   final UpdateService? service;
   final UpdateState? state;
 
   @override
   Widget build(BuildContext context) {
-    final p = Palette.of(context);
-
-    final current = state?.current;
-    final versionText = current == null
-        ? context.t('settings.version')
-        : context.t('settings.updateHint', {
-            'version': current.name.toString(),
-            'build': '${current.build}',
-          });
-
     final phase = state?.phase;
     final busy = state?.isBusy ?? false;
     final available = state?.available;
@@ -1447,43 +1424,11 @@ class _UpdateSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(Sp.x5, Sp.x4, Sp.x5, Sp.x3),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  context.t('settings.update'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontFamily: Fonts.display,
-                    fontSize: Fs.md,
-                    height: Lh.tight,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.005,
-                    color: p.ink,
-                  ),
-                ),
-              ),
-              const SizedBox(width: Sp.x3),
-              Text(
-                versionText,
-                maxLines: 1,
-                softWrap: false,
-                style: TextStyle(
-                  fontFamily: Fonts.mono,
-                  fontSize: Fs.xs,
-                  height: Lh.tight,
-                  color: p.ink4,
-                ),
-              ),
-            ],
-          ),
-        ),
         _Row(
-          // The header already names the build, so this line is where the
-          // *state* goes: the newest release, the download, the answer.
+          // This line is where the *state* goes: the newest release, the
+          // download, the answer. The build itself is named once, above, by
+          // the about block's version chip — repeating it here was what made
+          // the version appear twice on the same page.
           label: hint,
           control: service == null
               ? const SizedBox.shrink()
@@ -1504,7 +1449,7 @@ class _UpdateSection extends StatelessWidget {
         ),
         if (busy) ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(Sp.x5, 0, Sp.x5, Sp.x4),
+            padding: const EdgeInsets.fromLTRB(Sp.x4, 0, Sp.x4, Sp.x4),
             child: ProgressBar(value: state?.progress ?? 0, thick: true),
           ),
         ],
@@ -1517,14 +1462,25 @@ class _UpdateSection extends StatelessWidget {
 /* About                                                               */
 /* ------------------------------------------------------------------ */
 
-class _AboutCard extends StatelessWidget {
-  const _AboutCard({required this.version});
+class _AboutSection extends StatelessWidget {
+  const _AboutSection({
+    required this.version,
+    required this.service,
+    required this.state,
+  });
 
   /// The running build's display name, or `—` when no service is mounted.
   ///
   /// Passed in rather than read from the scope here so the card and the update
   /// row cannot disagree about which build is running.
   final String version;
+
+  /// The updater, or null when no service is mounted (a widget test, or a
+  /// stripped build). The row then states the build and offers nothing else.
+  final UpdateService? service;
+
+  /// The updater's state, republished by [SettingsViewModel].
+  final UpdateState? state;
 
   @override
   Widget build(BuildContext context) {
@@ -1535,98 +1491,90 @@ class _AboutCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionTitle(label: context.t('settings.about')),
+        _heading(context, context.t('settings.about')),
         Padding(
           padding: const EdgeInsets.fromLTRB(Sp.x4, Sp.x2, Sp.x4, Sp.x4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                '${context.t('common.appName')} · \u8bcd\u781a',
-                style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink3),
+                // Written out rather than as `\u8bcd\u781a`: this was the only
+                // string in the codebase spelled in escapes, so the one place
+                // the product's Chinese name appears was the only place nobody
+                // could read it in a diff.
+                '${context.t('common.appName')} · 词砚',
+                // The product name was 13dp `ink3` — fainter than the "关于"
+                // heading above it, which named the block rather than the
+                // thing. Whatever names the app on its own about card has to
+                // be the loudest line in that card.
+                style: TextStyle(
+                  fontFamily: Fonts.display,
+                  fontSize: Fs.md,
+                  height: Lh.tight,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.005,
+                  color: p.ink,
+                ),
               ),
-              const SizedBox(height: Sp.x4),
-              Wrap(
-                spacing: Sp.x2,
-                runSpacing: Sp.x2,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  // The running build, read from the platform rather than
-                  // typed here. `pubspec.yaml` is the one place a version is
-                  // written; a literal in this file was a second one that
-                  // would silently disagree with the manifest the updater
-                  // compares against.
-                  _Chip(text: '${context.t('settings.version')} $version'),
-                  // The web build hardcoded its own stack names here rather
-                  // than routing them through `t()` — they are proper nouns
-                  // and read the same in both locales. The port states its
-                  // own stack for the same reason.
-                  Text(
-                    'Flutter · Dart',
-                    style: TextStyle(fontFamily: Fonts.mono, fontSize: Fs.xs, height: Lh.tight, color: p.ink3),
-                  ),
-                ],
+              const SizedBox(height: Sp.x3),
+              // The running build and the action that changes it, together.
+              //
+              // They used to be two blocks, which printed the version twice —
+              // once as this chip and once as the update row's own heading. The
+              // chip is the page's one statement of which copy is running; the
+              // row below says what state that copy is in and offers the way
+              // out. Merged, the button reads as a consequence of the version
+              // rather than as a separate feature that happens to live nearby.
+              //
+              // Aligned start, not stretched: the chip is a label for the
+              // number of chars it holds, and a chip stretched across the card
+              // stops reading as one.
+              //
+              // The key is the widget tests' handle on this block, and matching
+              // on a button's label would tie them to copy that is expected to
+              // change.
+              KeyedSubtree(
+                key: const ValueKey('update-card'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: _Chip(
+                        text: '${context.t('settings.version')} $version',
+                      ),
+                    ),
+                    const SizedBox(height: Sp.x2),
+                    // The stack used to share the version's line, so the card
+                    // read as one wrapped pile of metadata. It is not the same
+                    // kind of fact: the build identifies *this* copy, the stack
+                    // says what it was written in. It goes on its own line, at
+                    // caption weight.
+                    Text(
+                      'Flutter · Dart',
+                      style: TextStyle(
+                        fontFamily: Fonts.mono,
+                        fontSize: Fs.xs,
+                        height: Lh.tight,
+                        color: p.ink4,
+                      ),
+                    ),
+                    const SizedBox(height: Sp.x4),
+                    _UpdateRow(service: service, state: state),
+                  ],
+                ),
               ),
               const SizedBox(height: Sp.x4),
               Text(
                 context.t('settings.madeWith'),
                 style: TextStyle(fontSize: Fs.sm, height: Lh.loose, color: p.ink2),
               ),
-              // No keyboard, no legend: the whole section is a keycap
-              // reference and would be unactionable on a phone.
-              if (context.showsKeyHints) ...[
-                const SizedBox(height: Sp.x6),
-                Text(
-                  context.t('settings.shortcuts'),
-                  style: TextStyle(
-                    fontSize: Fs.sm,
-                    height: Lh.tight,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.04,
-                    color: p.ink3,
-                  ),
-                ),
-                const SizedBox(height: Sp.x2),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final columns = constraints.maxWidth >= 700 ? 2 : 1;
-                    if (columns == 1) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final row in _kShortcuts)
-                            ShortcutRow(keys: row.keys, label: context.t(row.labelKey)),
-                        ],
-                      );
-                    }
-                    final rows = <Widget>[];
-                    for (var i = 0; i < _kShortcuts.length; i += columns) {
-                      rows.add(
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ShortcutRow(
-                                keys: _kShortcuts[i].keys,
-                                label: context.t(_kShortcuts[i].labelKey),
-                              ),
-                            ),
-                            const SizedBox(width: Sp.x6),
-                            Expanded(
-                              child: i + 1 < _kShortcuts.length
-                                  ? ShortcutRow(
-                                      keys: _kShortcuts[i + 1].keys,
-                                      label: context.t(_kShortcuts[i + 1].labelKey),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
-                  },
-                ),
-              ],
+              // The keyboard legend that used to sit here is gone. It was a
+              // reference table of keycaps at the bottom of a settings page —
+              // the one place the shortcuts it described were least likely to
+              // be reached for. They are discoverable where they apply: the
+              // cheat sheet on `?`, and the keycap hints beside the actions
+              // that have them.
             ],
           ),
         ),

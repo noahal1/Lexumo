@@ -23,10 +23,25 @@ import '../services/app_dir.dart';
 
 /// The default server shown in the settings form.
 ///
-/// Points at the self-hosted reference server (`server/`) because that is what
-/// runs on this machine during development. A Supabase deployment replaces the
-/// transport, not this shape — see `docs/supabase-sync-plan.md`.
-const String kDefaultServer = 'http://127.0.0.1:8787';
+/// Points at the project this build ships with. `BackendTransport` routes on
+/// the address, so a `.supabase.co` host means the Supabase transport and its
+/// `auth/v1` + `rest/v1/rpc/sync` endpoints; anything else means the
+/// self-hosted reference server in `server/`. See `docs/supabase-sync-plan.md`.
+///
+/// **The project root, not `/rest/v1/`.** `SupabaseTransport` appends the path
+/// itself (`supabase_transport.dart:114` and `:135`), and its normaliser only
+/// strips trailing slashes, so a `/rest/v1` suffix here would build
+/// `.../rest/v1/rest/v1/rpc/sync`.
+const String kDefaultServer = 'https://bosodjfmcgkbagxfnktp.supabase.co';
+
+/// The project key that goes in the `apikey` header of every Supabase request.
+///
+/// A publishable key is public by design: it ships inside every client, and it
+/// grants nothing on its own. `sync_records` and `sync_meta` have RLS enabled
+/// with no policies at all, so the only way in is the `security definer`
+/// `sync()` function, which starts by refusing a request with no `auth.uid()`.
+/// This is **not** the `sb_secret_` / `service_role` key, which bypasses RLS.
+const String kDefaultAnonKey = 'sb_publishable_D176WzOrRW119wwUweiEJw_HXGYEI89';
 
 /// A signed-in session plus this device's sync cursor.
 class SyncConfig {

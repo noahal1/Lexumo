@@ -36,12 +36,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../../../../data/models/sync_config.dart' show kDefaultServer;
 import '../../../../data/repositories/store.dart';
 import '../../../../data/repositories/sync_engine.dart';
 import '../../../../data/repositories/update_service.dart';
-import '../../../../data/services/backend_transport.dart'
-    show SyncBackend, detectBackend;
 import '../../../../data/services/file_dialogs.dart';
 import '../../../../data/services/sync_transport.dart'
     show SyncError, SyncHttpError;
@@ -162,12 +159,6 @@ class SettingsViewModel extends ViewModel {
     // Read once, the way the old `initState` did: the count only changes when
     // this page clears it.
     _cacheSize = _lookupCache.cacheSize();
-    // The session that exists now is the one the form prefills from: signing
-    // out wipes it before the form is drawn, and a 200-character project key
-    // asked for again on every sign-in is enough friction to abandon sync.
-    final status = _engine?.status;
-    _syncServer = status?.server ?? kDefaultServer;
-    _syncAnonKey = status?.anonKey ?? '';
     // Idempotent; a no-op when another page already warmed the engine.
     unawaited(_speech.warmUp());
   }
@@ -192,10 +183,6 @@ class SettingsViewModel extends ViewModel {
   /// How many words the dictionary cache holds.
   int _cacheSize = 0;
 
-  String _syncServer = kDefaultServer;
-  String _syncEmail = '';
-  String _syncPassword = '';
-  String _syncAnonKey = '';
   bool _syncBusy = false;
   SyncError? _syncFormError;
 
@@ -303,26 +290,6 @@ class SettingsViewModel extends ViewModel {
   /// the user needs while fixing the field it refers to.
   SyncError? get syncFormError => _syncFormError;
 
-  /// The server field's draft value.
-  String get syncServer => _syncServer;
-
-  /// The email field's draft value.
-  String get syncEmail => _syncEmail;
-
-  /// The password field's draft value. The controller that owns the text is
-  /// what clears it from memory; this is only the copy the request reads.
-  String get syncPassword => _syncPassword;
-
-  /// The project key field's draft value.
-  String get syncAnonKey => _syncAnonKey;
-
-  /// Whether the address the user typed points at a Supabase project.
-  ///
-  /// Recomputed from the draft on every read rather than stored: the draft is
-  /// the single source of truth, and a stale flag would show or hide the key at
-  /// the wrong moment.
-  bool get syncIsSupabase => detectBackend(_syncServer) == SyncBackend.supabase;
-
   /// Who the signed-in panel names.
   String get syncSignedInAs {
     final email = syncStatus?.email ?? '';
@@ -353,46 +320,14 @@ class SettingsViewModel extends ViewModel {
       };
 
   /* ---------------------------------------------------------------- */
-  /* Sync: the form's draft                                            */
-  /* ---------------------------------------------------------------- */
-
-  void setSyncServer(String value) => update(() => _syncServer = value);
-
-  void setSyncEmail(String value) => update(() => _syncEmail = value);
-
-  void setSyncPassword(String value) => update(() => _syncPassword = value);
-
-  void setSyncAnonKey(String value) => update(() => _syncAnonKey = value);
-
-  /* ---------------------------------------------------------------- */
   /* Sync: the actions                                                 */
   /* ---------------------------------------------------------------- */
 
-  /// Sign in with the current draft.
-  ///
-  /// The trimming mirrors the old form's getters exactly: the address, the
-  /// email and the key are trimmed, the password is not — a password may
-  /// legitimately end in a space.
-  Future<void> signIn() => _formAction(
-        (engine) => engine.login(
-          _syncServer.trim(),
-          _syncEmail.trim(),
-          _syncPassword,
-          anonKey: _syncAnonKey.trim(),
-        ),
-      );
-
-  /// Create an account with the current draft.
-  Future<void> signUp() => _formAction(
-        (engine) => engine.register(
-          _syncServer.trim(),
-          _syncEmail.trim(),
-          _syncPassword,
-          anonKey: _syncAnonKey.trim(),
-        ),
-      );
-
   /// Drop the local session.
+  ///
+  /// Sign-in itself happens on the first-run gate (the settings page opens it
+  /// with a button), so this is the only auth action left here — the one that
+  /// ends a session rather than starting one.
   Future<void> signOut() => _formAction((engine) => engine.signOut());
 
   /// Runs one auth action, keeping the form's busy flag and error in step.
@@ -418,20 +353,6 @@ class SettingsViewModel extends ViewModel {
     } finally {
       update(() => _syncBusy = false);
     }
-  }
-
-  /// Check that the address in the draft answers `/api/health`.
-  Future<void> testConnection() async {
-    final engine = _engine;
-    if (engine == null || _syncBusy) return;
-    update(() => _syncBusy = true);
-    final ok = await engine.testConnection(_syncServer.trim());
-    if (isDisposed) return;
-    update(() => _syncBusy = false);
-    _feedback.toast(
-      _feedback.t(ok ? 'settings.syncTestOk' : 'settings.syncTestFail'),
-      kind: ok ? ToastKind.ok : ToastKind.err,
-    );
   }
 
   /// Push local changes and merge whatever the server has newer.

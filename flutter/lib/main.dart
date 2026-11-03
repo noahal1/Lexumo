@@ -70,7 +70,12 @@ Future<void> main() async {
   //
   // One transport serves both backends; it routes on the server URL, so the
   // engine never learns whether it is talking to server/ or to Supabase.
-  final transport = BackendTransport();
+  //
+  // The project key is handed over here rather than left to the first sign-in:
+  // it is the same public key for every install of this build, and priming it
+  // means a "test connection" tap before anyone signs in still gets through the
+  // gateway instead of coming back `unauthorized`.
+  final transport = BackendTransport(key: kDefaultAnonKey);
   final sync = SyncEngine(
     store: store,
     configStore: const FileSyncConfigStore(),

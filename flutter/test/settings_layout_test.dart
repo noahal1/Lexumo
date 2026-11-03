@@ -206,4 +206,70 @@ void main() {
       engine.dispose();
     });
   });
+
+  group('settings headings name their own rows', () {
+    // The page has no title of its own — the shell already says "设置" — so the
+    // group headings are the only things naming a block. They were also the
+    // faintest text in each block: 13dp in `ink3`, four steps down from the
+    // 15dp `ink` of the row labels right underneath. And they were inset one
+    // step too far: the head sat at 48dp while its own rows started at 40dp,
+    // which reads as a rendering mistake rather than a hierarchy.
+    testWidgets('a heading starts on the same line as the rows it names', (
+      WidgetTester tester,
+    ) async {
+      final engine = await pumpSettingsAt(tester, width: 900);
+
+      for (final (heading, row) in const [
+        ('外观', '主题'),
+        ('学习', '每日复习目标'),
+      ]) {
+        final Finder h = find.text(heading);
+        final Finder r = find.text(row);
+        expect(h, findsOneWidget, reason: 'the $heading block must be drawn');
+        expect(r, findsOneWidget, reason: 'the $row row must be drawn');
+        expect(
+          tester.getTopLeft(h).dx,
+          moreOrLessEquals(tester.getTopLeft(r).dx, epsilon: 0.5),
+          reason: '"$heading" must start on the same line as "$row"',
+        );
+      }
+      engine.dispose();
+    });
+
+    testWidgets('a heading is not the faintest text in its block', (
+      WidgetTester tester,
+    ) async {
+      final engine = await pumpSettingsAt(tester, width: 900);
+
+      final TextStyle heading = tester.widget<Text>(find.text('外观')).style!;
+      final TextStyle row = tester.widget<Text>(find.text('主题')).style!;
+
+      // ink2 rather than the shared default ink3: an eyebrow is *under* the
+      // content it introduces, and on this page there is nothing above it.
+      expect(heading.color, Palette.light.ink2);
+      expect(row.color, Palette.light.ink);
+      engine.dispose();
+    });
+
+    testWidgets('the warning line is a row-level sentence, not a trailing note', (
+      WidgetTester tester,
+    ) async {
+      // With speech unavailable, "这个设备没有可用的朗读音色…" used to be squeezed
+      // into the heading's trailing slot: one line, `maxLines: 1`, ellipsised,
+      // in decoration grey. It is the one sentence in that block that changes
+      // what the user can do, so it gets a line of its own at body size.
+      //
+      // The warning only exists when the engine says no, so this test installs
+      // a machine with no voice rather than the usual silent-but-capable one.
+      debugSetSpeech(silentSpeech(initOk: false));
+      final engine = await pumpSettingsAt(tester, width: 900);
+      final Finder warning = find.text('这个设备没有可用的朗读音色，发音暂时用不了。');
+      expect(warning, findsOneWidget);
+
+      final Text widget = tester.widget<Text>(warning);
+      expect(widget.maxLines, isNull, reason: 'a warning must be allowed to wrap');
+      expect(widget.style!.color, Palette.light.ink2);
+      engine.dispose();
+    });
+  });
 }

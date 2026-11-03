@@ -899,11 +899,20 @@ class SectionTitle extends StatelessWidget {
     required this.label,
     this.trailing,
     this.padded = true,
+    this.color,
   });
 
   final String label;
   final Widget? trailing;
   final bool padded;
+
+  /// Overrides the label colour.
+  ///
+  /// The default `ink3` is an eyebrow: it is meant to sit *under* the content
+  /// in emphasis and let the rows carry the reading. A page that has no other
+  /// heading (settings) needs the opposite — the group name is the only thing
+  /// naming that block, so it cannot be the faintest text in it.
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -927,7 +936,7 @@ class SectionTitle extends StatelessWidget {
                 height: Lh.snug,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.04,
-                color: p.ink3,
+                color: color ?? p.ink3,
               ),
             ),
           ),

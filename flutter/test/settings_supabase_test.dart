@@ -1,4 +1,5 @@
-// The Supabase half of the account & sync section.
+// The Supabase half of signing in, exercised through the gate (the only place
+// a sign-in form exists since the settings page's copy was folded away).
 //
 // Two things are worth pinning down here, and nothing else is:
 //
@@ -8,13 +9,15 @@
 //      a server that has no idea what it is. It appears and disappears as the
 //      address is typed.
 //
-//   2. **The key reaches the transport before the first auth call.** A sign-in
-//      happens before any saved session exists, so the engine has to hand the
-//      key over on the way in. If it did not, every Supabase sign-in would come
-//      back 401 and read as "wrong password".
+//   2. **The key reaches the transport before the first auth call, and the
+//      session keeps the refresh token it mints — never the password.** A
+//      sign-in happens before any saved session exists, so the engine has to
+//      hand the key over on the way in; if it did not, every Supabase sign-in
+//      would come back 401 and read as "wrong password". And a stored password
+//      would be a second copy of the user's secret.
 //
-// The transport is a fake that records the order of what it was told; the engine
-// and the page are real.
+// The transport is a fake that records the order of what it was told; the
+// engine and the gate page are real.
 
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
@@ -29,7 +32,8 @@ import 'package:lexumo/ui/core/theme.dart';
 import 'package:lexumo/ui/core/tokens.dart';
 import 'package:lexumo/domain/models/seed.dart';
 import 'package:lexumo/ui/core/i18n/i18n.dart';
-import 'package:lexumo/ui/features/settings/views/settings_page.dart';
+import 'package:lexumo/ui/features/onboarding/views/onboarding_page.dart';
+import 'package:lexumo/data/repositories/onboarding_store.dart';
 import 'package:lexumo/data/services/tts.dart';
 import 'package:lexumo/ui/core/widgets/controls.dart';
 
@@ -80,6 +84,7 @@ Future<(Store, SyncEngine, RecordingTransport)> pumpSync(
   await store.init();
   await store.flush();
 
+  final onboarding = MemoryOnboardingStore();
   final configStore = MemorySyncConfigStore();
   if (signedIn != null) await configStore.save(signedIn);
 
@@ -111,7 +116,11 @@ Future<(Store, SyncEngine, RecordingTransport)> pumpSync(
               onNavigate: (_) {},
               child: MaterialApp(
                 theme: buildTheme(Palette.light),
-                home: Scaffold(body: SettingsPage()),
+                home: OnboardingPage(
+                  engine: engine,
+                  onboarding: onboarding,
+                  onConfigured: () {},
+                ),
               ),
             ),
           ),
@@ -121,6 +130,18 @@ Future<(Store, SyncEngine, RecordingTransport)> pumpSync(
   );
   await tester.pumpAndSettle();
   return (store, engine, transport);
+}
+
+/// The gate's server field lives inside a disclosure row that starts folded
+/// (the shipped default address is already Supabase, so there is nothing to
+/// configure). Opening it is what every field test below does first.
+Future<void> openDisclosure(WidgetTester tester) async {
+  // The string shows twice once open — the disclosure row and the LexField's
+  // own label — so tap only while the field is still missing.
+  if (find.widgetWithText(LexField, '服务器地址').evaluate().isEmpty) {
+    await tester.tap(find.text('服务器地址').first);
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> fill(WidgetTester tester, String label, String text) async {
@@ -155,11 +176,14 @@ void main() {
   tearDown(() => debugSetSpeech(null));
 
   group('the project key field', () {
-    testWidgets('is hidden for a self-hosted server', (tester) async {
+    testWidgets('folds away for a self-hosted server', (tester) async {
       final (store, engine, _) = await pumpSync(tester);
 
-      // The default address is the reference server, which has no notion of a
-      // project key.
+      // The shipped default is a Supabase project, so the key field is there
+      // once the disclosure is open. Typing a self-hosted address is what
+      // takes it away: that server has no notion of a project key.
+      await openDisclosure(tester);
+      await fill(tester, '服务器地址', 'http://127.0.0.1:8787');
       expect(find.widgetWithText(LexField, 'Supabase anon key'), findsNothing);
 
       engine.dispose();
@@ -168,6 +192,10 @@ void main() {
 
     testWidgets('appears as the address turns into a Supabase one', (tester) async {
       final (store, engine, _) = await pumpSync(tester);
+
+      await openDisclosure(tester);
+      await fill(tester, '服务器地址', 'http://127.0.0.1:8787');
+      expect(find.widgetWithText(LexField, 'Supabase anon key'), findsNothing);
 
       await fill(tester, '服务器地址', 'https://abcdefghij.supabase.co');
       expect(find.widgetWithText(LexField, 'Supabase anon key'), findsOneWidget);
@@ -182,16 +210,18 @@ void main() {
       await store.flush();
     });
 
-    testWidgets('is prefilled from the session being signed out of', (tester) async {
+    testWidgets('is prefilled from the session on disk', (tester) async {
       final (store, engine, _) = await pumpSync(tester, signedIn: _supabaseSession);
 
-      // Sign out, which brings the form back with the saved address.
-      await tapInView(tester, find.widgetWithText(LexButton, '退出登录'));
-
+      // A Supabase session is saved, so the disclosure starts *open*: the
+      // saved address is not the built-in one, which is the gate's signal
+      // that this user has configured a server before.
+      await openDisclosure(tester);
       final field = find.widgetWithText(LexField, 'Supabase anon key');
       expect(field, findsOneWidget);
-      // The key survives the sign-out. It is 200-odd opaque characters; asking
-      // for it again on every sign-in is enough friction to abandon sync.
+      // The key comes back from the saved session. It is 200-odd opaque
+      // characters; asking for it again on every sign-in is enough friction
+      // to abandon sync.
       expect(
         find.descendant(of: field.first, matching: find.text('anon-saved')),
         findsOneWidget,
@@ -204,6 +234,7 @@ void main() {
 
   group('signing in to Supabase', () {
     Future<void> signIn(WidgetTester tester) async {
+      await openDisclosure(tester);
       await fill(tester, '服务器地址', 'https://abcdefghij.supabase.co');
       await fill(tester, 'Supabase anon key', 'anon-typed');
       await fill(tester, '邮箱', 'reader@example.test');

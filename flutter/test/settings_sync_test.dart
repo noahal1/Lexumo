@@ -1,16 +1,17 @@
 // The account & sync section of the settings page.
 //
-// What is worth testing here is not "the buttons exist" but the three states the
-// user can be in and the one thing that must never leak:
+// What is worth testing here is not "the buttons exist" but the states the user
+// can be in and the one thing that must never leak:
 //
-//   1. **Signed out shows the form, signed in shows the account.** These are two
-//      different panels, and drawing the wrong one either hides the only way in
-//      or offers a sign-in form to someone already signed in.
-//   2. **A failed sign-in reports why, in place.** A toast disappears before the
-//      user can fix the field it refers to, so the message has to sit next to the
-//      form. The wrong *reason* is worse than no reason: "wrong password" for a
-//      server that is simply down sends the user to reset a password that was
-//      fine.
+//   1. **Signed out shows the way back in, signed in shows the account.** The
+//      sign-in *form* lives on the first-run gate, not here — the page offers
+//      the gate again with a button. Drawing a second copy of those fields was
+//      two places to type one password; what this page must still do is show a
+//      signed-out device that signing in is one tap away, and a signed-in one
+//      the account it belongs to.
+//   2. **A failed sign-out reports why, in place.** A toast disappears before
+//      the user can read it, so the message has to sit on the page. (Sign-in
+//      errors are the gate's own tests now.)
 //   3. **The token never reaches the snapshot.** `Settings` is packed up by
 //      `collectChanges` and uploaded, so a token stored there would be pushed to
 //      every device. This is asserted directly against the store, not the UI.
@@ -32,6 +33,7 @@ import 'package:lexumo/ui/core/theme.dart';
 import 'package:lexumo/ui/core/tokens.dart';
 import 'package:lexumo/domain/models/seed.dart';
 import 'package:lexumo/ui/core/i18n/i18n.dart';
+import 'package:lexumo/ui/features/onboarding/views/onboarding_page.dart';
 import 'package:lexumo/ui/features/settings/views/settings_page.dart';
 import 'package:lexumo/data/services/tts.dart';
 import 'package:lexumo/ui/core/widgets/controls.dart';
@@ -139,21 +141,6 @@ Future<void> tapInView(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
-/// Types into the LexInput sitting under the [label] LexField.
-///
-/// `find.widgetWithText(LexField, label)` finds the field, but the editable is a
-/// descendant, so the text goes to the first `EditableText` inside it.
-Future<void> fill(WidgetTester tester, String label, String text) async {
-  final field = find.widgetWithText(LexField, label).first;
-  await tester.ensureVisible(field);
-  await tester.pumpAndSettle();
-  await tester.enterText(
-    find.descendant(of: field, matching: find.byType(EditableText)).first,
-    text,
-  );
-  await tester.pumpAndSettle();
-}
-
 const SyncConfig _signedIn = SyncConfig(
   server: 'http://127.0.0.1:8787',
   email: 'reader@example.test',
@@ -172,111 +159,52 @@ void main() {
   tearDown(() => debugSetSpeech(null));
 
   group('signed out', () {
-    testWidgets('draws the form and no account panel', (tester) async {
+    testWidgets('shows the way back in: a status row and a sign-in button', (tester) async {
       final (store, engine, _) = await pumpSettings(tester, transport: PathTransport());
 
-      expect(find.widgetWithText(LexField, '服务器地址'), findsOneWidget);
-      expect(find.widgetWithText(LexField, '邮箱'), findsOneWidget);
-      expect(find.widgetWithText(LexField, '密码'), findsOneWidget);
+      // The row names the state; the button is the one action a signed-out
+      // device can take. No fields: the form is the gate's, not this page's.
+      // (The pill and the row's hint both render 未登录 — two honest copies.)
+      expect(find.text('未登录'), findsWidgets);
       expect(find.widgetWithText(LexButton, '登录'), findsOneWidget);
-      expect(find.widgetWithText(LexButton, '创建账号'), findsOneWidget);
+      expect(find.byType(LexField), findsNothing);
 
       // The signed-in panel's controls must not be on screen.
       expect(find.widgetWithText(LexButton, '立即同步'), findsNothing);
       expect(find.widgetWithText(LexButton, '退出登录'), findsNothing);
 
-      // The old "this build cannot sync" notice is gone for good.
-      expect(find.textContaining('暂不支持同步'), findsNothing);
-
       engine.dispose();
       await store.flush();
     });
 
-    testWidgets('the server field starts at the default', (tester) async {
+    testWidgets('the sign-in button opens the gate as a pushed page', (tester) async {
       final (store, engine, _) = await pumpSettings(tester, transport: PathTransport());
-      final input = tester.widget<EditableText>(
-        find.descendant(
-          of: find.widgetWithText(LexField, '服务器地址').first,
-          matching: find.byType(EditableText),
-        ).first,
-      );
-      expect(input.controller.text, kDefaultServer);
-      engine.dispose();
-      await store.flush();
-    });
 
-    testWidgets('a successful sign-in swaps the form for the account', (tester) async {
-      final transport = PathTransport({
-        '/api/auth/login': {'token': 'tok-new', 'email': 'reader@example.test'},
-      });
-      final (store, engine, toasts) = await pumpSettings(tester, transport: transport);
-
-      await fill(tester, '邮箱', 'reader@example.test');
-      await fill(tester, '密码', 'correct horse');
       await tapInView(tester, find.widgetWithText(LexButton, '登录'));
 
-      expect(transport.seen, contains('/api/auth/login'));
-      expect(engine.isSignedIn, isTrue);
-      // The token the server issued, not the password.
-      expect(engine.config?.token, 'tok-new');
-      expect(toasts.map((t) => t.text), contains('同步完成'));
-
-      await tester.pumpAndSettle();
-      expect(find.widgetWithText(LexButton, '立即同步'), findsOneWidget);
-      expect(find.widgetWithText(LexButton, '退出登录'), findsOneWidget);
-      expect(find.widgetWithText(LexField, '密码'), findsNothing);
-
-      engine.dispose();
-      await store.flush();
-    });
-
-    testWidgets('a bad password says so next to the form', (tester) async {
-      final transport = PathTransport.failing(const SyncHttpError(SyncError.badCredentials, 401));
-      final (store, engine, _) = await pumpSettings(tester, transport: transport);
-
-      await fill(tester, '邮箱', 'reader@example.test');
-      await fill(tester, '密码', 'nope');
-      await tapInView(tester, find.widgetWithText(LexButton, '登录'));
-
-      // The form is still there, and the reason is on the page — not only in a
-      // toast that will vanish.
+      // The gate is the page that owns the fields. It is pushed over the
+      // settings page, not swapped for it — closing it lands back here.
+      expect(find.byType(OnboardingPage), findsOneWidget);
+      expect(find.widgetWithText(LexField, '邮箱'), findsOneWidget);
       expect(find.widgetWithText(LexField, '密码'), findsOneWidget);
-      expect(find.text('邮箱或密码不正确'), findsOneWidget);
-      expect(engine.isSignedIn, isFalse);
+
+      // The settings page itself is opaque to type-finding while covered by a
+      // MaterialPageRoute (a pushed route hides the route below from
+      // find.byType). What matters is that this is the gate's form, and that
+      // closing the gate comes back.
+      expect(find.text('登录以同步'), findsOneWidget);
+
+      // Closing the gate lands back on the settings page, with the
+      // signed-out row still showing — nothing was recorded.
+      // The gate's Scaffold has no app bar, so there is no back *button* to
+      // tap — leave the route the way a user without one would.
+      tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(OnboardingPage), findsNothing);
+      expect(find.text('未登录'), findsWidgets);
 
       engine.dispose();
       await store.flush();
-    });
-
-    testWidgets('an unreachable server is not reported as a bad password', (tester) async {
-      final transport = PathTransport.failing(const SyncHttpError(SyncError.offline, 0));
-      final (store, engine, _) = await pumpSettings(tester, transport: transport);
-
-      await fill(tester, '邮箱', 'reader@example.test');
-      await fill(tester, '密码', 'correct horse');
-      await tapInView(tester, find.widgetWithText(LexButton, '登录'));
-
-      expect(find.text('无法连接服务器，请检查网络与地址'), findsOneWidget);
-      expect(find.text('邮箱或密码不正确'), findsNothing);
-
-      engine.dispose();
-      await store.flush();
-    });
-
-    testWidgets('testing the connection reports both outcomes', (tester) async {
-      final ok = PathTransport({'/api/health': {'ok': true}});
-      final (store, engine, toasts) = await pumpSettings(tester, transport: ok);
-      await tapInView(tester, find.widgetWithText(LexButton, '测试连接'));
-      expect(toasts.last.text, '连接正常');
-      engine.dispose();
-      await store.flush();
-
-      final bad = PathTransport.failing(const SyncHttpError(SyncError.offline, 0));
-      final (store2, engine2, toasts2) = await pumpSettings(tester, transport: bad);
-      await tapInView(tester, find.widgetWithText(LexButton, '测试连接'));
-      expect(toasts2.last.text, '无法连接服务器');
-      engine2.dispose();
-      await store2.flush();
     });
   });
 
@@ -323,7 +251,7 @@ void main() {
       await store.flush();
     });
 
-    testWidgets('signing out returns to the form', (tester) async {
+    testWidgets('signing out shows the signed-out row again', (tester) async {
       final transport = PathTransport();
       final (store, engine, _) = await pumpSettings(
         tester,
@@ -335,7 +263,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(engine.isSignedIn, isFalse);
-      expect(find.widgetWithText(LexField, '密码'), findsOneWidget);
+      expect(find.text('未登录'), findsWidgets);
+      expect(find.widgetWithText(LexButton, '登录'), findsOneWidget);
       expect(find.widgetWithText(LexButton, '立即同步'), findsNothing);
 
       engine.dispose();

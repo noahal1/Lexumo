@@ -163,7 +163,7 @@ class _Harness {
 
 /// Pumps the real app at a desktop width, where the gate's two panels sit side
 /// by side and nothing has to be scrolled to be tapped.
-Future<_Harness> pumpApp(
+Future<_Harness> _pumpApp(
   WidgetTester tester, {
   required SyncTransport transport,
   OnboardingChoice? choice,
@@ -309,6 +309,7 @@ void main() {
       build(PathTransport());
       await engine.init();
       expect(vm.server, kDefaultServer);
+      expect(vm.anonKey, kDefaultAnonKey);
       expect(vm.email, isEmpty);
       expect(vm.password, isEmpty);
       expect(vm.error, isNull);
@@ -502,16 +503,17 @@ void main() {
       build(PathTransport());
       await engine.init();
 
-      expect(vm.isSupabase, isFalse);
-      vm.setServer('https://abcdefg.supabase.co');
+      // The shipped default is a Supabase project, so the field starts visible.
       expect(vm.isSupabase, isTrue);
+      vm.setServer('http://127.0.0.1:8787');
+      expect(vm.isSupabase, isFalse);
     });
   });
 
   group('the gate', () {
     testWidgets('a fresh install opens on it, not on the library',
         (WidgetTester tester) async {
-      await pumpApp(tester, transport: PathTransport());
+      await _pumpApp(tester, transport: PathTransport());
 
       expect(tester.takeException(), isNull);
       expect(find.byType(OnboardingPage), findsOneWidget);
@@ -523,7 +525,7 @@ void main() {
 
     testWidgets('a device that already answered opens on the library',
         (WidgetTester tester) async {
-      await pumpApp(
+      await _pumpApp(
         tester,
         transport: PathTransport(),
         choice: OnboardingChoice.local,
@@ -537,7 +539,7 @@ void main() {
 
     testWidgets('staying local hands the shell over and records the answer',
         (WidgetTester tester) async {
-      final _Harness harness = await pumpApp(tester, transport: PathTransport());
+      final _Harness harness = await _pumpApp(tester, transport: PathTransport());
 
       await tapButton(tester, '仅本地使用');
 
@@ -550,7 +552,7 @@ void main() {
 
     testWidgets('signing in hands the shell over and records sync',
         (WidgetTester tester) async {
-      final _Harness harness = await pumpApp(
+      final _Harness harness = await _pumpApp(
         tester,
         transport: PathTransport(<String, Object?>{
           '/api/auth/login': <String, Object?>{
@@ -574,7 +576,7 @@ void main() {
 
     testWidgets('a failed sign-in keeps the gate and says why',
         (WidgetTester tester) async {
-      final _Harness harness = await pumpApp(
+      final _Harness harness = await _pumpApp(
         tester,
         transport: PathTransport.failing(
           const SyncHttpError(SyncError.badCredentials, 401),
@@ -596,7 +598,7 @@ void main() {
 
     testWidgets('the server disclosure is folded away by default',
         (WidgetTester tester) async {
-      await pumpApp(tester, transport: PathTransport());
+      await _pumpApp(tester, transport: PathTransport());
 
       expect(find.widgetWithText(LexField, '服务器地址'), findsNothing);
       expect(find.widgetWithText(LexButton, '测试连接'), findsNothing);

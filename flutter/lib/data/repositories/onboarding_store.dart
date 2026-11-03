@@ -104,7 +104,7 @@ class FileOnboardingStore implements OnboardingStore {
 
 /// In-memory store for tests and for a gate-less mount.
 class MemoryOnboardingStore implements OnboardingStore {
-  MemoryOnboardingStore({OnboardingChoice? choice}) : _choice = choice;
+  MemoryOnboardingStore({OnboardingChoice? choice}) : _choice = choice; // ignore: prefer_initializing_formals
 
   OnboardingChoice? _choice;
 
