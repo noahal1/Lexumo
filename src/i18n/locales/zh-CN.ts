@@ -68,6 +68,16 @@ const zhCNraw = {
     shortcutsSub: "不用鼠标，也能把该复习的过完。",
     shortcutsTypingHint: "在输入框里打字时，这些键不会触发。",
   },
+  welcome: {
+    title: "开始使用",
+    lead: "登录后词库会在设备之间同步；也可以完全只在这台设备上使用。",
+    localTitle: "只在这台设备上使用",
+    localBody: "所有内容留在本机，不注册、不联网。以后想同步，到设置里的「账号与同步」登录就行。",
+    or: "或",
+    advanced: "服务器地址",
+    signingIn: "正在登录…",
+    signingUp: "正在创建…",
+  },
   words: {
     title: "词库",
     subtitle: "收集、整理、并让每一个词慢慢留下来",

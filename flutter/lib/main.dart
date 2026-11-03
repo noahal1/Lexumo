@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 import 'app/scope.dart';
 import 'app/update_scope.dart';
 import 'data/models/sync_config.dart';
+import 'data/repositories/onboarding_store.dart';
 import 'data/repositories/store.dart';
 import 'data/repositories/sync_engine.dart';
 import 'data/repositories/update_service.dart';
@@ -45,6 +46,7 @@ import 'ui/core/system_ui.dart';
 import 'ui/core/theme.dart';
 import 'ui/core/tokens.dart';
 import 'ui/core/widgets/toast.dart';
+import 'ui/features/onboarding/views/onboarding_page.dart';
 import 'ui/features/shell/views/app_shell.dart';
 
 Future<void> main() async {
@@ -97,7 +99,22 @@ Future<void> main() async {
   // crash.
   await update.load();
 
-  runApp(LexumoApp(store: store, sync: sync, update: update));
+  // Whether this device has been set up is a fact about *this install*, so it
+  // lives in its own sidecar rather than in the snapshot — the argument is in
+  // `onboarding_store.dart`. Reading it before the first frame is what lets the
+  // gate be the first thing drawn instead of the shell flashing and being
+  // replaced.
+  final onboarding = FileOnboardingStore(
+    '${AppDir.dataDir}${Platform.pathSeparator}onboarding.json',
+  );
+  await onboarding.load();
+
+  runApp(LexumoApp(
+    store: store,
+    sync: sync,
+    update: update,
+    onboarding: onboarding,
+  ));
 }
 
 class LexumoApp extends StatefulWidget {
@@ -106,11 +123,20 @@ class LexumoApp extends StatefulWidget {
     required this.store,
     required this.sync,
     required this.update,
+    this.onboarding,
   });
 
   final Store store;
   final SyncEngine sync;
   final UpdateService update;
+
+  /// Whether this device was set up to sync or to stay local.
+  ///
+  /// Optional so a test can mount the shell directly: when it is null the app
+  /// behaves as if the question was already answered locally, which is what
+  /// every widget test of the shell wants. Production always passes the
+  /// [FileOnboardingStore] built in `main`.
+  final OnboardingStore? onboarding;
 
   @override
   State<LexumoApp> createState() => _LexumoAppState();
@@ -120,7 +146,13 @@ class _LexumoAppState extends State<LexumoApp> with WidgetsBindingObserver {
   late final StoreNotifier _notifier;
   late final SyncStatusNotifier _syncNotifier;
   late final UpdateNotifier _updateNotifier;
+  late final OnboardingStore _onboarding;
   final GlobalKey<ToastHostState> _toastKey = GlobalKey<ToastHostState>();
+
+  /// True once the first-run question has an answer, from either the sidecar at
+  /// boot or the gate this session. Read as a plain field rather than from the
+  /// store so the transition is one `setState`, not a new notifier.
+  late bool _configured;
 
   /// Guards against two checks being started by two resume events during one
   /// cold start. The service joins concurrent calls anyway; this keeps the
@@ -133,6 +165,10 @@ class _LexumoAppState extends State<LexumoApp> with WidgetsBindingObserver {
     _notifier = StoreNotifier(widget.store);
     _syncNotifier = SyncStatusNotifier(widget.sync);
     _updateNotifier = UpdateNotifier(widget.update);
+    _onboarding = widget.onboarding ?? MemoryOnboardingStore(
+      choice: OnboardingChoice.local,
+    );
+    _configured = _onboarding.choice != null;
     // The store saves on a debounce; a window that closes inside the delay
     // would otherwise lose the last edit. Flushing on detach is cheap.
     widget.store.addListener(_onStoreWrite);
@@ -142,6 +178,17 @@ class _LexumoAppState extends State<LexumoApp> with WidgetsBindingObserver {
   }
 
   void _onStoreWrite() => setState(() {});
+
+  /// The first-run question has been answered and recorded; hand the screen
+  /// over to the shell.
+  ///
+  /// Swapping `home` rather than pushing a route means the gate is not on the
+  /// back stack: there is no "back" from the library into a question that has
+  /// already been answered.
+  void _onConfigured() {
+    if (!mounted) return;
+    setState(() => _configured = true);
+  }
 
   /// Ask the manifest once, when it is due.
   ///
@@ -230,7 +277,13 @@ class _LexumoAppState extends State<LexumoApp> with WidgetsBindingObserver {
                   key: _toastKey,
                   child: child ?? const SizedBox.shrink(),
                 ),
-                home: const AppShell(),
+                home: _configured
+                    ? const AppShell()
+                    : OnboardingPage(
+                        engine: widget.sync,
+                        onboarding: _onboarding,
+                        onConfigured: _onConfigured,
+                      ),
               ),
             ),
           ),

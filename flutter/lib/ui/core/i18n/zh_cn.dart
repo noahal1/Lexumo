@@ -89,6 +89,17 @@ const Map<String, String> zhCnRaw = {
   'shell.collapseRail': '收起侧栏',
   'shell.shortcutsSub': '不用鼠标，也能把该复习的过完。',
   'shell.shortcutsTypingHint': '在输入框里打字时，这些键不会触发。',
+  // onboarding
+  'onboarding.title': '先安顿好这台设备',
+  'onboarding.lead': '登录后，词库会跟着你走；不登录也能用，只是留在这台机器上。',
+  'onboarding.signInTitle': '登录以同步',
+  'onboarding.localTitle': '先不登录',
+  'onboarding.localBody': '词库、复习记录和设置只存在这台设备，不上传，也不需要注册。之后随时可以在设置里登录。',
+  'onboarding.localAction': '仅本地使用',
+  'onboarding.advanced': '服务器地址',
+  'onboarding.or': '或',
+  'onboarding.signingIn': '正在登录…',
+  'onboarding.signingUp': '正在创建…',
   // words
   'words.subtitle': '收集、整理、并让每一个词慢慢留下来',
   'words.addWord': '添加词语',

@@ -25,10 +25,12 @@ import {
   type ShortcutBinding,
 } from "@/lib/shortcuts";
 import { getSyncStatus, subscribeSyncStatus, type SyncError } from "@/lib/sync";
+import { useOnboarding } from "@/lib/onboarding";
 import { useRouter, type PageId } from "@/app/router";
 import { cx } from "@/lib/utils";
 import { onError } from "@/lib/errors";
 import { warmNativeTts } from "@/lib/tts";
+import { WelcomePage } from "@/pages/welcome/WelcomePage";
 import { WordsPage } from "@/pages/words/WordsPage";
 import { FlashcardsPage } from "@/pages/study/FlashcardsPage";
 import { QuizPage } from "@/pages/study/QuizPage";
@@ -131,6 +133,10 @@ export function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const toast = useToast();
   useTheme();
+  // Which door this device went through on first run. Read synchronously from
+  // localStorage, so the first paint is already the right one and no flash of
+  // the wrong screen is possible.
+  const onboarded = useOnboarding();
 
   // A snapshot that fell through both IndexedDB and localStorage is alive in
   // memory only. Nothing on screen can show that by itself, so the adapter
@@ -235,6 +241,20 @@ export function App() {
     [navigate, helpOpen],
   );
   useShortcutScope("app", appShortcuts);
+
+  // The first-run gate. It is not a route: the window is undecorated, so the
+  // title bar has to stay, and nothing else in the shell means anything until
+  // this device has chosen a door. An early return keeps the shell below
+  // untouched and avoids mounting five pages behind a screen the user cannot
+  // reach.
+  if (!onboarded) {
+    return (
+      <div className={cx("app", rail && "rail", mobile && "mobile")}>
+        <TitleBar />
+        <WelcomePage />
+      </div>
+    );
+  }
 
   return (
     <div className={cx("app", rail && "rail", mobile && "mobile")}>

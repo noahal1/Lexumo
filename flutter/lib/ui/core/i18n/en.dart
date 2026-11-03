@@ -90,6 +90,19 @@ const Map<String, String> enRaw = {
   'shell.shortcutsSub': 'Get through the review without the mouse.',
   'shell.shortcutsTypingHint':
       "These keys stay quiet while you're typing in a field.",
+  // onboarding
+  'onboarding.title': 'Settle this device in',
+  'onboarding.lead':
+      'Sign in and your words follow you. Skip it and everything stays on this machine.',
+  'onboarding.signInTitle': 'Sign in to sync',
+  'onboarding.localTitle': 'Not yet',
+  'onboarding.localBody':
+      'Words, reviews and settings stay on this device. Nothing is uploaded, no account needed. You can sign in later from settings.',
+  'onboarding.localAction': 'Stay local',
+  'onboarding.advanced': 'Server address',
+  'onboarding.or': 'or',
+  'onboarding.signingIn': 'Signing in…',
+  'onboarding.signingUp': 'Creating…',
   // words
   'words.subtitle': 'Collect, organize, and let each word settle in',
   'words.addWord': 'Add word',

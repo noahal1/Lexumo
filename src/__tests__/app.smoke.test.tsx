@@ -16,6 +16,7 @@ import { RouterProvider } from "@/app/router";
 import { I18nProvider } from "@/i18n";
 import { ToastProvider } from "@/components/ui";
 import { getData, initStore, updateSettings } from "@/lib/store";
+import { completeOnboarding, resetOnboarding } from "@/lib/onboarding";
 
 /* ------------------------------------------------------------------ */
 /* Browser APIs jsdom does not implement                               */
@@ -80,7 +81,13 @@ beforeAll(() => {
 let host: HTMLDivElement | null = null;
 let root: Root | null = null;
 
-async function mount(): Promise<HTMLDivElement> {
+/**
+ * Every test below is about the app *after* first run, so the gate is answered
+ * here once. The gate itself gets its own test that clears it again.
+ */
+async function mount({ onboarded = true }: { onboarded?: boolean } = {}): Promise<HTMLDivElement> {
+  if (onboarded) completeOnboarding("local");
+  else resetOnboarding();
   await initStore();
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -147,6 +154,9 @@ afterEach(async () => {
   host?.remove();
   host = null;
   window.location.hash = "";
+  // The gate's answer is module state, so it has to be put back or the next
+  // test inherits it.
+  resetOnboarding();
   vi.restoreAllMocks();
 });
 
@@ -336,5 +346,31 @@ describe("App smoke test", () => {
 
     // Nothing was dismissed along the way.
     expect(document.querySelector(".modal")).not.toBeNull();
+  });
+
+  /**
+   * The first-run gate: a device that has never chosen gets the two doors and
+   * nothing else, and the title bar still drags the window. Answered devices
+   * skip straight to the library.
+   */
+  it("shows the first-run gate only until this device has chosen", async () => {
+    // The frame is undecorated, so the gate has to keep the drag region; that
+    // only exists inside the desktop shell.
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      const el = await mount({ onboarded: false });
+
+      expect(el.querySelector(".welcome")).not.toBeNull();
+      expect(el.querySelector(".main")).toBeNull();
+      expect(el.textContent).toContain("开始使用");
+      // Local-only is one of two doors, not an escape hatch.
+      expect(el.textContent).toContain("只在这台设备上使用");
+
+      const bar = el.querySelector(".frame-bar");
+      expect(bar).not.toBeNull();
+      expect(bar!.getAttribute("data-tauri-drag-region")).toBe("deep");
+    } finally {
+      delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    }
   });
 });
