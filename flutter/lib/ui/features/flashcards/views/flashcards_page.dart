@@ -502,7 +502,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             onUndo: onUndo,
             onExit: onExit),
         const SizedBox(height: Sp.x4),
-        _flipCard(t, word: word, onReveal: onReveal, onSkip: onSkip),
+        _flipCard(t, word: word, onGrade: onGrade, onReveal: onReveal, onSkip: onSkip),
         const SizedBox(height: Sp.x4),
         if (_vm.flipped)
           _gradeRow(t, preview: preview, newCard: newCard, onGrade: onGrade)
@@ -627,6 +627,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
   Widget _flipCard(
     String Function(String, [Map<String, Object>?]) t, {
     required Word word,
+    required void Function(Grade) onGrade,
     required VoidCallback onReveal,
     required VoidCallback onSkip,
   }) {
@@ -647,9 +648,13 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             : _termFace(t, word: word));
 
     return _FlipCard(
+      key: const ValueKey('flip-card'),
       turn: _vm.turn,
       tappable: !_vm.flipped,
       onTap: onReveal,
+      // The swipe grades only once the answer is showing — the same gate the
+      // grade row uses — so a drag on the front can never grade sight unseen.
+      onSwipe: _vm.flipped ? onGrade : null,
       minHeight: compact ? 0 : minHeight,
       head: Row(
         children: <Widget>[
@@ -948,7 +953,11 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       );
     }
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      // Not `stretch`: this row sits inside the page's scroll viewport, whose
+      // cross axis is unbounded, and stretch would force an infinite height on
+      // the buttons. Each button carries its own 60dp floor, so centering
+      // costs nothing — the three heights match anyway.
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
         for (int i = 0; i < buttons.length; i++) ...<Widget>[
           if (i > 0) const SizedBox(width: Sp.x3),
@@ -1079,6 +1088,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               ShortcutRow(keys: const <String>['空格'], label: t('settings.shortcutFlip')),
+              ShortcutRow(keys: const <String>['←'], label: t('flashcards.swipeHint')),
               ShortcutRow(keys: const <String>['1'], label: t('flashcards.gradeHard')),
               ShortcutRow(keys: const <String>['2'], label: t('flashcards.gradeGood')),
               ShortcutRow(keys: const <String>['3'], label: t('flashcards.gradeEasy')),
@@ -1237,12 +1247,14 @@ class _Notice extends StatelessWidget {
 /// entirely.
 class _FlipCard extends StatefulWidget {
   const _FlipCard({
+    super.key,
     required this.turn,
     required this.tappable,
     required this.onTap,
     required this.minHeight,
     required this.head,
     required this.face,
+    this.onSwipe,
   });
 
   final String? turn;
@@ -1251,6 +1263,13 @@ class _FlipCard extends StatefulWidget {
   final double minHeight;
   final Widget head;
   final Widget face;
+
+  /// Called with a grade when the revealed card is dragged past the swipe
+  /// threshold — left for a hard, right for a good. Null disables the
+  /// gesture, which is what the unrevealed card passes: a swipe there would
+  /// fight the tap that flips, and grading a card the answer has not been
+  /// seen for is a mistake the undo stack should not have to clean up.
+  final void Function(Grade)? onSwipe;
 
   @override
   State<_FlipCard> createState() => _FlipCardState();
@@ -1262,6 +1281,19 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
     duration: Motion.dur1,
   );
   bool _hover = false;
+  double _drag = 0;
+
+  // Horizontal distance, in logical pixels, the card must be pulled before a
+  // release commits the swipe — and past which the card stops following the
+  // finger, so a hard fling cannot fling it off screen.
+  static const double _swipeThreshold = 72;
+  static const double _swipeClamp = 180;
+
+  Grade? _swipeGrade() {
+    if (_drag < -_swipeThreshold) return Grade.hard;
+    if (_drag > _swipeThreshold) return Grade.good;
+    return null;
+  }
 
   @override
   void initState() {
@@ -1311,12 +1343,36 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
   @override
   Widget build(BuildContext context) {
     final Palette p = Palette.of(context);
+    // The swipe reads the drag direction as a grade before the release: left
+    // tints toward the danger pair, right toward the ok pair, and the tint
+    // strengthens as the pull passes the threshold.
+    final Grade? preview = _swipeGrade();
+    final Color border = switch (preview) {
+      Grade.hard => p.danger,
+      Grade.good => p.ok,
+      _ => _hover ? p.lineStrong : p.line,
+    };
+    final bool swipeable = widget.onSwipe != null && !widget.tappable;
     return MouseRegion(
       cursor: widget.tappable ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         onTap: widget.tappable ? widget.onTap : null,
+        onHorizontalDragStart: swipeable ? (_) => setState(() => _drag = 0) : null,
+        onHorizontalDragUpdate: swipeable
+            ? (DragUpdateDetails d) => setState(() {
+                  _drag = (_drag + d.delta.dx).clamp(-_swipeClamp, _swipeClamp);
+                })
+            : null,
+        onHorizontalDragCancel: swipeable ? () => setState(() => _drag = 0) : null,
+        onHorizontalDragEnd: swipeable
+            ? (DragEndDetails d) {
+                final Grade? g = _swipeGrade();
+                setState(() => _drag = 0);
+                if (g != null) widget.onSwipe!(g);
+              }
+            : null,
         child: AnimatedBuilder(
           animation: _turn,
           builder: (BuildContext context, Widget? child) {
@@ -1324,19 +1380,20 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
               alignment: Alignment.center,
               transform: Matrix4.identity()
                 ..setEntry(3, 2, 0.0012)
-                ..rotateY(_radians()),
+                ..rotateY(_radians())
+                ..translateByDouble(_drag * 0.35, 0.0, 0.0, 1.0),
               child: child,
             );
           },
           child: AnimatedContainer(
-            duration: Motion.dur2,
+            duration: _drag == 0 ? Motion.dur2 : Duration.zero,
             curve: Motion.ease,
             constraints: BoxConstraints(minHeight: widget.minHeight),
             padding: const EdgeInsets.fromLTRB(Sp.x7, Sp.x6, Sp.x7, Sp.x5),
             decoration: BoxDecoration(
               color: p.surface,
               borderRadius: R.borderXl,
-              border: Border.all(color: _hover ? p.lineStrong : p.line),
+              border: Border.all(color: border),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

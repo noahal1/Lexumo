@@ -212,6 +212,7 @@ const Map<String, String> zhCnRaw = {
   'flashcards.exit': '先到这里',
   'flashcards.remaining': '剩余',
   'flashcards.keyboardHint': '空格翻面，1 困难，2 记得，3 简单，Ctrl+Z 撤销',
+  'flashcards.swipeHint': '滑动评分：左滑困难，右滑记得',
   'flashcards.emptyDeck': '这一组没有卡片',
   'flashcards.emptyDeckHint': '换一种组卡方式，或者先去添加新词。',
   'flashcards.revealHint': '想一想，再翻面',
