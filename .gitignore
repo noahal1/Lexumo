@@ -25,6 +25,9 @@ server/data/
 .vscode
 
 .tmp-opencode-state
+# agent 运行期的本地配置与 shim，含明文凭据，绝不入库
+.opencode-home/
+
 # Flutter 工具链与运行期状态（本地，不入库）
 .flutter-sdk/
 .flutter-home/
