@@ -20,7 +20,7 @@
 # Anything passed to this script is forwarded to flutter build.
 set -euo pipefail
 
-WS="C:/Users/noaha/prj/lingueez-web"
+WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && { pwd -W 2>/dev/null || pwd; })"
 cd "$WS/flutter"
 
 export HOME="$WS/.flutter-home"

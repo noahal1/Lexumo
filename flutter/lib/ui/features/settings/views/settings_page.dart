@@ -1572,37 +1572,6 @@ class _AboutCard extends StatelessWidget {
                 context.t('settings.madeWith'),
                 style: TextStyle(fontSize: Fs.sm, height: Lh.loose, color: p.ink2),
               ),
-              const SizedBox(height: Sp.x4),
-              /* AGPL-3.0 §7(b) additional term: this attribution must stay
-                 visible. It is not decoration — do not remove or collapse it. */
-              Container(
-                padding: const EdgeInsets.all(Sp.x3),
-                decoration: BoxDecoration(
-                  color: p.surface2,
-                  borderRadius: R.borderSm,
-                  border: Border.all(color: p.line),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Lingueez, created by Yurii Lysak',
-                      style: TextStyle(
-                        fontSize: Fs.sm,
-                        height: Lh.snug,
-                        fontWeight: FontWeight.w500,
-                        color: p.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      context.t('settings.licenseNote'),
-                      style: TextStyle(fontSize: Fs.sm, height: Lh.body, color: p.ink2),
-                    ),
-                  ],
-                ),
-              ),
               // No keyboard, no legend: the whole section is a keycap
               // reference and would be unactionable on a phone.
               if (context.showsKeyHints) ...[

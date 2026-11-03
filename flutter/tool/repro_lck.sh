@@ -12,15 +12,18 @@
 #      workspace), because that is the only thing the wrapper changes
 set -uo pipefail
 
-WS="C:/Users/noaha/prj/lingueez-web"
+WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && { pwd -W 2>/dev/null || pwd; })"
 cd "$WS/flutter/android"
 export MSYS2_ARG_CONV_EXCL="*"
+
+TARGET="$(cygpath -w "$WS/flutter/lib/main.dart")"
+TARGET="${TARGET//\\/\\\\}"
 
 ARGS=(
   --full-stacktrace
   -Pverbose=true
   -Ptarget-platform=android-x64
-  "-Ptarget=C:\\Users\\noaha\\prj\\lingueez-web\\flutter\\lib\\main.dart"
+  "-Ptarget=$TARGET"
   -Pbase-application-name=android.app.Application
   -Ptrack-widget-creation=true
   -Ptree-shake-icons=false

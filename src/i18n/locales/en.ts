@@ -367,9 +367,7 @@ export const en: Dictionary = {
     syncGoTo: "Go to sync settings",
     about: "About",
     version: "Version",
-    madeWith: "Inspired by Lingueez, rebuilt with Tauri + React.",
-    licenseNote:
-      "Licensed under GNU AGPL-3.0 as a derivative rewrite of Lingueez, with the original author's attribution preserved.",
+    madeWith: "Offline-first: your vocabulary lives on this device — no account, no network needed.",
     shortcuts: "Shortcuts",
     shortcutAdd: "Add word",
     shortcutSearch: "Focus search",

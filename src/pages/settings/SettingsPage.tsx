@@ -465,11 +465,6 @@ export function SettingsPage() {
               <span className="tiny muted">Tauri 2、React 19、TypeScript</span>
             </div>
             <p className="about-desc">{t("settings.madeWith")}</p>
-            {/* AGPL-3.0 §7(b) additional term: this attribution must stay visible. */}
-            <div className="about-credit">
-              <span className="about-credit-name">Lingueez, created by Yurii Lysak</span>
-              <span className="tiny muted">{t("settings.licenseNote")}</span>
-            </div>
             <hr className="divider" />
             <div>
               <div className="label" style={{ marginBottom: "var(--sp-2)" }}>

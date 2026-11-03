@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
-cd /c/Users/noaha/prj/lingueez-web/server
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 export DATA_DIR="$(mktemp -d)"
 export PORT=8899
 export HOST=127.0.0.1

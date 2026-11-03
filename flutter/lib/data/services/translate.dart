@@ -674,7 +674,7 @@ class IoLookupHttp implements LookupHttp {
   }
 
   static const String _defaultAgent =
-      'Lexumo/0.1 (+https://github.com/noahal1/lingueez-web)';
+      'Lexumo/0.1 (+https://github.com/noahal1/Lexumo)';
 
   final HttpClient _client;
   final String userAgent;

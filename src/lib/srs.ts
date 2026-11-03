@@ -1,6 +1,5 @@
 /**
- * SM-2 style spaced repetition, mirroring the scheduling rules of the
- * reference app (Lingueez) so behaviour feels familiar:
+ * SM-2 style spaced repetition:
  *
  *   Easy  → interval × ease × 1.5, ease +0.15
  *   Good  → interval × ease,       ease +0.10

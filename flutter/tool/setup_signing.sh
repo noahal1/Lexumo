@@ -24,7 +24,7 @@
 # covers by name and by `**/*.jks`.
 set -euo pipefail
 
-WS="C:/Users/noaha/prj/lingueez-web"
+WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && { pwd -W 2>/dev/null || pwd; })"
 FLUTTER="$WS/flutter"
 cd "$FLUTTER"
 

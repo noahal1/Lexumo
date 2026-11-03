@@ -721,19 +721,6 @@
   line-height: var(--lh-body);
 }
 
-.about-credit {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-  padding-left: var(--sp-3);
-  border-left: 2px solid var(--line);
-}
-
-.about-credit-name {
-  font-size: var(--fs-sm);
-  color: var(--ink-2);
-}
-
 /* --------------------------------------------------------------------------
    Interaction states
    The global primitives already cover hover/focus for buttons and segments;

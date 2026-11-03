@@ -2,7 +2,7 @@
 
 Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进词砚，用间隔重复一点点记住它们。
 
-项目参考开源桌面词汇应用 **[Lingueez](https://lingueez.app)**（Python + PySide6，作者 Yurii Lysak）的功能理念，用 **Tauri 2 + React 19 + TypeScript + Vite 7** 重新实现。界面以中文为主，视觉基调是暖纸色背景与玉绿色点缀；数据默认全部保存在本机，不注册、不联网即可使用，需要多设备时可选接入自带的同步后端。
+Lexumo（词砚）用 **Tauri 2 + React 19 + TypeScript + Vite 7** 构建，界面以中文为主，视觉基调是暖纸色背景与玉绿色点缀；数据默认全部保存在本机，不注册、不联网即可使用，需要多设备时可选接入自带的同步后端。
 
 ![Lexumo 界面](docs/app-ui.png)
 
@@ -103,7 +103,7 @@ Lexumo（词砚）是一个安静的桌面背单词工作室：把生词研进�
 ├── vitest.config.ts            # 测试配置：environment node，@ 别名，包含 .ts/.tsx
 ├── tsconfig.json               # 前端 TS 配置（strict，include: src）
 ├── LICENSE.txt                 # GNU AGPL-3.0 全文
-├── NOTICE                      # 上游署名与 AGPL-3.0 §7(b) 附加条款
+├── NOTICE                      # 版权与许可声明
 ├── THIRD-PARTY-LICENSES.md     # 第三方组件许可
 ├── docs/
 │   ├── app-ui.png              # README 界面截图
@@ -383,10 +383,8 @@ npm start
 - **导入编码**：仅支持 UTF-8，GBK 等编码需先转码；Anki 的 `.apkg` 包不在支持范围内。
 - **搜索**：前端内存过滤，无分词与模糊匹配，也不支持正则。
 
-## 致谢与许可
+## 许可
 
-- **功能与交互理念**参考 **[Lingueez](https://lingueez.app)**（作者 Yurii Lysak，AGPL-3.0）。Lexumo 是独立重写，但保留了「词条状态阶梯 + 间隔重复 + 听音记忆」这一核心思路。
-- **许可**：本项目以 **GNU AGPL-3.0** 授权，是 Lingueez 的衍生重写，许可证全文见 [`LICENSE.txt`](LICENSE.txt)。
-- **署名（AGPL-3.0 §7(b) 附加条款）**：按上游 [`NOTICE`](NOTICE) 的要求，必须在用户可见的法律声明中保留 **“Lingueez — created by Yurii Lysak”** 这一署名。该署名已展示在应用「设置 → 关于」中，请勿移除。
-- **第三方组件**：React、Vite、Tauri 等依赖的许可见 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)。
+- **许可**：本项目以 **GNU AGPL-3.0** 授权，许可证全文见 [`LICENSE.txt`](LICENSE.txt)。
+- **第三方组件**：React、Vite、Tauri、Flutter 等依赖的许可见 [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md)。
 - **图标**：由 `src-tauri/icons/generate-icons.py` 使用 Pillow 生成，全部是几何图形（圆角矩形 + 圆点），不含任何字体字形或第三方素材，可自由随项目分发。

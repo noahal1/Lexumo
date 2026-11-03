@@ -1,52 +1,56 @@
 # Third-Party Licenses
 
-Lingueez is built on open-source components, each distributed under its own
+Lexumo is built on open-source components, each distributed under its own
 license. This file acknowledges them. The list reflects the project's declared
 dependencies; for the exact terms and versions, consult each package directly
-(`pip show <package>` and the project's homepage).
+and the project's homepage.
 
 All licenses below are compatible with the project's GNU Affero General Public
 License v3.0.
 
-## Python dependencies
+## Tauri / React app (`package.json`)
 
 | Component | Purpose | License |
 | --- | --- | --- |
-| PySide6 (Qt for Python) | Graphical interface | LGPL-3.0 |
-| openai | ChatGPT integration | Apache-2.0 |
-| google-genai | Gemini integration | Apache-2.0 |
-| google-cloud-texttospeech | Premium text-to-speech | Apache-2.0 |
-| requests | HTTP client | Apache-2.0 |
-| pandas | Data processing | BSD-3-Clause |
-| numpy | Numerical computing | BSD-3-Clause |
-| openpyxl | Excel import/export | MIT |
-| reportlab | PDF export | BSD-3-Clause |
-| trafilatura | Web article extraction | Apache-2.0 |
-| feedparser | RSS parsing | BSD-2-Clause |
-| supabase | Cloud sync client | MIT |
-| python-dotenv | Environment configuration | BSD-3-Clause |
-| segno | QR codes (desktop→phone app handoff) | BSD-3-Clause |
-| pyphen | Hyphenation for the text reader (bundles the LibreOffice hyphenation dictionaries) | LGPL-2.1+ / GPL-2.0+ / MPL-1.1 |
-| snowballstemmer | Word stems for related words on flashcards | BSD-3-Clause |
-| keyring | Secure credential storage (OS keychain) | MIT |
-| cryptography | Encrypts the local session fallback | Apache-2.0 / BSD-3-Clause |
-| keyboard | Global hotkey (Windows) | MIT |
-| pynput | Global hotkey (macOS/Linux) | LGPL-3.0 |
-| pygame | Audio playback | LGPL-2.1 |
-| gtts | Free text-to-speech | MIT |
-| pydub | Audio processing | MIT |
+| react | UI library | MIT |
+| react-dom | DOM renderer | MIT |
+| @tauri-apps/api | Native bridge from the webview | Apache-2.0 / MIT |
+| tauri-plugin-tts-api | Text-to-speech | MIT |
 
-## Bundled tools
+### Build and test only
 
 | Component | Purpose | License |
 | --- | --- | --- |
-| FFmpeg | MP3 export (optional, used via pydub) | LGPL-2.1 / GPL-2.0+ depending on build |
-| Inno Setup translations | Windows installer wizard text, seven `.isl` files vendored under `packaging/inno/languages/` | Inno Setup License (permits redistribution) |
+| vite | Dev server and bundler | MIT |
+| @vitejs/plugin-react | React plugin for Vite | MIT |
+| typescript | Type checker and compiler | Apache-2.0 |
+| vitest | Test runner | MIT |
+| jsdom | DOM implementation for tests | MIT |
+| @tauri-apps/cli | Tauri build tooling | Apache-2.0 / MIT |
+
+## Flutter app (`flutter/pubspec.yaml`)
+
+| Component | Purpose | License |
+| --- | --- | --- |
+| flutter | UI framework | BSD-3-Clause |
+| flutter_localizations | Localization delegates | BSD-3-Clause |
+| crypto | SHA-256 hashing for sync | BSD-3-Clause |
+| file_selector | Native open/save dialogs | BSD-3-Clause |
+| flutter_tts | Text-to-speech | MIT |
+| flutter_lints | Lint rule set (dev only) | BSD-3-Clause |
+
+`flutter_tts` is vendored under `flutter/third_party/flutter_tts` so the Windows
+and Android platform channels can be patched; its upstream license is preserved
+in that directory.
+
+## Bundled assets
+
+| Component | Purpose | License |
+| --- | --- | --- |
+| IBM Plex Sans / Serif / Mono | Interface and reading typography | SIL Open Font License 1.1 |
 
 ## Notes
 
-- **LGPL components** (PySide6, pynput, pygame, FFmpeg) are used as separate,
-  replaceable libraries and are not statically modified.
 - License identifiers follow the [SPDX](https://spdx.org/licenses/) convention.
 - If a dependency's license differs for the version you install, the version you
   install governs.

@@ -39,7 +39,7 @@
 # every user "有更新" with nothing to read.
 set -euo pipefail
 
-WS="C:/Users/noaha/prj/lingueez-web"
+WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && { pwd -W 2>/dev/null || pwd; })"
 FLUTTER="$WS/flutter"
 cd "$FLUTTER"
 

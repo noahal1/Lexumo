@@ -13,7 +13,7 @@ use serde::Serialize;
 
 /// A desktop client should identify itself honestly rather than pretend to be
 /// a browser, but some public endpoints reject obviously non-browser agents.
-const USER_AGENT: &str = "Lexumo/0.1 (+https://github.com/noahal1/lingueez-web)";
+const USER_AGENT: &str = "Lexumo/0.1 (+https://github.com/noahal1/Lexumo)";
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 

@@ -1296,7 +1296,7 @@ C:\Users\noaha\.gradle\wrapper\dists\gradle-9.3.1-all\9ot9r568e8zfvvd4mn8rbu1j0\
    `new RandomAccessFile(lck,"rw")` 也成功；把 `.lck` 删掉仍然报同样的错。
 2. **不是磁盘满**。磁盘一度到 100%（剩 15 MB），清到 8 GB 后报错一字不变。
 3. **不是 target 反斜杠**。`flutterc run -v` 显示它传给 Gradle 的是绝对路径
-   `-Ptarget=C:\Users\noaha\prj\lingueez-web\flutter\lib\main.dart`，不是反斜杠的
+   `-Ptarget=C:\...\flutter\lib\main.dart`，不是反斜杠的
    `lib\main.dart`。
 
 **真因是环境变量**。flutter 只给 Gradle 子进程传 `JAVA_HOME` 和 `PATH`

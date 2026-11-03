@@ -14,7 +14,7 @@
 # (e.g. -Ptarget-platform=android-x64 for a 20 MB APK instead of 51 MB).
 set -euo pipefail
 
-WS="C:/Users/noaha/prj/lingueez-web"
+WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && { pwd -W 2>/dev/null || pwd; })"
 cd "$WS/flutter/android"
 
 export HOME="$WS/.flutter-home"
