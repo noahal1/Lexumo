@@ -140,6 +140,8 @@ const Map<String, String> zhCnRaw = {
   'words.filterFavorites': '只看收藏',
   'words.newList': '新建词库',
   'words.listName': '词库名称',
+  'words.listNameHint': '例如：考研词汇、日语 N2',
+  'words.listNameRequired': '请输入词库名称',
   'words.sourceLang': '学习语言',
   'words.targetLang': '释义语言',
   'words.translate': '翻译',

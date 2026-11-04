@@ -707,44 +707,11 @@ class _QuizPageState extends State<QuizPage> {
   /* Layout                                                              */
   /* ------------------------------------------------------------------ */
 
-  /// The web build's `.study-split`: main column plus a 296px side panel, which
-  /// drops below the main column at 1080 and disappears at 720.
-  Widget _studySplit({required Widget main, required Widget side}) {
-    final double width = MediaQuery.sizeOf(context).width;
-    final bool showSide = width > Layout.mobileBreakpoint;
-    if (width <= 1080) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          main,
-          if (showSide) ...<Widget>[
-            const SizedBox(height: Sp.x4),
-            // Stacked under the main column the panel is still a *panel*: a
-            // 296dp column of labels and keycaps stretched to the full page
-            // width puts each row’s key at the far right of a very long gap.
-            // It keeps a readable measure and stays left-aligned instead.
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: side,
-              ),
-            ),
-          ],
-        ],
-      );
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Expanded(child: main),
-        if (showSide) ...<Widget>[
-          const SizedBox(width: Sp.x5),
-          SizedBox(width: 296, child: side),
-        ],
-      ],
-    );
-  }
+  /// The quiz screen's two columns. The measured rule lives in [StudySplit],
+  /// shared with the review screen, so both split at the same *body* width
+  /// rather than each guessing from the window size (which counts the sidebar).
+  Widget _studySplit({required Widget main, required Widget side}) =>
+      StudySplit(main: main, side: side);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -12,7 +12,8 @@
 //     the word library alone, most of them 32dp icon buttons.
 //   · **the first screen is content, not chrome.** The word library used to
 //     spend 164dp of a 401dp-wide phone on three rows of query bar, putting the
-//     first word at y=358 of an 805dp body.
+//     first word at y=358 of an 805dp body. Its two controls rows are pinned by
+//     request now, so the budget there is a height rather than zero.
 //
 // The numbers below are budgets, not measurements of one machine: they are the
 // largest values the design tolerates, so they hold when a font metric shifts a
@@ -72,6 +73,23 @@ Future<void> pumpPhone(WidgetTester tester, Widget child) async {
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// Where a page's scrolling body starts, in screen coordinates.
+///
+/// `PageShell` is the only thing that wraps a page body in a `Scrollbar`, so
+/// this finds the body scroller even when the page has horizontal strips of its
+/// own — the word library's tabs and query bar both scroll sideways.
+double bodyTop(WidgetTester tester) {
+  final RenderBox body = tester.renderObject<RenderBox>(
+    find
+        .descendant(
+          of: find.byType(Scrollbar),
+          matching: find.byType(SingleChildScrollView),
+        )
+        .first,
+  );
+  return body.localToGlobal(Offset.zero).dy;
 }
 
 /// The seven screens, in the order the tab bar lists them plus the shell itself.
@@ -290,23 +308,36 @@ void main() {
     testWidgets('no page spends its first screen on a title', (
       WidgetTester tester,
     ) async {
-      // The pages used to open with a sticky bar: a 30dp serif title and a
-      // one-line subtitle, ~77dp of an 866dp phone before any content. It named
-      // the page the shell's own navigation had just named, so it was removed
-      // rather than resized — and this is the assertion that keeps it removed.
-      //
-      // Measured as "where the scrolling body starts", which is the honest
-      // shape of the claim: no chrome above the content at all.
+      // The chrome that was removed was a 30dp serif title plus a one-line
+      // subtitle, ~77dp of an 866dp phone naming the page the shell's own
+      // navigation had just named. The word library now pins real controls at
+      // its top, so the claim splits in two: pages without pinned controls
+      // start their body at zero, and the word library's strip is controls of a
+      // bounded height rather than a title.
+      for (final (String name, Widget page) in <(String, Widget)>[
+        ('统计', const StatsPage(controller: null)),
+        ('设置', const SettingsPage(controller: null)),
+      ]) {
+        await pumpPhone(tester, page);
+        final double top = bodyTop(tester);
+        expect(top, 0, reason: '$name: the page body starts ${top}dp down');
+      }
+
       await pumpPhone(tester, const WordsPage());
-      final RenderBox body = tester.renderObject<RenderBox>(
-        find.byType(SingleChildScrollView).first,
-      );
-      final double header = body.localToGlobal(Offset.zero).dy;
+      final double top = bodyTop(tester);
+      // Measured 145 on the phone viewport: 24 strip top + the tabs row + 16 +
+      // the query bar + 16, plus the 8dp of gap the body keeps under the
+      // hairline. The budget leaves room for a font metric to shift it.
       expect(
-        header,
-        0,
-        reason: 'the page body starts ${header}dp down an 866dp screen',
+        top,
+        lessThanOrEqualTo(150),
+        reason: 'the pinned strip spends ${top}dp of an 866dp screen',
       );
+      // And it is controls: the search field has to sit inside the strip, above
+      // the body, or the strip is not the thing the page asked for.
+      final Rect search = tester.getRect(find.byType(TextField).first);
+      expect(search.bottom, lessThanOrEqualTo(top));
+      expect(search.top, greaterThan(0));
     });
 
     testWidgets('the page name is still reachable from the shell', (

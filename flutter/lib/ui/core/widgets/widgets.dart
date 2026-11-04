@@ -29,6 +29,7 @@ class PageShell extends StatelessWidget {
   const PageShell({
     super.key,
     required this.children,
+    this.pinned = const <Widget>[],
     this.wide = false,
     this.controller,
     this.fab,
@@ -36,6 +37,20 @@ class PageShell extends StatelessWidget {
   });
 
   final List<Widget> children;
+
+  /// Blocks that stay put while [children] scrolls under them.
+  ///
+  /// The word library's list tabs and query bar are the two controls that
+  /// decide what the body shows, and they used to scroll away with it: after
+  /// one flick the user was reading a filtered list with nothing on screen
+  /// saying which wordbook it came from or how to change the filter, short of
+  /// scrolling back up. Pinned here they never leave, and [children] starts
+  /// below them.
+  ///
+  /// The strip is opaque and ruled at its bottom edge, because it is the edge
+  /// rows disappear under: a transparent strip shows the rows through the gaps
+  /// between its controls, and without a hairline a row is simply cut in half.
+  final List<Widget> pinned;
 
   /// `wide` widens the content column from [Layout.contentMax] to 1360.
   final bool wide;
@@ -52,47 +67,77 @@ class PageShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final maxWidth = wide ? 1360.0 : Layout.contentMax;
-    final body = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: Scrollbar(
-            controller: controller,
-            child: SingleChildScrollView(
-              controller: controller,
-              padding: EdgeInsets.zero,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxWidth),
-                  child: Padding(
-                    padding: EdgeInsetsDirectional.only(
-                      start: bleed ? 0 : Sp.x6,
-                      end: bleed ? 0 : Sp.x6,
-                      top: Sp.x6,
-                      // Room for the phone tab bar so the last card can scroll
-                      // clear of it. With a FAB the tail has to clear the
-                      // button too, or the last row hides under it.
-                      bottom: (fab != null ? Layout.fab + Layout.fabInset : Sp.x6) +
-                          (context.isTouch ? Layout.tap : 0),
-                    ),
-                    // Every page fades in on navigation. Opacity only — no
-                    // travel — for the same reason the web build restricted
-                    // `.page-inner` to `fade-in`: a transform here would become
-                    // the containing block for anything positioned inside the
-                    // page, and the shell draws its own layers above this one.
-                    child: FadeRise(
-                      offset: 0,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: children,
-                      ),
-                    ),
-                  ),
+    final Palette p = Palette.of(context);
+    final bool hasPinned = pinned.isNotEmpty;
+
+    final Widget scroller = Scrollbar(
+      controller: controller,
+      child: SingleChildScrollView(
+        controller: controller,
+        padding: EdgeInsets.zero,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxWidth),
+            child: Padding(
+              padding: EdgeInsetsDirectional.only(
+                start: bleed ? 0 : Sp.x6,
+                end: bleed ? 0 : Sp.x6,
+                // The pinned strip ends with its own bottom spacing, so the
+                // body only has to add the gap under that hairline. Without a
+                // strip it starts the page, as it always did.
+                top: hasPinned ? Sp.x2 : Sp.x6,
+                // Room for the phone tab bar so the last card can scroll
+                // clear of it. With a FAB the tail has to clear the
+                // button too, or the last row hides under it.
+                bottom: (fab != null ? Layout.fab + Layout.fabInset : Sp.x6) +
+                    (context.isTouch ? Layout.tap : 0),
+              ),
+              // Every page fades in on navigation. Opacity only — no
+              // travel — for the same reason the web build restricted
+              // `.page-inner` to `fade-in`: a transform here would become
+              // the containing block for anything positioned inside the
+              // page, and the shell draws its own layers above this one.
+              child: FadeRise(
+                offset: 0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: children,
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+
+    final Widget body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (hasPinned)
+          Container(
+            decoration: BoxDecoration(
+              color: p.surface,
+              border: Border(bottom: BorderSide(color: p.line)),
+            ),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    start: bleed ? 0 : Sp.x6,
+                    end: bleed ? 0 : Sp.x6,
+                    top: Sp.x6,
+                    bottom: Sp.x4,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: pinned,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        Expanded(child: scroller),
       ],
     );
 
@@ -108,6 +153,69 @@ class PageShell extends StatelessWidget {
           child: fab!,
         ),
       ],
+    );
+  }
+}
+
+/// The two-column study layout shared by the review and quiz screens.
+///
+/// The split used to be decided from `MediaQuery.sizeOf(context).width`, which
+/// is the *window*, not the room the page actually has. With the 232dp sidebar
+/// a 1081dp window leaves ~800dp for the body, so the 296dp panel was set
+/// beside the card and squeezed it to 485dp — while shrinking the window by a
+/// single pixel stacked the panel and gave the same card 801dp. The rule here
+/// measures the width it is handed instead of guessing from the window, and
+/// both practice screens use it so they cannot drift apart.
+class StudySplit extends StatelessWidget {
+  const StudySplit({super.key, required this.main, required this.side});
+
+  final Widget main;
+  final Widget side;
+
+  /// The panel's width, the gap beside it, and the narrowest a study card may
+  /// get before the panel moves below it instead of squeezing it.
+  static const double sideWidth = 296;
+  static const double gap = Sp.x5;
+  static const double mainMin = 560;
+
+  /// The body width at which the panel no longer fits beside the card.
+  static const double splitAt = sideWidth + gap + mainMin;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        if (constraints.maxWidth >= splitAt) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: main),
+              const SizedBox(width: gap),
+              SizedBox(width: sideWidth, child: side),
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            main,
+            // Stacked, the panel keeps a readable measure rather than the full
+            // page width: it is a column of labels and keycaps, and stretched
+            // to a wide page each row's key would sit a long way from its
+            // label. Below the phone breakpoint it is dropped entirely.
+            if (constraints.maxWidth > Layout.mobileBreakpoint) ...[
+              const SizedBox(height: Sp.x4),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: side,
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

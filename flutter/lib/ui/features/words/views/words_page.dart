@@ -196,7 +196,12 @@ class _WordsPageState extends State<WordsPage> {
               // from the tabs strip below (`_AddTabButton`), and a second button
               // for the same dialog in the chrome above it was the page saying
               // the same thing twice.
-              children: [
+              // The two controls that decide what the list shows — which
+              // wordbook, and the query/filter — stay at the top while the rows
+              // scroll under them. A filtered list whose filter has scrolled
+              // out of sight is a list you cannot trust, and changing wordbook
+              // meant scrolling to the top first.
+              pinned: <Widget>[
                 _gutter(
                   _ListTabs(
                     lists: context.data.lists,
@@ -228,7 +233,8 @@ class _WordsPageState extends State<WordsPage> {
                     },
                   ),
                 ),
-                const SizedBox(height: Sp.x4),
+              ],
+              children: [
                 if (_vm.isListEmpty)
                   _gutter(
                     EmptyState(
@@ -1698,24 +1704,91 @@ class _ListManagerBody extends StatefulWidget {
   State<_ListManagerBody> createState() => _ListManagerBodyState();
 }
 
-class _ListManagerBodyState extends State<_ListManagerBody> {
+class _ListManagerBodyState extends State<_ListManagerBody>
+    with WidgetsBindingObserver {
   bool _creating = false;
   final TextEditingController _name = TextEditingController();
+  final FocusNode _nameFocus = FocusNode();
+
+  /// Set when 创建 is pressed with a blank name; cleared on the next keystroke.
+  ///
+  /// The button stays enabled on purpose: a greyed-out 创建 explains nothing,
+  /// and on a phone the tap is the one moment the user is looking for a reason.
+  /// Silently returning is what made the button read as broken.
+  String? _nameError;
+
+  /// The create card's action row. Held in view when the keyboard opens: the
+  /// name field autofocuses, the modal body shrinks under the keyboard, and
+  /// that used to push 取消/创建 below the fold — an invisible create button is
+  /// indistinguishable from one that does nothing.
+  final GlobalKey _formActions = GlobalKey();
+
   String _sourceLang = 'en';
   String _targetLang = 'zh-CN';
   String? _renamingId;
   final TextEditingController _rename = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeMetrics() => _revealActions();
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _nameFocus.dispose();
     _name.dispose();
     _rename.dispose();
     super.dispose();
   }
 
+  /// Scrolls the create card's buttons into view after the frame that moved
+  /// them. `Scrollable.ensureVisible` walks up to the modal body's scroll view
+  /// on its own: `showLexModal` owns that view, so there is no controller here
+  /// to ask, and asking the nearest scrollable is also what keeps this correct
+  /// if the dialog gains another one.
+  void _revealActions() {
+    if (!_creating) return;
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      final BuildContext? actions = _formActions.currentContext;
+      if (!mounted || actions == null) return;
+      Scrollable.ensureVisible(
+        actions,
+        alignment: 1,
+        duration: Motion.dur2,
+        curve: Motion.ease,
+      );
+    });
+  }
+
+  void _openCreate() {
+    setState(() {
+      _creating = true;
+      _nameError = null;
+    });
+    _revealActions();
+  }
+
+  void _closeCreate() {
+    _nameFocus.unfocus();
+    setState(() {
+      _creating = false;
+      _nameError = null;
+    });
+  }
+
   void _create() {
-    final trimmed = _name.text.trim();
-    if (trimmed.isEmpty) return;
+    final String trimmed = _name.text.trim();
+    if (trimmed.isEmpty) {
+      setState(() => _nameError = context.t('words.listNameRequired'));
+      _nameFocus.requestFocus();
+      _revealActions();
+      return;
+    }
     // Creates, switches the page to the new list, and toasts — all in the view
     // model, so the tab and the modal cannot disagree about which list is new.
     widget.vm.createList(
@@ -1724,7 +1797,137 @@ class _ListManagerBodyState extends State<_ListManagerBody> {
       targetLang: _targetLang,
     );
     _name.clear();
-    setState(() => _creating = false);
+    _nameFocus.unfocus();
+    setState(() {
+      _creating = false;
+      _nameError = null;
+    });
+  }
+
+  /// The create card: title, the required name, the language pair, the actions.
+  ///
+  /// Laid out for the width it actually gets rather than for a desktop dialog.
+  /// A phone's modal body is ~340dp wide; two language selects side by side
+  /// there leave each label ellipsised to "中文（简…", so under 420dp they stack
+  /// and the buttons stretch to the card — also the width a thumb wants.
+  Widget _buildCreateForm(BuildContext context) {
+    final p = Palette.of(context);
+    final String uiLang = context.i18n.lang.wire;
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool compact = constraints.maxWidth < 420;
+        final Widget source = LexField(
+          label: context.t('words.sourceLang'),
+          child: LexSelect<String>(
+            value: _sourceLang,
+            options: LANGUAGES.map((l) => l.code).toList(),
+            labelOf: (code) => langName(code, uiLang),
+            onChanged: (v) => setState(() => _sourceLang = v),
+          ),
+        );
+        final Widget target = LexField(
+          label: context.t('words.targetLang'),
+          child: LexSelect<String>(
+            value: _targetLang,
+            options: LANGUAGES.map((l) => l.code).toList(),
+            labelOf: (code) => langName(code, uiLang),
+            onChanged: (v) => setState(() => _targetLang = v),
+          ),
+        );
+        final Widget cancel = LexButton(
+          label: context.t('common.cancel'),
+          size: compact ? BtnSize.md : BtnSize.sm,
+          kind: BtnKind.quiet,
+          block: compact,
+          onPressed: _closeCreate,
+        );
+        final Widget create = LexButton(
+          label: context.t('common.create'),
+          size: compact ? BtnSize.md : BtnSize.sm,
+          kind: BtnKind.primary,
+          block: compact,
+          onPressed: _create,
+        );
+
+        return Container(
+          padding: const EdgeInsets.all(Sp.x4),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: R.borderSm,
+            border: Border.all(color: p.lineStrong),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(
+                children: <Widget>[
+                  LexIcon(Ic.plus, size: 15, color: p.accent),
+                  const SizedBox(width: Sp.x2),
+                  Text(
+                    context.t('words.newList'),
+                    style: TextStyle(
+                      fontSize: Fs.sm,
+                      fontWeight: FontWeight.w600,
+                      color: p.ink,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Sp.x3),
+              LexField(
+                label: context.t('words.listName'),
+                error: _nameError,
+                child: LexInput(
+                  // A stable handle for the widget tests: the page behind the
+                  // modal also owns a text field (the search capsule), so
+                  // "the first TextField" would be a coin flip.
+                  key: const Key('create-list-name'),
+                  controller: _name,
+                  focusNode: _nameFocus,
+                  placeholder: context.t('words.listNameHint'),
+                  autofocus: true,
+                  onChanged: (_) {
+                    if (_nameError != null) setState(() => _nameError = null);
+                  },
+                  onSubmitted: (_) => _create(),
+                ),
+              ),
+              const SizedBox(height: Sp.x4),
+              if (compact) ...<Widget>[
+                source,
+                const SizedBox(height: Sp.x3),
+                target,
+              ] else
+                Row(
+                  children: <Widget>[
+                    Expanded(child: source),
+                    const SizedBox(width: Sp.x3),
+                    Expanded(child: target),
+                  ],
+                ),
+              const SizedBox(height: Sp.x4),
+              Row(
+                key: _formActions,
+                children: compact
+                    ? <Widget>[
+                        Expanded(child: cancel),
+                        const SizedBox(width: Sp.x2),
+                        Expanded(child: create),
+                      ]
+                    : <Widget>[
+                        const Spacer(),
+                        cancel,
+                        const SizedBox(width: Sp.x2),
+                        create,
+                      ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -1761,79 +1964,10 @@ class _ListManagerBodyState extends State<_ListManagerBody> {
           ),
         const SizedBox(height: Sp.x4),
         if (_creating)
-          Container(
-            padding: const EdgeInsets.all(Sp.x4),
-            decoration: BoxDecoration(
-              color: p.surface2,
-              borderRadius: R.borderSm,
-              border: Border.all(color: p.line),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                LexField(
-                  label: context.t('words.newList'),
-                  hint: context.t('words.listName'),
-                  child: LexInput(
-                    controller: _name,
-                    placeholder: context.t('words.listName'),
-                    autofocus: true,
-                    onSubmitted: (_) => _create(),
-                  ),
-                ),
-                const SizedBox(height: Sp.x3),
-                Row(
-                  children: [
-                    Expanded(
-                      child: LexField(
-                        label: context.t('words.sourceLang'),
-                        child: LexSelect<String>(
-                          value: _sourceLang,
-                          options: LANGUAGES.map((l) => l.code).toList(),
-                          labelOf: (code) => langName(code, 'zh-CN'),
-                          onChanged: (v) => setState(() => _sourceLang = v),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: Sp.x3),
-                    Expanded(
-                      child: LexField(
-                        label: context.t('words.targetLang'),
-                        child: LexSelect<String>(
-                          value: _targetLang,
-                          options: LANGUAGES.map((l) => l.code).toList(),
-                          labelOf: (code) => langName(code, 'zh-CN'),
-                          onChanged: (v) => setState(() => _targetLang = v),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: Sp.x3),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    LexButton(
-                      label: context.t('common.cancel'),
-                      size: BtnSize.sm,
-                      kind: BtnKind.quiet,
-                      onPressed: () => setState(() => _creating = false),
-                    ),
-                    const SizedBox(width: Sp.x2),
-                    LexButton(
-                      label: context.t('common.create'),
-                      size: BtnSize.sm,
-                      kind: BtnKind.primary,
-                      onPressed: _create,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          )
+          _buildCreateForm(context)
         else
           GestureDetector(
-            onTap: () => setState(() => _creating = true),
+            onTap: _openCreate,
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
               child: Container(

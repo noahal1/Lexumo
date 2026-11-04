@@ -145,6 +145,8 @@ const Map<String, String> enRaw = {
   'words.filterFavorites': 'Favorites only',
   'words.newList': 'New list',
   'words.listName': 'List name',
+  'words.listNameHint': 'e.g. IELTS core words, JLPT N2',
+  'words.listNameRequired': 'Enter a list name',
   'words.sourceLang': 'Learning language',
   'words.targetLang': 'Meaning language',
   'words.translate': 'Translate',
