@@ -281,18 +281,27 @@ class _AppShellState extends State<AppShell> {
             autofocus: true,
             // The window is edge-to-edge (`enableEdgeToEdge` in `main.dart`),
             // so both system bars float over this widget and their glyph
-            // colours have to be republished from here. The top edge is always
-            // the stone frame, dark in both themes, so its glyphs stay light.
-            // The bottom edge is paper in every layout -- the phone tab bar is
-            // paper material, a tablet or desktop window has no bar at all --
-            // so its glyphs follow the theme. `shellOverlayStyle` takes only
-            // `isDark` for that reason; it took the layout mode back when the
-            // bar was stone, which is exactly the assumption this redesign
-            // removed. See `ui/core/system_ui.dart`.
+            // colours have to be republished from here. The edges are not the
+            // same decision: a phone has no frame beside the paper, so the
+            // paper runs to the top of the glass and the status glyphs follow
+            // the theme; a tablet or desktop window wraps the paper in the
+            // stone frame, which is dark in both themes, so over stone the
+            // glyphs stay light. The bottom edge lands on paper in every
+            // layout, so its glyphs always follow the theme. See
+            // `ui/core/system_ui.dart`.
             child: AnnotatedRegion<SystemUiOverlayStyle>(
-              value: shellOverlayStyle(isDark: _vm.isDark),
+              value: shellOverlayStyle(
+                isDark: _vm.isDark,
+                statusOnPaper: mobile,
+              ),
               child: Scaffold(
-                backgroundColor: Palette.of(context).frame,
+                // A phone keeps nothing stone on screen — the tab bar is a
+                // paper dock and nothing owns a strip at the top — so the
+                // window's background is the paper itself, and the status bar
+                // floats over it. The wider layouts show the stone frame
+                // around the paper, as the desktop always has.
+                backgroundColor:
+                    mobile ? Palette.of(context).bg : Palette.of(context).frame,
                 // The bar owns no strip of its own on a phone: the page's paper
                 // runs to the bottom edge and the capsule floats over it. That
                 // is the difference between "the bar folded away" and "the bar

@@ -25,19 +25,21 @@
 ///
 /// ## Why the two edges are not the same decision
 ///
-/// The status bar is easy: the shell's `Scaffold` background is the stone frame,
-/// its `SafeArea` insets only the content, so the strip behind the status bar is
-/// stone. Stone is dark in **both** themes — that is the whole point of it
-/// (`docs/design.md`: "the frame never changes colour with the theme") — so the
-/// status-bar glyphs are **always light**, in light mode and dark mode alike.
+/// The status bar's material depends on the layout. A phone has no frame
+/// beside the paper — nothing owns a strip up there — so the shell hands the
+/// whole top edge to the paper, and the glyphs follow the theme: dark on light
+/// paper, light on dark. A tablet or a desktop window wraps the paper in the
+/// stone frame, and stone is dark in **both** themes (`docs/design.md`: "the
+/// frame never changes colour with the theme"), so over stone the glyphs are
+/// **always light**. [shellOverlayStyle] takes `statusOnPaper` to tell the two
+/// cases apart — the shell knows its layout mode; the bar itself does not.
 ///
-/// The navigation bar is not. It used to be argued the other way: a phone's tab
-/// bar was stone too, so both edges were stone and took light glyphs. That bar
-/// is paper now — it belongs to the paper material and only the *frame* around
-/// it is stone — so every layout ends with paper at the bottom edge, and the
-/// glyphs follow the theme. This is no longer a question about layout, which is
-/// why [shellOverlayStyle] takes only `isDark`; it used to take the layout mode
-/// and got the phone case wrong the moment the bar changed material.
+/// The navigation bar, by contrast, lands on paper in *every* layout: the
+/// phone's tab bar is paper material, and the wider layouts have no bar at
+/// all. So the bottom glyphs simply follow `isDark` and take no extra input.
+/// (This function once took the layout mode and got the phone case wrong the
+/// moment that bar changed material; the bottom edge no longer needs the mode,
+/// and only the top edge still does.)
 ///
 /// ## Why an `AnnotatedRegion` and not a global call
 ///
@@ -54,20 +56,29 @@ import 'package:flutter/services.dart';
 
 /// The overlay style for the shell, given which material is under each edge.
 ///
-/// [isDark] decides the bottom edge only. The paper follows the theme and the
-/// paper is always what the bottom edge lands on: the phone tab bar is paper,
-/// and a tablet or desktop window has no bar at all, so the page's paper runs
-/// there. The status bar over the stone frame does not consult it.
-SystemUiOverlayStyle shellOverlayStyle({required bool isDark}) {
-  // The top edge is stone in every layout, so it never consults `isDark`.
-  const Brightness statusIcons = Brightness.light;
+/// [isDark] decides the bottom edge — paper is always what the bottom edge
+/// lands on (the phone tab bar is paper, wider layouts have no bar at all) —
+/// and, on a phone, the top edge too. [statusOnPaper] says whether the status
+/// bar floats over paper (phone: the paper runs to the top of the glass) or
+/// over the stone frame (tablet and desktop): over paper the status glyphs
+/// follow the theme, over stone they stay light because stone is dark in both
+/// themes.
+SystemUiOverlayStyle shellOverlayStyle({
+  required bool isDark,
+  required bool statusOnPaper,
+}) {
+  // The top edge: paper follows the theme, stone does not.
+  final bool lightStatusIcons = !statusOnPaper || isDark;
+  final Brightness statusIcons =
+      lightStatusIcons ? Brightness.light : Brightness.dark;
   // The bottom edge is paper in every layout, so it always does.
   final Brightness navIcons = isDark ? Brightness.light : Brightness.dark;
   return SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: statusIcons,
     // iOS reads this one inverted: `dark` means "draw light content".
-    statusBarBrightness: Brightness.dark,
+    statusBarBrightness:
+        lightStatusIcons ? Brightness.dark : Brightness.light,
     systemNavigationBarColor: Colors.transparent,
     systemNavigationBarIconBrightness: navIcons,
     systemNavigationBarDividerColor: Colors.transparent,
@@ -95,6 +106,10 @@ Future<void> enableEdgeToEdge() async {
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   // A provisional style for the very first frame, before the shell has built and
-  // had a chance to publish its own. The shell's region wins from frame two on.
-  SystemChrome.setSystemUIOverlayStyle(shellOverlayStyle(isDark: false));
+  // had a chance to publish its own. The launch window behind it is the stone
+  // frame (`styles.xml` windowBackground), so the provisional faces stone; the
+  // shell's region wins from frame two on.
+  SystemChrome.setSystemUIOverlayStyle(
+    shellOverlayStyle(isDark: false, statusOnPaper: false),
+  );
 }

@@ -118,7 +118,7 @@ void main() {
   group('shellOverlayStyle', () {
     test('both bars are transparent so the app colour reaches the glass', () {
       for (final bool isDark in <bool>[true, false]) {
-        final style = shellOverlayStyle(isDark: isDark);
+        final style = shellOverlayStyle(isDark: isDark, statusOnPaper: false);
         expect(
           style.statusBarColor,
           Colors.transparent,
@@ -142,24 +142,36 @@ void main() {
       // the bar is transparent, which paints a translucent scrim in a colour no
       // design token owns. Same for the status bar from Android 11.
       for (final bool isDark in <bool>[true, false]) {
-        final style = shellOverlayStyle(isDark: isDark);
+        final style = shellOverlayStyle(isDark: isDark, statusOnPaper: false);
         expect(style.systemStatusBarContrastEnforced, isFalse);
         expect(style.systemNavigationBarContrastEnforced, isFalse);
       }
     });
 
-    test('status glyphs are light in both themes, because the frame is stone',
-        () {
+    test('over the stone frame the glyphs are light in both themes', () {
       // The frame does not change colour with the theme — that is the design
-      // system's own rule. So this loop deliberately ignores `isDark`: if the
-      // status icons ever followed the theme, one of the two modes would put
-      // dark glyphs on dark stone.
+      // system's own rule. So this loop deliberately ignores `isDark`: over
+      // stone, if the status icons ever followed the theme, one of the two
+      // modes would put dark glyphs on dark stone.
       for (final bool isDark in <bool>[true, false]) {
-        final style = shellOverlayStyle(isDark: isDark);
+        final style = shellOverlayStyle(isDark: isDark, statusOnPaper: false);
         expect(style.statusBarIconBrightness, Brightness.light);
         // iOS spells the same intent inverted: `dark` means "light content".
         expect(style.statusBarBrightness, Brightness.dark);
       }
+    });
+
+    test('over paper the status glyphs follow the theme', () {
+      // A phone runs its paper to the top of the glass, so the bar sits on the
+      // theme's paper: dark glyphs on light paper, light glyphs on dark.
+      final light = shellOverlayStyle(isDark: false, statusOnPaper: true);
+      expect(light.statusBarIconBrightness, Brightness.dark);
+      // iOS inverted again: a light backing is what asks for dark glyphs.
+      expect(light.statusBarBrightness, Brightness.light);
+
+      final dark = shellOverlayStyle(isDark: true, statusOnPaper: true);
+      expect(dark.statusBarIconBrightness, Brightness.light);
+      expect(dark.statusBarBrightness, Brightness.dark);
     });
 
     test('nav glyphs follow the theme, because the bottom edge is always paper',
@@ -170,11 +182,11 @@ void main() {
       // function stopped taking one. It used to be told the layout and got the
       // phone case wrong — it painted light glyphs over a paper bar.
       expect(
-        shellOverlayStyle(isDark: false).systemNavigationBarIconBrightness,
+        shellOverlayStyle(isDark: false, statusOnPaper: false).systemNavigationBarIconBrightness,
         Brightness.dark,
       );
       expect(
-        shellOverlayStyle(isDark: true).systemNavigationBarIconBrightness,
+        shellOverlayStyle(isDark: true, statusOnPaper: false).systemNavigationBarIconBrightness,
         Brightness.light,
       );
     });
@@ -240,8 +252,9 @@ void main() {
       // so this asserted light glyphs. The bar is a paper dock now — light
       // glyphs on paper is exactly the failure this line pins.
       expect(style.systemNavigationBarIconBrightness, Brightness.dark);
-      // The top edge is still stone in every layout.
-      expect(style.statusBarIconBrightness, Brightness.light);
+      // The paper runs to the top of the glass on a phone, so in the light
+      // theme the status glyphs are dark — they used to be light over stone.
+      expect(style.statusBarIconBrightness, Brightness.dark);
       expect(style.statusBarColor, Colors.transparent);
     });
 
@@ -253,6 +266,8 @@ void main() {
         dark: true,
       );
       expect(style.systemNavigationBarIconBrightness, Brightness.light);
+      // Dark paper under the top edge takes light status glyphs back.
+      expect(style.statusBarIconBrightness, Brightness.light);
     });
 
     testWidgets('a tablet has no tab bar, so the bottom edge is paper',
