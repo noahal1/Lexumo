@@ -31,6 +31,7 @@ library;
 
 import '../../../../data/repositories/store.dart';
 import '../../../../domain/models/types.dart';
+import '../../../../domain/use_cases/deck_templates.dart';
 import '../../../../domain/use_cases/word_query.dart';
 import '../../../core/view_model.dart';
 
@@ -443,6 +444,31 @@ class WordsViewModel extends ViewModel {
     );
     selectList(created.id);
     _feedback.toast(_feedback.t('words.newList'), kind: ToastKind.ok);
+    return created;
+  }
+
+  /// Add a ready-made deck (the gojūon chart) as its own list, in one write.
+  ///
+  /// Deliberately not routed through [createList]: that one writes an empty
+  /// list, and the 46 words would then arrive as 46 separate publishes — the
+  /// words page would repaint 46 times and the toast would fire before the
+  /// cards existed. The store has a single-commit path for exactly this.
+  ///
+  /// [name] arrives from the view already translated, because a list name is
+  /// user content: the deck keeps the name it was created with even after the
+  /// interface language changes.
+  WordList addDeck(DeckTemplate template, {required String name}) {
+    final WordList created = _store.createListWithWords(
+      name: name,
+      sourceLang: template.sourceLang,
+      targetLang: template.targetLang,
+      words: template.words,
+    );
+    selectList(created.id);
+    _feedback.toast(
+      _feedback.t('words.deckAdded', {'n': template.count}),
+      kind: ToastKind.ok,
+    );
     return created;
   }
 

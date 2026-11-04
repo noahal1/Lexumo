@@ -23,7 +23,6 @@ import 'dart:convert';
 
 import '../../domain/models/types.dart';
 import '../../domain/models/utils.dart' show dayKeyOfTs;
-import '../repositories/store.dart' show NewWordInput;
 
 /// Which shape [parseImport] recognised. `unknown` means "nothing to import",
 /// not "malformed" — a file full of prose is a normal thing to be handed.

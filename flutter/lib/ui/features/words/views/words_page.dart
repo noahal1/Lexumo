@@ -30,6 +30,7 @@ import '../../../../data/services/speech.dart';
 import '../../../../domain/models/languages.dart';
 import '../../../../domain/models/srs.dart';
 import '../../../../domain/models/types.dart';
+import '../../../../domain/use_cases/deck_templates.dart';
 import '../../../../domain/use_cases/word_query.dart';
 import '../../../core/context_feedback.dart';
 import '../../../core/tokens.dart';
@@ -1930,6 +1931,57 @@ class _ListManagerBodyState extends State<_ListManagerBody>
     );
   }
 
+  /// The ready-made decks, as one hairline row each.
+  ///
+  /// They sit above the blank form on purpose: someone opening this dialog to
+  /// start Japanese should not have to name an empty list first. The row is the
+  /// same shape as a list row so it reads as "a list you can have" rather than
+  /// as an advertisement.
+  Widget _buildDeckPicker(BuildContext context) {
+    final Palette p = Palette.of(context);
+    final List<DeckTemplate> decks = deckTemplates();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          context.t('words.decks'),
+          style: TextStyle(
+            fontSize: Fs.xs,
+            height: Lh.tight,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+            color: p.ink4,
+          ),
+        ),
+        const SizedBox(height: Sp.x2),
+        for (var i = 0; i < decks.length; i++)
+          _DeckRow(
+            deck: decks[i],
+            label: context.t(
+              decks[i].id == 'kana-hiragana'
+                  ? 'words.deckKanaHiragana'
+                  : 'words.deckKanaKatakana',
+            ),
+            hint: context.t('words.deckKanaHint'),
+            last: i == decks.length - 1,
+            onTap: () => _addDeck(decks[i]),
+          ),
+      ],
+    );
+  }
+
+  /// Add [deck] and close: the page switches to the new list, so staying in the
+  /// dialog would hide the thing that was just created.
+  void _addDeck(DeckTemplate deck) {
+    widget.vm.addDeck(deck, name: context.t(
+      deck.id == 'kana-hiragana'
+          ? 'words.deckKanaHiragana'
+          : 'words.deckKanaKatakana',
+    ));
+    Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final data = context.data;
@@ -1962,6 +2014,8 @@ class _ListManagerBodyState extends State<_ListManagerBody>
             onCancelRename: () => setState(() => _renamingId = null),
             onDelete: () => widget.vm.deleteList(l),
           ),
+        const SizedBox(height: Sp.x4),
+        _buildDeckPicker(context),
         const SizedBox(height: Sp.x4),
         if (_creating)
           _buildCreateForm(context)
@@ -2098,6 +2152,101 @@ class _ListRow extends StatelessWidget {
                   kind: BtnKind.primary,
                   onPressed: onCommitRename,
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One ready-made deck: what it is, how big it is, and a plus.
+class _DeckRow extends StatefulWidget {
+  const _DeckRow({
+    required this.deck,
+    required this.label,
+    required this.hint,
+    required this.last,
+    required this.onTap,
+  });
+
+  final DeckTemplate deck;
+  final String label;
+  final String hint;
+  final bool last;
+  final VoidCallback onTap;
+
+  @override
+  State<_DeckRow> createState() => _DeckRowState();
+}
+
+class _DeckRowState extends State<_DeckRow> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette p = Palette.of(context);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Sp.x2,
+            vertical: Sp.x2,
+          ),
+          decoration: BoxDecoration(
+            color: _hover ? p.surfaceHover : Colors.transparent,
+            borderRadius: R.borderSm,
+            border: widget.last
+                ? null
+                : Border(bottom: BorderSide(color: p.line)),
+          ),
+          child: Row(
+            children: <Widget>[
+              LexIcon(Ic.layers, size: 16, color: p.ink3),
+              const SizedBox(width: Sp.x3),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      widget.label,
+                      style: TextStyle(
+                        fontSize: Fs.sm,
+                        height: Lh.snug,
+                        fontWeight: FontWeight.w500,
+                        color: p.ink,
+                      ),
+                    ),
+                    Text(
+                      widget.hint,
+                      style: TextStyle(
+                        fontSize: Fs.xs,
+                        height: Lh.snug,
+                        color: p.ink3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: Sp.x2),
+              Text(
+                '${widget.deck.count}',
+                style: TextStyle(
+                  fontFamily: Fonts.mono,
+                  fontSize: Fs.xs,
+                  height: Lh.none,
+                  color: p.ink3,
+                  fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(width: Sp.x3),
+              LexIcon(Ic.plus, size: 15, color: p.accent),
             ],
           ),
         ),

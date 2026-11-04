@@ -28,6 +28,11 @@ import '../../domain/models/types.dart';
 import '../../domain/models/utils.dart' show normalizeTerm, uid;
 import '../models/journal.dart' as journal;
 import '../models/journal.dart' show RecordKind;
+
+// [NewWordInput] lives in the domain layer (it is the shape every
+// caller of [Store.addWord] fills in, not a storage detail) and is re-exported
+// here so the existing imports keep resolving.
+export '../../domain/models/types.dart' show NewWordInput;
 import '../services/snapshot_store.dart';
 
 /// A snapshot with nothing in it — the state before [Store.init] finishes.
@@ -59,40 +64,6 @@ AppData withDefaultList(AppData d, int now) => d.copyWith(
         ),
       ],
     );
-
-/// What [Store.addWord] takes. Mirrors `NewWordInput`; the optional fields follow
-/// the same trim-and-default rules the web form applied.
-class NewWordInput {
-  const NewWordInput({
-    required this.term,
-    this.phonetic,
-    this.pos,
-    this.definition,
-    this.definition2,
-    this.example,
-    this.exampleZh,
-    this.note,
-    required this.listId,
-    this.status,
-    this.favorite,
-  });
-
-  final String term;
-  final String? phonetic;
-
-  /// Part-of-speech tags, space separated (`adj.` / `n. v.`).
-  final String? pos;
-  final String? definition;
-  final String? definition2;
-  final String? example;
-
-  /// Translation of [example]; same optionality as [phonetic].
-  final String? exampleZh;
-  final String? note;
-  final String listId;
-  final WordStatus? status;
-  final bool? favorite;
-}
 
 /// The outcome of one grade, including the log id needed to undo it.
 class GradeResult {
@@ -245,6 +216,75 @@ class Store {
           RecordKind.list,
           list.id,
         ));
+    return list;
+  }
+
+  /// Create a list and fill it in one publish.
+  ///
+  /// The chart is 46 cards; calling [createList] then [addWord] 46 times would
+  /// notify listeners 47 times and schedule 47 saves, and the words page would
+  /// repaint once per card while the dialog was still closing. This is the same
+  /// two operations with one [_commit], so a listener sees either "no list" or
+  /// "the finished list" and never a half-built one.
+  ///
+  /// Every word and the list itself are still marked pending through
+  /// [journal.touch], so sync uploads them and a merge elsewhere keeps them —
+  /// the bookkeeping is not skipped just because the writes are batched.
+  WordList createListWithWords({
+    required String name,
+    required String sourceLang,
+    required String targetLang,
+    required List<NewWordInput> words,
+  }) {
+    final now = _clock();
+    final trimmed = name.trim();
+    final list = WordList(
+      id: uid('list'),
+      name: trimmed.isEmpty ? '未命名词库' : trimmed,
+      sourceLang: sourceLang,
+      targetLang: targetLang,
+      createdAt: now,
+      updatedAt: now,
+    );
+    String trimOrEmpty(String? s) => (s ?? '').trim();
+    String? trimOrNull(String? s) {
+      final t = trimOrEmpty(s);
+      return t.isEmpty ? null : t;
+    }
+
+    final created = <Word>[
+      for (final input in words)
+        Word(
+          id: uid('w'),
+          term: input.term.trim(),
+          phonetic: trimOrEmpty(input.phonetic),
+          pos: trimOrNull(input.pos),
+          definition: trimOrEmpty(input.definition),
+          definition2: trimOrEmpty(input.definition2),
+          example: trimOrEmpty(input.example),
+          exampleZh: trimOrNull(input.exampleZh),
+          note: trimOrEmpty(input.note),
+          status: input.status ?? WordStatus.new_,
+          favorite: input.favorite ?? false,
+          listId: list.id,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+          listenCount: 0,
+          srs: null,
+          createdAt: now,
+          updatedAt: now,
+        ),
+    ];
+
+    _commit((d) {
+      AppData next = d.copyWith(lists: <WordList>[...d.lists, list]);
+      next = journal.touch(next, RecordKind.list, list.id);
+      for (final w in created) {
+        next = next.copyWith(words: <Word>[w, ...next.words]);
+        next = journal.touch(next, RecordKind.word, w.id);
+      }
+      return next;
+    });
     return list;
   }
 

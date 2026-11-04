@@ -603,3 +603,37 @@ class AppData {
 const int DATA_VERSION = 3;
 
 const String DEFAULT_LIST_ID = 'list_default';
+
+/// What [Store.addWord] takes. Mirrors `NewWordInput`; the optional fields follow
+/// the same trim-and-default rules the web form applied.
+class NewWordInput {
+  const NewWordInput({
+    required this.term,
+    this.phonetic,
+    this.pos,
+    this.definition,
+    this.definition2,
+    this.example,
+    this.exampleZh,
+    this.note,
+    required this.listId,
+    this.status,
+    this.favorite,
+  });
+
+  final String term;
+  final String? phonetic;
+
+  /// Part-of-speech tags, space separated (`adj.` / `n. v.`).
+  final String? pos;
+  final String? definition;
+  final String? definition2;
+  final String? example;
+
+  /// Translation of [example]; same optionality as [phonetic].
+  final String? exampleZh;
+  final String? note;
+  final String listId;
+  final WordStatus? status;
+  final bool? favorite;
+}
