@@ -16,9 +16,8 @@
 //      — a swipe is a decision, not an accident of scrolling.
 //   3. A downward drag past the skip threshold skips at any speed: the card
 //      owns both axes on a phone, so there is no slow-drag escape hatch.
-//   4. The front of the card plays with the drag but never commits: both
-//      callbacks are only wired while the answer is showing, the same gate
-//      the grade row uses.
+//   4. The front cannot grade — the answer is still hidden — so a decisive
+//      throw there skips in any direction, and a short fidget springs back.
 //
 // The tests hold the card in a phone-width viewport on purpose: on a wide
 // window the revealed answer keeps a scroll view of its own, so vertical drags
@@ -196,11 +195,10 @@ void main() {
     expect(find.text('困难'), findsOneWidget);
   });
 
-  testWidgets('the front of the card does not swipe', (
-    WidgetTester tester,
-  ) async {
-    // A fresh session that stops before revealing: the card shows the term,
-    // and a drag there plays with the card but must commit nothing.
+  /// A session that stops before revealing: the card shows the term, and the
+  /// grade row does not exist yet. The front may still be thrown aside —
+  /// skipping does not need the answer — but no grade may ever land there.
+  Future<Store> pumpFront(WidgetTester tester) async {
     final store = Store(persistence: MemoryStore(), seed: seedData);
     await store.init();
     await store.flush();
@@ -229,13 +227,45 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('开始复习'));
     await tester.pumpAndSettle();
+    return store;
+  }
 
+  testWidgets('a decisive throw on the front skips in any direction', (
+    WidgetTester tester,
+  ) async {
+    final store = await pumpFront(tester);
     final int before = store.data.logs.length;
+
     await _swipe(tester, -160);
 
     expect(store.data.logs.length, before);
-    // The card is still unrevealed: the grade row never appeared.
-    expect(find.text('正面'), findsOneWidget);
+    // The card moved on — the skip counter says so — and no grade row ever
+    // existed on the unrevealed front.
+    expect(find.textContaining('跳过 1'), findsWidgets);
     expect(find.text('困难'), findsNothing);
+  });
+
+  testWidgets('a front drag short of the threshold springs back', (
+    WidgetTester tester,
+  ) async {
+    final store = await pumpFront(tester);
+    final int before = store.data.logs.length;
+
+    await _swipe(tester, -40);
+
+    expect(store.data.logs.length, before);
+    // Nothing moved: no skip counter appeared, the fidget stayed a fidget.
+    expect(find.textContaining('跳过 1'), findsNothing);
+    expect(find.text('困难'), findsNothing);
+  });
+
+  testWidgets('a front throw down skips as well', (WidgetTester tester) async {
+    final store = await pumpFront(tester);
+    final int before = store.data.logs.length;
+
+    await _dragDown(tester, 160);
+
+    expect(store.data.logs.length, before);
+    expect(find.textContaining('跳过 1'), findsWidgets);
   });
 }

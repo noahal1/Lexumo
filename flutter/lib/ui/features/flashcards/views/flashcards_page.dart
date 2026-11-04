@@ -659,10 +659,10 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       // The swipe grades only once the answer is showing — the same gate the
       // grade row uses — so a drag on the front can never grade sight unseen.
       onSwipe: _vm.flipped ? onGrade : null,
-      // A downward drag skips, under the same gate: it is the swipe-layout
-      // answer to the skip button, and a card that has not been thought about
-      // should not be skipped by the hand that was scrolling the page.
-      onSwipeDown: _vm.flipped ? onSkip : null,
+      // The down skip is always live. On the back it is the down-dominant
+      // throw; on the front there is no grade to compete with, so any
+      // decisive throw — sideways or down — discards the unseen card.
+      onSwipeDown: onSkip,
       minHeight: compact ? 0 : minHeight,
       head: Row(
         children: <Widget>[
@@ -1258,8 +1258,9 @@ class _FlipCard extends StatefulWidget {
 
   /// Called when the revealed card is dragged downwards past the skip
   /// threshold, down more than sideways — the gesture layout for the skip
-  /// button, which advances the session without a grade. Null disables it, and
-  /// the unrevealed card passes null for the same reason as [onSwipe].
+  /// button, which advances the session without a grade. Never null-checked
+  /// by callers on the front: the unrevealed card throws in any direction,
+  /// so the action is passed unconditionally.
   final VoidCallback? onSwipeDown;
 
   @override
@@ -1306,6 +1307,17 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
       _dragOffset.dy > _skipThreshold &&
       _dragOffset.dy > _dragOffset.dx.abs() * _skipDominance;
 
+  /// The front cannot grade — the answer is still hidden — so any decisive
+  /// throw in any direction discards the card instead. Down dominance only
+  /// matters once grading is on the table (the back); there a sideways pull
+  /// is a grade, not a skip.
+  bool get _throwReady {
+    if (widget.onSwipeDown == null) return false;
+    if (!widget.tappable) return _skipReady;
+    return _dragOffset.dx.abs() > _swipeThreshold ||
+        _dragOffset.dy > _skipThreshold;
+  }
+
   void _panStart(DragStartDetails d) {
     if (_flying) return;
     setState(() {
@@ -1341,7 +1353,7 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
       _flyAway(() => widget.onSwipe!(grade));
       return;
     }
-    if (_skipReady) {
+    if (_throwReady) {
       _flyAway(widget.onSwipeDown!);
       return;
     }
@@ -1366,9 +1378,12 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
     // _dragging here would hold the tween at zero duration and complete the
     // flight during build, where the landing setState is not allowed.
     _dragging = false;
-    // A skip leaves along its downward pull; a grade leaves sideways, keeping
-    // a little of the vertical so the exit reads as the same gesture.
-    _target = _skipReady
+    // A downward pull leaves along its fall; a sideways throw leaves along
+    // its side, keeping a little of the vertical so the exit reads as the
+    // same gesture. Deciding by where the hand went — not by which action
+    // lands — keeps the front's sideways skip and the back's grading exits
+    // honest to the same map.
+    _target = _dragOffset.dy > _dragOffset.dx.abs()
         ? Offset(_dragOffset.dx * 0.3, h * 0.75 + 60)
         : Offset(_dragOffset.dx.sign * (w * 0.75 + 60), _dragOffset.dy * 0.5);
     setState(() {});
