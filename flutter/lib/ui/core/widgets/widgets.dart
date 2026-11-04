@@ -67,7 +67,6 @@ class PageShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final maxWidth = wide ? 1360.0 : Layout.contentMax;
-    final Palette p = Palette.of(context);
     final bool hasPinned = pinned.isNotEmpty;
 
     final Widget scroller = Scrollbar(
@@ -114,27 +113,12 @@ class PageShell extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (hasPinned)
-          Container(
-            decoration: BoxDecoration(
-              color: p.surface,
-              border: Border(bottom: BorderSide(color: p.line)),
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxWidth),
-                child: Padding(
-                  padding: EdgeInsetsDirectional.only(
-                    start: bleed ? 0 : Sp.x6,
-                    end: bleed ? 0 : Sp.x6,
-                    top: Sp.x6,
-                    bottom: Sp.x4,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: pinned,
-                  ),
-                ),
-              ),
+          PinnedStrip(
+            maxWidth: maxWidth,
+            bleed: bleed,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: pinned,
             ),
           ),
         Expanded(child: scroller),
@@ -153,6 +137,62 @@ class PageShell extends StatelessWidget {
           child: fab!,
         ),
       ],
+    );
+  }
+}
+
+/// The ruled strip a page header sits in.
+///
+/// [PageShell.pinned] uses it, and a page that owns its own header — the
+/// practice screen's mode switch — uses it directly, so both wear the same
+/// chrome: same measure, same gutters, an opaque surface and a hairline under
+/// it. Extracted because the two had drifted: the mode switch floated on the
+/// page background with no edge under it, which read as a control dropped on
+/// top of the screen rather than as the line that says which page you are on.
+class PinnedStrip extends StatelessWidget {
+  const PinnedStrip({
+    super.key,
+    required this.child,
+    this.maxWidth,
+    this.bleed = false,
+    this.padding = const EdgeInsetsDirectional.only(
+      start: Sp.x6,
+      end: Sp.x6,
+      top: Sp.x6,
+      bottom: Sp.x4,
+    ),
+  });
+
+  final Widget child;
+
+  /// The measure the strip's contents are capped to. Defaults to
+  /// [Layout.contentMax], the same column the bodies below use.
+  final double? maxWidth;
+
+  /// Drop the horizontal padding so a bleed list can run edge to edge.
+  final bool bleed;
+
+  /// The strip's own padding. A page header that is only a control wants
+  /// less air above and below than a stack of them.
+  final EdgeInsetsDirectional padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette p = Palette.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border(bottom: BorderSide(color: p.line)),
+      ),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth ?? Layout.contentMax),
+          child: Padding(
+            padding: bleed ? padding.copyWith(start: 0, end: 0) : padding,
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 }

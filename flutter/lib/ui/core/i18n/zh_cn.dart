@@ -182,10 +182,8 @@ const Map<String, String> zhCnRaw = {
   'practice.quiz': '测验',
   // flashcards
   'flashcards.start': '开始复习',
-  // 数字与量词分开显示：数字用等宽体领先，说明文字跟在下面。
-  'flashcards.figureDue': '张到期',
-  'flashcards.figureNew': '张新卡',
-  'flashcards.figureCards': '本组卡片',
+  // 一句话说完：三个数字并排时，每个都要拖一行标签，读起来像一块统计面板。
+  'flashcards.pickerMeta': '待复习 {due} · 新卡 {fresh} · 共 {total} 张',
   'flashcards.noCards': '暂时没有要复习的卡片',
   'flashcards.noCardsHint': '所有卡片都在计划内。可以添加新词，或稍后再来。',
   'flashcards.buildDeck': '组卡方式',
@@ -245,6 +243,7 @@ const Map<String, String> zhCnRaw = {
   'quiz.noWords': '还差几个词',
   'quiz.noWordsHint': '凑够 4 个词就能开始测验。',
   'quiz.chooseCount': '题目数量',
+  'quiz.pickerMeta': '每轮 {count} 题',
   'quiz.timeSpent': '用时',
   'quiz.accuracy': '正确率',
   'quiz.perfect': '这一轮全对',

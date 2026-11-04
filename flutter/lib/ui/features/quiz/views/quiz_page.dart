@@ -185,7 +185,7 @@ class _QuizPageState extends State<QuizPage> {
     final List<Widget> body;
     if (_vm.phase == QuizPhase.idle) {
       body = <Widget>[
-        _idleState(t, directionLabel, _vm.eligibleCount, _vm.enough, side),
+        _idleState(t, _vm.eligibleCount, _vm.enough, side),
       ];
     } else if (_vm.phase == QuizPhase.active && current != null && progress != null) {
       body = <Widget>[
@@ -237,7 +237,6 @@ class _QuizPageState extends State<QuizPage> {
 
   Widget _idleState(
     String Function(String, [Map<String, Object>?]) t,
-    String directionLabel,
     int eligibleCount,
     bool enough,
     Widget side,
@@ -270,9 +269,18 @@ class _QuizPageState extends State<QuizPage> {
         // was also the top line of the screen — a screen opening by naming
         // itself and then offering a button with the same name. The block now
         // opens with what the round will actually be.
+        // The direction used to open this line, and the picker eight lines
+        // below printed the same two words again — the screen named its
+        // setting twice before the user had chosen anything. The picker states
+        // it now; this line states the only fact the picker cannot.
         Text(
-          '$directionLabel · ${t('quiz.chooseCount')} $count',
-          style: TextStyle(fontSize: Fs.base, height: Lh.loose, color: p.ink2),
+          t('quiz.pickerMeta', <String, Object>{'count': count}),
+          style: TextStyle(
+            fontSize: Fs.xs,
+            height: Lh.body,
+            color: p.ink3,
+            fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+          ),
         ),
         const SizedBox(height: Sp.x5),
         // The picker stands here on every platform now that the page bar is
@@ -341,10 +349,10 @@ class _QuizPageState extends State<QuizPage> {
 
     return _studySplit(
       main: Align(
-        alignment: AlignmentDirectional.centerStart,
-        // Same measure cap as the flashcards intro: both intros are one
-        // object, and a decision column stretched across a wide pane leaves
-        // its right half empty.
+        // Same measure and same centring as the flashcards intro: both intros
+        // are one object, and a decision column stretched across a wide pane
+        // leaves its right half empty however it is capped.
+        alignment: AlignmentDirectional.center,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 620),
           child: intro,

@@ -188,11 +188,9 @@ const Map<String, String> enRaw = {
   'practice.quiz': 'Quiz',
   // flashcards
   'flashcards.start': 'Start review',
-  // The deck readout prints its figure and its word as two separate nodes, so
-  // the label cannot carry `{n}` — see `_DeckFigure` in flashcards_page.dart.
-  'flashcards.figureDue': 'due',
-  'flashcards.figureNew': 'new',
-  'flashcards.figureCards': 'in this set',
+  // One sentence, printed once: the numbers are inline because the strip of
+  // three separate figures they replaced said the same thing across a row.
+  'flashcards.pickerMeta': '{due} due · {fresh} new · {total} in this set',
   'flashcards.noCards': 'Nothing to review right now',
   'flashcards.noCardsHint':
       'Everything is scheduled. Add new words or come back later.',
@@ -259,6 +257,7 @@ const Map<String, String> enRaw = {
   'quiz.noWords': 'A few words short',
   'quiz.noWordsHint': 'Four words is enough to start a quiz.',
   'quiz.chooseCount': 'Questions',
+  'quiz.pickerMeta': '{count} questions per round',
   'quiz.timeSpent': 'Time',
   'quiz.accuracy': 'Accuracy',
   'quiz.perfect': 'All correct this round',

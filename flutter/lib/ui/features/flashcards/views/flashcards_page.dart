@@ -327,29 +327,24 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             onChanged: _vm.setDeck,
           ),
         ),
-        const SizedBox(height: Sp.x5),
-        // Three tinted pills used to sit here. A count is a figure, and the
-        // app-scope rule for figures is the same on every screen: the number
-        // leads, the word follows, and colour marks state only when there is
-        // state to mark. So the pills became one strip of figures.
-        Row(
-          children: <Widget>[
-            _DeckFigure(
-              value: '${summary.dueReview}',
-              label: t('flashcards.figureDue'),
-              strong: summary.dueReview > 0,
-            ),
-            const SizedBox(width: Sp.x6),
-            _DeckFigure(
-              value: '${summary.counts[DeckSource.fresh] ?? 0}',
-              label: t('flashcards.figureNew'),
-            ),
-            const SizedBox(width: Sp.x6),
-            _DeckFigure(
-              value: '$deckSize',
-              label: t('flashcards.figureCards'),
-            ),
-          ],
+        const SizedBox(height: Sp.x4),
+        // Three figures stood here, each a number over its own label, and the
+        // first of them counted cards the side panel already counts on the
+        // same screen. A deck's size is one sentence, not a statistic board:
+        // what is due, what is new, how big — on one quiet line, so the button
+        // below is still the only thing asking for a decision.
+        Text(
+          t('flashcards.pickerMeta', <String, Object>{
+            'due': summary.dueReview,
+            'fresh': summary.counts[DeckSource.fresh] ?? 0,
+            'total': deckSize,
+          }),
+          style: TextStyle(
+            fontSize: Fs.xs,
+            height: Lh.body,
+            color: p.ink3,
+            fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+          ),
         ),
         if (summary.capReached && !summary.caughtUp) ...<Widget>[
           const SizedBox(height: Sp.x4),
@@ -395,11 +390,11 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
 
     return _studySplit(
       main: Align(
-        alignment: AlignmentDirectional.centerStart,
-        // The intro is a column of decisions, not a page-wide band. Stretched
-        // to the full pane its text runs left while its controls stop after
-        // ~500dp, leaving the right half of the screen empty; the measure is
-        // capped so the block reads as one column on any window width.
+        // Centred, not pinned left. The measure is capped at 620dp, so on a
+        // wide pane a left-aligned block spent the whole difference as a gap
+        // under one edge: the column read as half-finished rather than as a
+        // measure. Centred, the same cap reads as margins.
+        alignment: AlignmentDirectional.center,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 620),
           child: intro,
@@ -1188,62 +1183,6 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
 /* -------------------------------------------------------------------------- */
 /* Pieces                                                                     */
 /* -------------------------------------------------------------------------- */
-
-/// One figure of the deck readout: the number in tabular mono, the word under
-/// it in the label size.
-///
-/// This replaces the three `StatusChip`s that opened the deck picker. A chip
-/// is a state, but 「9 张到期」 is a count — and three tinted pills in a row
-/// made the strip read as a legend for colours that were never explained. The
-/// figure leads, the word follows, and only the due count is allowed to take
-/// the accent, because it is the one number that asks for an action.
-class _DeckFigure extends StatelessWidget {
-  const _DeckFigure({
-    required this.value,
-    required this.label,
-    this.strong = false,
-  });
-
-  final String value;
-  final String label;
-  final bool strong;
-
-  @override
-  Widget build(BuildContext context) {
-    final Palette p = Palette.of(context);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(
-          value,
-          maxLines: 1,
-          style: TextStyle(
-            fontFamily: Fonts.mono,
-            fontSize: Fs.lg,
-            height: Lh.tight,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.02,
-            fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-            color: strong ? p.accent : p.ink,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: Fs.xs,
-            height: Lh.tight,
-            color: p.ink3,
-            letterSpacing: 0.02,
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 /// `.notice`: an icon column and a tinted body.
 class _Notice extends StatelessWidget {
