@@ -1,4 +1,4 @@
 {
-  "zh": "闪卡现在可以整个用手拖着走了：任意方向都跟手，向左甩出是困难、向右甩出是记得、向下甩开就跳过，拖不到位松手会弹回原处——不再只有贴着按钮的固定手势。同时修掉了一个闪退：连续快速评分时，两次保存会同时抢同一个临时文件，安卓上直接把应用带崩；现在保存排成一队依次写，偶发的写失败也会安静重试，不再惊动你。",
-  "en": "Flashcards are now fully draggable: the card follows your finger in any direction — fling it left for Hard, right for Good, or flick it down to skip; release short of the mark and it springs right back. No more fixed swipe zones pinned to the buttons. This release also fixes a crash: grading several cards in quick succession made two saves race for the same temp file and took the whole app down on Android. Saves are queued one after another now, and an occasional failed write retries quietly instead of ending your session."
+  "zh": "闪卡正面现在也跟手了：还没有翻开的卡，往任何方向果断一甩就会跳过，小幅拖动会弹回来——正面只有单词，拖动时不显示评分颜色。同时修掉了一个确定性闪退：在没有任何朗读音色的手机上，连续翻卡会触发朗读引擎的重建循环，第二次翻面必然栈溢出崩溃；现在引擎初始化失败时不再回放排队的朗读请求。",
+  "en": "The front of a flashcard now follows the hand too: a decisive throw in any direction skips the unseen card, and a short drag springs back — the front shows only the word, without any grading tint. This release also fixes a deterministic crash: on phones with no speech voices, consecutive flips sent the TTS engine into a rebuild loop and the second flip died with a stack overflow; a failed engine init no longer replays the queued speech requests."
 }
