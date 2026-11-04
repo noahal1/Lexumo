@@ -179,14 +179,28 @@ class Store {
 
   void _scheduleSave() {
     if (saveDelayMs <= 0) {
-      unawaited(_persistence.save(_data));
+      _fireSave();
       return;
     }
     _saveTimer?.cancel();
     _saveTimer = Timer(Duration(milliseconds: saveDelayMs), () {
       _saveTimer = null;
-      unawaited(_persistence.save(_data));
+      _fireSave();
     });
+  }
+
+  /// Persist in the background without ever letting the error escape: a failed
+  /// write must not kill the app (an unhandled async exception crashes Android
+  /// in release mode). The data is still live in memory; the next change or
+  /// [flush] retries. Rethrow only when someone is actually awaiting.
+  void _fireSave() {
+    final snapshot = _data;
+    unawaited(
+      _persistence.save(snapshot).catchError((Object e) {
+        // Deliberately silent: there is no UI surface here yet, and the
+        // exception is typed (SnapshotWriteException) for anyone who wants it.
+      }),
+    );
   }
 
   /// Flush a pending debounced save. Called on window close and by tests.

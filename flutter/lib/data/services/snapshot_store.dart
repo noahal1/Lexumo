@@ -113,14 +113,37 @@ class SnapshotStore implements Persistence {
   }
 
   @override
-  Future<void> save(AppData data) async {
+  Future<void> save(AppData data) {
+    // Serialize: two overlapping saves would race for the same `.tmp` file and
+    // the loser dies with a sharing violation — on Android that unhandled
+    // exception kills the app. Grading a few cards in quick succession is the
+    // exact scenario (the store debounces, but a slow write outlives it).
+    final job = _saveTail.then((_) => _saveOnce(data));
+    _saveTail = job.catchError((Object _) {});
+    return job;
+  }
+
+  Future<void> _saveTail = Future<void>.value();
+
+  Future<void> _saveOnce(AppData data) async {
     final dir = Directory(_dir);
     if (!await dir.exists()) await dir.create(recursive: true);
 
     final primary = File(_primary);
     final temp = File(_temp);
 
-    await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+    try {
+      await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+    } on FileSystemException catch (e) {
+      // One retry: on Windows an AV product may still hold the temp file from
+      // the previous round (a sharing violation, not a real failure).
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      try {
+        await temp.writeAsString(jsonEncode(data.toJson()), flush: true);
+      } on FileSystemException {
+        throw SnapshotWriteException(_temp, e);
+      }
+    }
 
     // Keep the previous snapshot as the backup. A failure here must not abort
     // the save — the backup is a convenience, the primary is the payload.
