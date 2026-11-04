@@ -216,11 +216,17 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
 
     private val onInitListenerWithCallback: TextToSpeech.OnInitListener =
         TextToSpeech.OnInitListener { status ->
-            // Handle pending method calls (sent while TTS was initializing)
+            // Handle pending method calls (sent while TTS was initializing).
+            // Only a successful engine may replay them: a failed init would
+            // send every queued speak() back into the rebuild branch, which
+            // constructs a new engine whose failed init replays again — a
+            // synchronous StackOverflowError on devices with no TTS engine.
             synchronized(this@FlutterTtsPlugin) {
                 ttsStatus = status
-                for (call in pendingMethodCalls) {
-                    call.run()
+                if (status == TextToSpeech.SUCCESS) {
+                    for (call in pendingMethodCalls) {
+                        call.run()
+                    }
                 }
                 pendingMethodCalls.clear()
             }
@@ -247,11 +253,17 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
 
     private val onInitListenerWithoutCallback: TextToSpeech.OnInitListener =
         TextToSpeech.OnInitListener { status ->
-            // Handle pending method calls (sent while TTS was initializing)
+            // Handle pending method calls (sent while TTS was initializing).
+            // Only a successful engine may replay them: a failed init would
+            // send every queued speak() back into the rebuild branch, which
+            // constructs a new engine whose failed init replays again — a
+            // synchronous StackOverflowError on devices with no TTS engine.
             synchronized(this@FlutterTtsPlugin) {
                 ttsStatus = status
-                for (call in pendingMethodCalls) {
-                    call.run()
+                if (status == TextToSpeech.SUCCESS) {
+                    for (call in pendingMethodCalls) {
+                        call.run()
+                    }
                 }
                 pendingMethodCalls.clear()
             }
