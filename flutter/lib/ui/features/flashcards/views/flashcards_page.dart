@@ -510,7 +510,35 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
         const SizedBox(height: Sp.x4),
         if (_vm.flipped)
           _gradeRow(t, preview: preview, newCard: newCard, onGrade: onGrade)
-        else
+        else ...<Widget>[
+          // The round action row from the reference design: favorite, play,
+          // skip — the three things you can do to a card you have not turned.
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              _circleAction(
+                icon: word.favorite ? Ic.starFilled : Ic.star,
+                tooltip: t('common.favorite'),
+                active: word.favorite,
+                onTap: () => context.store.toggleFavorite(word.id),
+              ),
+              if (speechAvailable) ...<Widget>[
+                const SizedBox(width: Sp.x4),
+                _circleAction(
+                  icon: Ic.volume,
+                  tooltip: t('flashcards.autoPlay'),
+                  onTap: () => _vm.playWord(word),
+                ),
+              ],
+              const SizedBox(width: Sp.x4),
+              _circleAction(
+                icon: Ic.arrowRight,
+                tooltip: t('quiz.skip'),
+                onTap: onSkip,
+              ),
+            ],
+          ),
+          const SizedBox(height: Sp.x4),
           Row(
             children: <Widget>[
               LexButton(
@@ -523,6 +551,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
               ),
             ],
           ),
+        ],
         if (_vm.flipped && newCard) ...<Widget>[
           const SizedBox(height: Sp.x3),
           Text(
@@ -651,7 +680,17 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             ? _listenFace(t, word: word)
             : _termFace(t, word: word));
 
-    return _FlipCard(
+    // Two paper edges peek out under the card: the deck the current card
+    // was drawn from. They are Positioned inside a Stack that sizes to the
+    // card, so they never move the layout — and Clip.none lets them hang
+    // below the card's bottom edge.
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: <Widget>[
+        Positioned(left: 18, right: 18, top: 14, bottom: -8, child: _deckEdge(p, far: false)),
+        Positioned(left: 34, right: 34, top: 26, bottom: -15, child: _deckEdge(p, far: true)),
+        _FlipCard(
       key: const ValueKey('flip-card'),
       turn: _vm.turn,
       tappable: !_vm.flipped,
@@ -671,18 +710,9 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             style: TextStyle(fontSize: Fs.xs, height: Lh.tight, color: p.ink3),
           ),
           const Spacer(),
-          Tooltip(
-            message: t('quiz.skip'),
-            child: LexButton(
-              label: '',
-              icon: Ic.arrowRight,
-              kind: BtnKind.quiet,
-              size: BtnSize.sm,
-              onPressed: onSkip,
-            ),
-          ),
-          if (speechAvailable) ...<Widget>[
-            const SizedBox(width: Sp.x1),
+          // The speaker stays on the back only: on the front the round
+          // action row under the card owns play, favorite and skip.
+          if (_vm.flipped && speechAvailable)
             Tooltip(
               message: t('flashcards.autoPlay'),
               child: LexButton(
@@ -693,7 +723,6 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
                 onPressed: () => _vm.playWord(word),
               ),
             ),
-          ],
         ],
       ),
       face: Center(
@@ -707,6 +736,47 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
           child: (_vm.flipped && !compact)
               ? SingleChildScrollView(child: face)
               : face,
+        ),
+      ),
+      ),
+    ],
+    );
+  }
+
+  /// One paper edge of the deck behind the card. `far` is the deeper sheet:
+  /// it sits on the page color so the two read as a receding stack.
+  Widget _deckEdge(Palette p, {required bool far}) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: far ? p.bg : p.surface,
+          borderRadius: R.borderXl,
+          border: Border.all(color: p.line),
+        ),
+      );
+
+  /// A round icon button under the card — the reference design's star, play
+  /// and skip. 56 px keeps the tap target well past the 44 px floor.
+  Widget _circleAction({
+    required String icon,
+    required String tooltip,
+    required VoidCallback onTap,
+    bool active = false,
+  }) {
+    final Palette p = Palette.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: active ? p.warnSoft : p.surface,
+        shape: CircleBorder(side: BorderSide(color: active ? p.warn : p.line)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 56,
+            height: 56,
+            child: Center(
+              child: LexIcon(icon, size: 20, color: active ? p.warn : p.ink2),
+            ),
+          ),
         ),
       ),
     );
@@ -727,6 +797,21 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
+        // The reference design's overline: what the term is, in one quiet
+        // caps line — the part of speech when the entry has one, the
+        // language label when it does not.
+        Text(
+          ((word.pos?.isNotEmpty ?? false) ? word.pos! : t('flashcards.termLang'))
+              .toUpperCase(),
+          style: TextStyle(
+            fontFamily: Fonts.mono,
+            fontSize: Fs.xs,
+            height: Lh.tight,
+            letterSpacing: 1.6,
+            color: p.ink4,
+          ),
+        ),
+        const SizedBox(height: Sp.x3),
         Text(
           word.term,
           textAlign: TextAlign.center,
@@ -737,6 +822,16 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             fontWeight: FontWeight.w600,
             letterSpacing: -0.02,
             color: p.ink,
+          ),
+        ),
+        const SizedBox(height: Sp.x6),
+        Text(
+          t('flashcards.tapToReveal'),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: Fs.sm,
+            height: Lh.snug,
+            color: p.ink4,
           ),
         ),
       ],
