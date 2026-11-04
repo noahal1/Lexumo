@@ -659,10 +659,10 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       // The swipe grades only once the answer is showing — the same gate the
       // grade row uses — so a drag on the front can never grade sight unseen.
       onSwipe: _vm.flipped ? onGrade : null,
-      // A downward flick skips, under the same gate: it is the swipe-layout
+      // A downward drag skips, under the same gate: it is the swipe-layout
       // answer to the skip button, and a card that has not been thought about
       // should not be skipped by the hand that was scrolling the page.
-      onFlickDown: _vm.flipped ? onSkip : null,
+      onSwipeDown: _vm.flipped ? onSkip : null,
       minHeight: compact ? 0 : minHeight,
       head: Row(
         children: <Widget>[
@@ -699,7 +699,14 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       face: Center(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: faceMax),
-          child: SingleChildScrollView(child: face),
+          // Only the revealed answer on a wide window can overflow its cap, so
+          // only that one combination keeps a scroll view. Everywhere else the
+          // scroll view would be dead weight that still wins the arena for
+          // vertical drags — and the card is meant to follow the hand in both
+          // axes now, not to fight an invisible scroller for them.
+          child: (_vm.flipped && !compact)
+              ? SingleChildScrollView(child: face)
+              : face,
         ),
       ),
     );
@@ -1216,6 +1223,11 @@ class _Notice extends StatelessWidget {
 /// while it is invisible, then the answer rotates in — so no text is ever seen
 /// mirrored. When the platform asks for reduced motion the page skips the turn
 /// entirely.
+///
+/// The card is also a free-drag surface, the way the reference deck apps feel:
+/// it follows the hand in both axes with a slight tilt, springs back on a
+/// release that decides nothing, and flies out along its pull when the release
+/// commits — left for a hard, right for a good, down for a skip.
 class _FlipCard extends StatefulWidget {
   const _FlipCard({
     super.key,
@@ -1226,7 +1238,7 @@ class _FlipCard extends StatefulWidget {
     required this.head,
     required this.face,
     this.onSwipe,
-    this.onFlickDown,
+    this.onSwipeDown,
   });
 
   final String? turn;
@@ -1236,18 +1248,19 @@ class _FlipCard extends StatefulWidget {
   final Widget head;
   final Widget face;
 
-  /// Called with a grade when the revealed card is dragged past the swipe
-  /// threshold — left for a hard, right for a good. Null disables the
-  /// gesture, which is what the unrevealed card passes: a swipe there would
-  /// fight the tap that flips, and grading a card the answer has not been
-  /// seen for is a mistake the undo stack should not have to clean up.
+  /// Called with a grade when the revealed card is dragged sideways past the
+  /// swipe threshold — left for a hard, right for a good. Null disables the
+  /// commit, which is what the unrevealed card passes: grading a card the
+  /// answer has not been seen for is a mistake the undo stack should not have
+  /// to clean up. The front still plays with the drag — it just cannot
+  /// commit one.
   final void Function(Grade)? onSwipe;
 
-  /// Called when the revealed card is flicked downwards — the gesture layout
-  /// for the skip button, which advances the session without a grade. Null
-  /// disables it, and the unrevealed card passes null for the same reason as
-  /// [onSwipe].
-  final VoidCallback? onFlickDown;
+  /// Called when the revealed card is dragged downwards past the skip
+  /// threshold, down more than sideways — the gesture layout for the skip
+  /// button, which advances the session without a grade. Null disables it, and
+  /// the unrevealed card passes null for the same reason as [onSwipe].
+  final VoidCallback? onSwipeDown;
 
   @override
   State<_FlipCard> createState() => _FlipCardState();
@@ -1259,69 +1272,116 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
     duration: Motion.dur1,
   );
   bool _hover = false;
-  double _drag = 0;
 
-  // A downward flick travels through raw pointer events rather than a drag
-  // recognizer: the face sits in a scroll view, and a vertical recognizer here
-  // would lose the arena to it and never fire. The pointer stream is always
-  // delivered, so the card can measure the gesture itself — which it gates on
-  // distance, direction dominance, and a short duration, because a slow drag
-  // down is someone reading a long definition.
-  Offset? _flickFrom;
-  double _flickDy = 0;
-  double _flickDx = 0;
-  // The event's own stamp, not the wall clock: the embedder's clock is what the
-  // gesture actually took, and a test's timed drag advances the same stamp.
-  Duration? _flickBegan;
+  // The free drag. `_dragOffset` is where the hand holds the card while a
+  // pan is live; `_target` is where the card is heading — the same value as
+  // the hold while dragging (the follow is instantaneous), zero after a
+  // release that decided nothing (spring home), or off-table along the pull
+  // when the release commits (fly out). One TweenAnimationBuilder drives all
+  // three: zero duration tracks the hand frame by frame, the motion durations
+  // animate the release.
+  Offset _dragOffset = Offset.zero;
+  Offset _target = Offset.zero;
+  bool _dragging = false;
+  bool _flying = false;
+  VoidCallback? _pending;
 
-  // Horizontal distance, in logical pixels, the card must be pulled before a
-  // release commits the swipe — and past which the card stops following the
-  // finger, so a hard fling cannot fling it off screen.
+  // Sideways distance a release needs before it commits a grade, downward
+  // distance for the skip, how much more down than sideways the skip needs to
+  // be, and the cage the follow clamps to so a hard pull cannot park the card
+  // under the grade row.
   static const double _swipeThreshold = 72;
-  static const double _swipeClamp = 180;
-
-  // The flick that skips: how far down, how much more down than sideways, and
-  // how quickly it has to have happened to count as a flick.
   static const double _skipThreshold = 96;
-  static const double _skipDominance = 1.6;
-  static const int _skipMaxMs = 600;
+  static const double _skipDominance = 1.2;
+  static const double _dragClamp = 280;
 
   Grade? _swipeGrade() {
-    if (_drag < -_swipeThreshold) return Grade.hard;
-    if (_drag > _swipeThreshold) return Grade.good;
+    if (_dragOffset.dx < -_swipeThreshold) return Grade.hard;
+    if (_dragOffset.dx > _swipeThreshold) return Grade.good;
     return null;
   }
 
-  void _flickBegin(PointerDownEvent e) {
-    _flickFrom = e.position;
-    _flickDy = 0;
-    _flickDx = 0;
-    _flickBegan = e.timeStamp;
+  bool get _skipReady =>
+      widget.onSwipeDown != null &&
+      _dragOffset.dy > _skipThreshold &&
+      _dragOffset.dy > _dragOffset.dx.abs() * _skipDominance;
+
+  void _panStart(DragStartDetails d) {
+    if (_flying) return;
+    setState(() {
+      _dragging = true;
+      _dragOffset = Offset.zero;
+      _target = Offset.zero;
+    });
   }
 
-  void _flickTrack(PointerMoveEvent e) {
-    if (_flickFrom == null) return;
-    _flickDy += e.delta.dy;
-    _flickDx += e.delta.dx;
+  void _panUpdate(DragUpdateDetails d) {
+    if (_flying) return;
+    setState(() {
+      _dragOffset = Offset(
+        (_dragOffset.dx + d.delta.dx).clamp(-_dragClamp, _dragClamp),
+        (_dragOffset.dy + d.delta.dy).clamp(-_dragClamp, _dragClamp),
+      );
+      _target = _dragOffset;
+    });
   }
 
-  void _flickRelease(PointerUpEvent e) {
-    final Duration? began = _flickBegan;
-    final double dy = _flickDy;
-    final double dx = _flickDx;
-    _flickAbort();
-    if (began == null) return;
-    final int elapsed = (e.timeStamp - began).inMilliseconds;
-    if (dy < _skipThreshold || elapsed > _skipMaxMs) return;
-    if (dy.abs() <= dx.abs() * _skipDominance) return;
-    widget.onFlickDown?.call();
+  void _panCancel() {
+    if (_flying) return;
+    _springBack();
   }
 
-  void _flickAbort() {
-    _flickFrom = null;
-    _flickBegan = null;
-    _flickDy = 0;
-    _flickDx = 0;
+  void _panEnd(DragEndDetails d) {
+    if (_flying) return;
+    // The release reads the hold, not the fling: a throw past the cage still
+    // commits by where the hand stopped, which keeps the decision reviewable —
+    // the tint previewed during the drag is the grade that lands.
+    final Grade? grade = _swipeGrade();
+    if (widget.onSwipe != null && grade != null && !_skipReady) {
+      _flyAway(() => widget.onSwipe!(grade));
+      return;
+    }
+    if (_skipReady) {
+      _flyAway(widget.onSwipeDown!);
+      return;
+    }
+    _springBack();
+  }
+
+  void _springBack() {
+    setState(() {
+      _dragging = false;
+      _dragOffset = Offset.zero;
+      _target = Offset.zero;
+    });
+  }
+
+  void _flyAway(VoidCallback action) {
+    final Size? box = context.size;
+    final double w = box?.width ?? 420;
+    final double h = box?.height ?? 420;
+    _pending = action;
+    _flying = true;
+    // The hand has left: the flight is an animation, not a follow. Keeping
+    // _dragging here would hold the tween at zero duration and complete the
+    // flight during build, where the landing setState is not allowed.
+    _dragging = false;
+    // A skip leaves along its downward pull; a grade leaves sideways, keeping
+    // a little of the vertical so the exit reads as the same gesture.
+    _target = _skipReady
+        ? Offset(_dragOffset.dx * 0.3, h * 0.75 + 60)
+        : Offset(_dragOffset.dx.sign * (w * 0.75 + 60), _dragOffset.dy * 0.5);
+    setState(() {});
+  }
+
+  void _flightDone() {
+    if (!_flying) return;
+    _flying = false;
+    _dragOffset = Offset.zero;
+    _target = Offset.zero;
+    setState(() {});
+    _pending?.call();
+    _pending = null;
   }
 
   @override
@@ -1372,56 +1432,53 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
   @override
   Widget build(BuildContext context) {
     final Palette p = Palette.of(context);
-    // The swipe reads the drag direction as a grade before the release: left
-    // tints toward the danger pair, right toward the ok pair, and the tint
-    // strengthens as the pull passes the threshold.
+    // The pull reads as a decision before the release: left tints toward the
+    // danger pair, right toward the ok pair, down toward the warn pair.
     final Grade? preview = _swipeGrade();
     final Color border = switch (preview) {
       Grade.hard => p.danger,
       Grade.good => p.ok,
-      _ => _hover ? p.lineStrong : p.line,
+      _ => _skipReady ? p.warn : (_hover ? p.lineStrong : p.line),
     };
-    final bool swipeable = widget.onSwipe != null && !widget.tappable;
-    final bool flickable = widget.onFlickDown != null && !widget.tappable;
     return MouseRegion(
-      cursor: widget.tappable ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: widget.tappable
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: Listener(
-        onPointerDown: flickable ? _flickBegin : null,
-        onPointerMove: flickable ? _flickTrack : null,
-        onPointerUp: flickable ? _flickRelease : null,
-        onPointerCancel: flickable ? (_) => _flickAbort() : null,
-        child: GestureDetector(
+      child: GestureDetector(
         onTap: widget.tappable ? widget.onTap : null,
-        onHorizontalDragStart: swipeable ? (_) => setState(() => _drag = 0) : null,
-        onHorizontalDragUpdate: swipeable
-            ? (DragUpdateDetails d) => setState(() {
-                  _drag = (_drag + d.delta.dx).clamp(-_swipeClamp, _swipeClamp);
-                })
-            : null,
-        onHorizontalDragCancel: swipeable ? () => setState(() => _drag = 0) : null,
-        onHorizontalDragEnd: swipeable
-            ? (DragEndDetails d) {
-                final Grade? g = _swipeGrade();
-                setState(() => _drag = 0);
-                if (g != null) widget.onSwipe!(g);
-              }
-            : null,
+        onPanStart: _panStart,
+        onPanUpdate: _panUpdate,
+        onPanCancel: _panCancel,
+        onPanEnd: _panEnd,
+        // The turn and the drag share one Transform: the flip's rotateY and the
+        // hand's translate + tilt compose in a single matrix, so a card can be
+        // dragged while it is edge-on without the two fighting for the child.
         child: AnimatedBuilder(
           animation: _turn,
           builder: (BuildContext context, Widget? child) {
-            return Transform(
-              alignment: Alignment.center,
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.0012)
-                ..rotateY(_radians())
-                ..translateByDouble(_drag * 0.35, 0.0, 0.0, 1.0),
+            return TweenAnimationBuilder<Offset>(
+              tween: Tween<Offset>(end: _target),
+              duration: _dragging ? Duration.zero : Motion.dur2,
+              curve: _flying ? Motion.easeIn : Motion.easeTurn,
+              onEnd: _flightDone,
+              builder: (BuildContext context, Offset drag, Widget? inner) {
+                return Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.0012)
+                    ..rotateY(_radians())
+                    ..translateByDouble(drag.dx, drag.dy, 0.0, 1.0)
+                    ..rotateZ((drag.dx / 480).clamp(-1.0, 1.0) * 0.14),
+                  child: inner,
+                );
+              },
               child: child,
             );
           },
           child: AnimatedContainer(
-            duration: _drag == 0 ? Motion.dur2 : Duration.zero,
+            duration: _dragging ? Duration.zero : Motion.dur2,
             curve: Motion.ease,
             constraints: BoxConstraints(minHeight: widget.minHeight),
             padding: const EdgeInsets.fromLTRB(Sp.x7, Sp.x6, Sp.x7, Sp.x5),
@@ -1440,7 +1497,6 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
               ],
             ),
           ),
-        ),
         ),
       ),
     );
