@@ -149,6 +149,10 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       const SingleActivator(LogicalKeyboardKey.arrowRight): () {
         if (_vm.inProgress) _vm.skip();
       },
+      // The keyboard twin of the downward flick: skip without grading.
+      const SingleActivator(LogicalKeyboardKey.arrowDown): () {
+        if (_vm.inProgress) _vm.skip();
+      },
       const SingleActivator(LogicalKeyboardKey.digit1): () {
         if (_vm.inProgress && _vm.flipped) _vm.grade(Grade.hard);
       },
@@ -655,6 +659,10 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       // The swipe grades only once the answer is showing — the same gate the
       // grade row uses — so a drag on the front can never grade sight unseen.
       onSwipe: _vm.flipped ? onGrade : null,
+      // A downward flick skips, under the same gate: it is the swipe-layout
+      // answer to the skip button, and a card that has not been thought about
+      // should not be skipped by the hand that was scrolling the page.
+      onFlickDown: _vm.flipped ? onSkip : null,
       minHeight: compact ? 0 : minHeight,
       head: Row(
         children: <Widget>[
@@ -697,6 +705,10 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     );
   }
 
+  /// The front of the card: the word, and nothing else. A flashcard asks one
+  /// question, so the phonetic and the "think first, then flip" hint moved off
+  /// the front — they crowded the term the eye is meant to land on, and the
+  /// hint repeats what the reveal button below the card already says.
   Widget _termFace(
     String Function(String, [Map<String, Object>?]) t, {
     required Word word,
@@ -704,7 +716,6 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     final Palette p = Palette.of(context);
     final double termSize =
         (MediaQuery.sizeOf(context).width * 0.04).clamp(30.0, 46.0);
-    final String? phonetic = word.phonetic;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -721,23 +732,6 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             color: p.ink,
           ),
         ),
-        if (phonetic != null && phonetic.isNotEmpty) ...<Widget>[
-          const SizedBox(height: Sp.x1),
-          Text(
-            '/$phonetic/',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontFamily: Fonts.mono,
-              fontSize: Fs.md,
-              height: Lh.tight,
-              color: p.ink3,
-            ),
-          ),
-        ],
-        if (context.showsKeyHints) ...<Widget>[
-          const SizedBox(height: Sp.x4),
-          _hintRow(t, t('flashcards.spaceKey'), t('flashcards.revealHint')),
-        ],
       ],
     );
   }
@@ -772,29 +766,6 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             onPressed: () => _vm.playWord(word),
           ),
         ],
-        if (context.showsKeyHints) ...<Widget>[
-          const SizedBox(height: Sp.x4),
-          _hintRow(t, t('flashcards.spaceKey'), t('flashcards.revealHint')),
-        ],
-      ],
-    );
-  }
-
-  Widget _hintRow(
-    String Function(String, [Map<String, Object>?]) t,
-    String key,
-    String label,
-  ) {
-    final Palette p = Palette.of(context);
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        Kbd(key),
-        const SizedBox(width: Sp.x2),
-        Text(
-          label,
-          style: TextStyle(fontSize: Fs.xs, height: Lh.tight, color: p.ink3),
-        ),
       ],
     );
   }
@@ -1092,7 +1063,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
               ShortcutRow(keys: const <String>['1'], label: t('flashcards.gradeHard')),
               ShortcutRow(keys: const <String>['2'], label: t('flashcards.gradeGood')),
               ShortcutRow(keys: const <String>['3'], label: t('flashcards.gradeEasy')),
-              ShortcutRow(keys: const <String>['←', '→'], label: t('quiz.skip')),
+              ShortcutRow(keys: const <String>['←', '→', '↓'], label: t('quiz.skip')),
               ShortcutRow(keys: const <String>['Ctrl', 'Z'], label: t('flashcards.undo')),
             ],
           ),
@@ -1255,6 +1226,7 @@ class _FlipCard extends StatefulWidget {
     required this.head,
     required this.face,
     this.onSwipe,
+    this.onFlickDown,
   });
 
   final String? turn;
@@ -1271,6 +1243,12 @@ class _FlipCard extends StatefulWidget {
   /// seen for is a mistake the undo stack should not have to clean up.
   final void Function(Grade)? onSwipe;
 
+  /// Called when the revealed card is flicked downwards — the gesture layout
+  /// for the skip button, which advances the session without a grade. Null
+  /// disables it, and the unrevealed card passes null for the same reason as
+  /// [onSwipe].
+  final VoidCallback? onFlickDown;
+
   @override
   State<_FlipCard> createState() => _FlipCardState();
 }
@@ -1283,16 +1261,67 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
   bool _hover = false;
   double _drag = 0;
 
+  // A downward flick travels through raw pointer events rather than a drag
+  // recognizer: the face sits in a scroll view, and a vertical recognizer here
+  // would lose the arena to it and never fire. The pointer stream is always
+  // delivered, so the card can measure the gesture itself — which it gates on
+  // distance, direction dominance, and a short duration, because a slow drag
+  // down is someone reading a long definition.
+  Offset? _flickFrom;
+  double _flickDy = 0;
+  double _flickDx = 0;
+  // The event's own stamp, not the wall clock: the embedder's clock is what the
+  // gesture actually took, and a test's timed drag advances the same stamp.
+  Duration? _flickBegan;
+
   // Horizontal distance, in logical pixels, the card must be pulled before a
   // release commits the swipe — and past which the card stops following the
   // finger, so a hard fling cannot fling it off screen.
   static const double _swipeThreshold = 72;
   static const double _swipeClamp = 180;
 
+  // The flick that skips: how far down, how much more down than sideways, and
+  // how quickly it has to have happened to count as a flick.
+  static const double _skipThreshold = 96;
+  static const double _skipDominance = 1.6;
+  static const int _skipMaxMs = 600;
+
   Grade? _swipeGrade() {
     if (_drag < -_swipeThreshold) return Grade.hard;
     if (_drag > _swipeThreshold) return Grade.good;
     return null;
+  }
+
+  void _flickBegin(PointerDownEvent e) {
+    _flickFrom = e.position;
+    _flickDy = 0;
+    _flickDx = 0;
+    _flickBegan = e.timeStamp;
+  }
+
+  void _flickTrack(PointerMoveEvent e) {
+    if (_flickFrom == null) return;
+    _flickDy += e.delta.dy;
+    _flickDx += e.delta.dx;
+  }
+
+  void _flickRelease(PointerUpEvent e) {
+    final Duration? began = _flickBegan;
+    final double dy = _flickDy;
+    final double dx = _flickDx;
+    _flickAbort();
+    if (began == null) return;
+    final int elapsed = (e.timeStamp - began).inMilliseconds;
+    if (dy < _skipThreshold || elapsed > _skipMaxMs) return;
+    if (dy.abs() <= dx.abs() * _skipDominance) return;
+    widget.onFlickDown?.call();
+  }
+
+  void _flickAbort() {
+    _flickFrom = null;
+    _flickBegan = null;
+    _flickDy = 0;
+    _flickDx = 0;
   }
 
   @override
@@ -1353,11 +1382,17 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
       _ => _hover ? p.lineStrong : p.line,
     };
     final bool swipeable = widget.onSwipe != null && !widget.tappable;
+    final bool flickable = widget.onFlickDown != null && !widget.tappable;
     return MouseRegion(
       cursor: widget.tappable ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
+      child: Listener(
+        onPointerDown: flickable ? _flickBegin : null,
+        onPointerMove: flickable ? _flickTrack : null,
+        onPointerUp: flickable ? _flickRelease : null,
+        onPointerCancel: flickable ? (_) => _flickAbort() : null,
+        child: GestureDetector(
         onTap: widget.tappable ? widget.onTap : null,
         onHorizontalDragStart: swipeable ? (_) => setState(() => _drag = 0) : null,
         onHorizontalDragUpdate: swipeable
@@ -1405,6 +1440,7 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
               ],
             ),
           ),
+        ),
         ),
       ),
     );

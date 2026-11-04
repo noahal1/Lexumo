@@ -47,6 +47,16 @@ Future<void> _swipe(WidgetTester tester, double dx) async {
   await tester.pumpAndSettle();
 }
 
+/// Flicks the card down by [dy] logical pixels — quick, the way a hand skips.
+Future<void> _flickDown(WidgetTester tester, double dy) async {
+  await tester.timedDrag(
+    _card,
+    Offset(0, dy),
+    const Duration(milliseconds: 200),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUpAll(TestWidgetsFlutterBinding.ensureInitialized);
   setUp(() => debugSetSpeech(silentSpeech()));
@@ -125,10 +135,43 @@ void main() {
     expect(find.text('困难'), findsOneWidget);
   });
 
-  testWidgets('the front of the card does not swipe', (
+  testWidgets('a downward flick skips without grading', (
     WidgetTester tester,
   ) async {
-    // A fresh session that stops before revealing: the card shows the term,
+    final store = await pumpSession(tester);
+    final int before = store.data.logs.length;
+    // The card is revealed before the flick — '背面' is the back-of-card label.
+    expect(find.text('背面'), findsOneWidget);
+
+    await _flickDown(tester, 160);
+
+    // Nothing was written to the schedule — a skip is not a grade — and the
+    // card turned back to its front face for the next term.
+    expect(store.data.logs.length, before);
+    expect(find.text('正面'), findsOneWidget);
+    expect(find.text('困难'), findsNothing);
+  });
+
+  testWidgets('a slow drag downwards is not a flick', (WidgetTester tester) async {
+    final store = await pumpSession(tester);
+    final int before = store.data.logs.length;
+
+    // Reading a long definition means dragging down slowly and releasing; that
+    // must not throw the card away as a skip.
+    await tester.timedDrag(
+      _card,
+      const Offset(0, 160),
+      const Duration(milliseconds: 1200),
+    );
+    await tester.pumpAndSettle();
+
+    expect(store.data.logs.length, before);
+    expect(find.text('困难'), findsOneWidget);
+  });
+
+  testWidgets('the front of the card does not swipe', (
+    WidgetTester tester,
+  ) async {    // A fresh session that stops before revealing: the card shows the term,
     // and a drag there must be ignored by the page's swipe-to-grade path.
     final store = Store(persistence: MemoryStore(), seed: seedData);
     await store.init();

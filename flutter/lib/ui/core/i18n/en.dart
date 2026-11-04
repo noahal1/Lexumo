@@ -222,7 +222,7 @@ const Map<String, String> enRaw = {
   'flashcards.remaining': 'Left',
   'flashcards.keyboardHint':
       'Space to flip, 1 Hard, 2 Good, 3 Easy, Ctrl+Z to undo',
-  'flashcards.swipeHint': 'Swipe to grade: left Hard, right Good',
+  'flashcards.swipeHint': 'Swipe to grade: left Hard, right Good, down Skip',
   'flashcards.emptyDeck': 'No cards in this set',
   'flashcards.emptyDeckHint': 'Try another deck, or add some new words first.',
   'flashcards.revealHint': 'Think first, then flip',
