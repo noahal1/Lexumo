@@ -33,6 +33,7 @@ import 'package:lexumo/domain/models/seed.dart';
 import 'package:lexumo/ui/core/i18n/i18n.dart';
 import 'package:lexumo/ui/features/home/views/home_page.dart';
 import 'package:lexumo/ui/features/practice/views/practice_page.dart';
+import 'package:lexumo/ui/features/profile/views/profile_page.dart';
 import 'package:lexumo/ui/features/settings/views/settings_page.dart';
 import 'package:lexumo/ui/features/stats/views/stats_page.dart';
 import 'package:lexumo/ui/features/words/views/words_page.dart';
@@ -98,6 +99,7 @@ final List<(String, Widget)> kScreens = <(String, Widget)>[
   ('words', const WordsPage()),
   ('practice', const PracticePage(controller: null)),
   ('stats', const StatsPage(controller: null)),
+  ('profile', const ProfilePage(controller: null)),
   ('settings', const SettingsPage(controller: null)),
   ('shell', const AppShell()),
 ];
@@ -316,7 +318,7 @@ void main() {
       // bounded height rather than a title.
       for (final (String name, Widget page) in <(String, Widget)>[
         ('统计', const StatsPage(controller: null)),
-        ('设置', const SettingsPage(controller: null)),
+        ('我的', const ProfilePage(controller: null)),
       ]) {
         await pumpPhone(tester, page);
         final double top = bodyTop(tester);

@@ -469,4 +469,16 @@ const Map<String, String> enRaw = {
   'settings.updateReasonStorage': 'The download could not be written to this device.',
   'settings.updateReasonUnsupported': 'In-app updates are not available on this platform.',
   'settings.updateReasonPermission': 'The system will not install this file.',
+  // profile (我的)
+  'nav.profile': 'Me',
+  'profile.importTitle': 'Import from a file',
+  'profile.importHint': 'Add many words at once from a spreadsheet or a backup.',
+  'profile.settingsHint': 'Reading, listening, cards, account.',
+  'profile.desktopTitle': 'Tried Lexumo on a computer?',
+  'profile.desktopBody': 'Keep your words in step across every device.',
+  'profile.desktopAction': 'Get the desktop build',
+  'profile.copyLink': 'Copy link',
+  'profile.linkCopied': 'Link copied',
+  'profile.about': 'About {app}',
+  'profile.releases': 'Every build, in one place:',
 };

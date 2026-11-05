@@ -95,4 +95,9 @@ const Map<String, String> kIconPath = <String, String>{
       'M5.5 5.5h13v13h-13Z',
   'restore':
       'M4.5 9.5h10v10h-10Z M9.5 4.5h10v10h-4',
+  // A head and shoulders. Used as the avatar's fallback when the account has
+  // no initial to show, and for the identity row when nothing is signed in.
+  'person': 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z M4.5 20.5a7.5 7.5 0 0 1 15 0',
+  // A desk monitor on its stand, for the "there is a desktop build too" card.
+  'monitor': 'M3.5 5.5h17v10.5h-17Z M9.5 20.5h5 M12 16v4.5',
 };

@@ -61,6 +61,8 @@ abstract final class Ic {
   static const minimize = 'minimize';
   static const maximize = 'maximize';
   static const restore = 'restore';
+  static const person = 'person';
+  static const monitor = 'monitor';
 
   /// Every name, for tests and for the icon-gallery check.
   static const all = <String>[
@@ -68,7 +70,7 @@ abstract final class Ic {
     trash, edit, play, volume, check, x, chevronLeft, chevronRight, chevronDown,
     flame, clock, more, upload, download, sparkles, filter, arrowRight, refresh,
     book, layers, target, calendar, keyboard, info, alert, sun, moon, undo,
-    cloud, list, minimize, maximize, restore,
+    cloud, list, minimize, maximize, restore, person, monitor,
   ];
 }
 

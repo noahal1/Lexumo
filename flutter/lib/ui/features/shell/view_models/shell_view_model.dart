@@ -66,7 +66,7 @@ enum PageId {
   words('words', 'nav.words'),
   practice('practice', 'nav.practice'),
   stats('stats', 'nav.stats'),
-  settings('settings', 'nav.settings');
+  profile('profile', 'nav.profile');
 
   const PageId(this.id, this.labelKey);
 
@@ -84,9 +84,12 @@ enum PageId {
   ///
   /// The retired `'flashcards'` and `'quiz'` ids resolve to [practice], so a
   /// stale call site still lands somewhere useful instead of being silently
-  /// swallowed by an id the enum no longer carries.
+  /// swallowed by an id the enum no longer carries. Likewise the retired
+  /// `'settings'` destination: it now lives inside [profile], the tab that
+  /// replaced it.
   static PageId? fromId(String id) {
     if (id == 'flashcards' || id == 'quiz') return PageId.practice;
+    if (id == 'settings') return PageId.profile;
     for (final PageId page in values) {
       if (page.id == id) return page;
     }

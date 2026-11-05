@@ -36,6 +36,7 @@ import 'package:lexumo/ui/core/theme.dart';
 import 'package:lexumo/ui/core/tokens.dart';
 import 'package:lexumo/ui/features/home/views/home_page.dart';
 import 'package:lexumo/ui/features/practice/views/practice_page.dart';
+import 'package:lexumo/ui/features/profile/views/profile_page.dart';
 import 'package:lexumo/ui/features/settings/views/settings_page.dart';
 import 'package:lexumo/ui/features/shell/views/app_shell.dart';
 import 'package:lexumo/ui/features/stats/views/stats_page.dart';
@@ -50,6 +51,7 @@ final List<(String, Widget)> _screens = <(String, Widget)>[
   ('words', const WordsPage()),
   ('practice', const PracticePage(controller: null)),
   ('stats', const StatsPage(controller: null)),
+  ('profile', const ProfilePage(controller: null)),
   ('settings', const SettingsPage(controller: null)),
   ('shell', const AppShell()),
 ];

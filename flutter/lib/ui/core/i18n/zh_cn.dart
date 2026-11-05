@@ -449,4 +449,16 @@ const Map<String, String> zhCnRaw = {
   'settings.updateReasonStorage': '安装包没能写入设备。',
   'settings.updateReasonUnsupported': '这个平台不支持应用内更新。',
   'settings.updateReasonPermission': '系统不允许安装这个安装包。',
+  // profile (我的)
+  'nav.profile': '我的',
+  'profile.importTitle': '从 Excel 导入',
+  'profile.importHint': '从表格或备份里一次添加很多单词。',
+  'profile.settingsHint': '朗读、听力、卡片、账号。',
+  'profile.desktopTitle': '你在电脑上试过 Lexumo 吗？',
+  'profile.desktopBody': '让单词在各设备间保持同步。',
+  'profile.desktopAction': '下载电脑版 Lexumo',
+  'profile.copyLink': '复制链接',
+  'profile.linkCopied': '链接已复制',
+  'profile.about': '关于 {app}',
+  'profile.releases': '所有版本都在这里：',
 };

@@ -41,7 +41,7 @@ import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../home/views/home_page.dart';
 import '../../practice/views/practice_page.dart';
-import '../../settings/views/settings_page.dart';
+import '../../profile/views/profile_page.dart';
 import '../../stats/views/stats_page.dart';
 import '../../words/views/words_page.dart';
 import '../view_models/shell_view_model.dart';
@@ -95,7 +95,7 @@ String _iconFor(PageId page) => switch (page) {
       PageId.words => Ic.words,
       PageId.practice => Ic.cards,
       PageId.stats => Ic.stats,
-      PageId.settings => Ic.settings,
+      PageId.profile => Ic.person,
     };
 
 /// One row of the shortcut help sheet.
@@ -359,7 +359,7 @@ class _AppShellState extends State<AppShell> {
         PageId.words => WordsPage(controller: controller),
         PageId.practice => PracticePage(controller: controller),
         PageId.stats => StatsPage(controller: controller),
-        PageId.settings => SettingsPage(controller: controller),
+        PageId.profile => ProfilePage(controller: controller),
       },
     );
   }
