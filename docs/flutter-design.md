@@ -4,8 +4,8 @@
 **不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
 Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
 
-工程规模：`lib/` 与 `test/` 共 44,436 行 Dart，827 个测试通过（另有 6 条需要真 Postgres
-桥接的 E2E 默认 skip），`flutter analyze` 零问题。
+工程规模：`lib/` 与 `test/` 共 49,766 行 Dart，887 个测试通过（另有 6 条需要真 Postgres
+桥接的 E2E 默认 skip，3 条 release 资产校验在没有 `dist/` 时也 skip），`flutter analyze` 零问题。
 
 ---
 
@@ -20,7 +20,7 @@ Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果�
 上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
 React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 
-这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，827 个测试覆盖纯逻辑与
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，887 个测试覆盖纯逻辑与
 共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
 
 ---
@@ -28,7 +28,7 @@ React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 ## 2. 目录结构与职责
 
 ```
-flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 个文件 15,843 行）
+flutter/lib/                        73 个文件，31,670 行（test/ 另有 50 个文件 18,096 行）
   main.dart            入口：Store 初始化 → UpdateService → 作用域树 → MaterialApp
   app/                 组合根：谁在什么时候构造谁
     scope.dart         InheritedWidget 层：StoreNotifier / StoreScope / I18nScope / ToastScope / NavScope
@@ -38,15 +38,15 @@ flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 
       journal.dart     变更日志：pending / tombstones 记账（217 行）
       wire.dart        协议编解码：encode/decodeChangeSet、encodeAppData（539 行）
       sync_merge.dart  合并：collectChanges / applyRemote / applyRound（316 行）
-      sync_config.dart 凭证与 rev 持久化到 sync.json（195 行）
+      sync_config.dart 凭证与 rev 持久化到 sync.json（210 行）
     repositories/      仓库：唯一写入口 + 缓存/重试/合并策略
-      store.dart       全部写操作的唯一入口，不可变提交（561 行）
-      sync_engine.dart 会话、轮次、轮询、状态广播（486 行）
+      store.dart       全部写操作的唯一入口，不可变提交（626 行）
+      sync_engine.dart 会话、轮次、轮询、状态广播（495 行）
       update_service.dart 升级状态机：检查/下载/校验/安装（788 行）
     services/          服务：无状态地包住一项外部能力
       snapshot_store.dart Persistence 接口 + 文件实现 + MemoryStore（测试用）
       app_dir.dart     数据目录解析，含 updateDir（APK 暂存目录）
-      transfer.dart    导出 JSON / CSV / Anki 与导入解析（394 行）
+      transfer.dart    导出 JSON / CSV / Anki 与导入解析（393 行）
       sync_transport.dart SyncTransport 接口 + IoTransport（自建协议）+ CredentialAware（167 行）
       supabase_transport.dart  GoTrue 登录刷新 + PostgREST 调 RPC（320 行）
       backend_transport.dart   按 URL 形状在两个后端间分派（162 行）
@@ -62,6 +62,7 @@ flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 
       session.dart     会话状态机：current / record / skip / undo / reset
       quiz.dart        出题：buildQuiz / quizShortfall / quizEligibleWords
       seed.dart        示例词库
+      kana.dart        五十音表：平假名/片假名各 46 条，含罗马字与例词（191 行）
       languages.dart   70 种语言选项
       utils.dart       uid / startOfDay / dayKeyOfTs / normalizeTerm / jsRound …
       version.dart     SemVer + ReleaseVersion：解析与比较（229 行）
@@ -69,6 +70,7 @@ flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 
     use_cases/         用例：跨模型的一段业务，值得单独测
       word_query.dart  索引与查询：buildWordIndex / queryWords / summarize（317 行）
       day_stats.dart   今日复习数、连续天数（49 行）
+      deck_templates.dart 现成词库模板：把五十音表映射成 NewWordInput（108 行）
   ui/                  界面层：按功能分包，每个功能有 view_models 与 views
     core/
       view_model.dart  MVVM 契约：ViewModel 基类 + Feedback 端口 + ToastKind
@@ -78,7 +80,7 @@ flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 
       tokens.dart      全部设计令牌（Palette / Sp / R / Fs / Lh / Fonts / Motion / Layout / Shadows）
       i18n/
         i18n.dart      I18n 运行时：dict / t(key, vars) / has(key)
-        zh_cn.dart     411 条键
+        zh_cn.dart     421 条键
         en.dart        同键英文（键集由 i18n_test 强制一致）
       widgets/
         widgets.dart   PageShell / Segmented / EmptyState / ProgressBar / Ring / StatusChip / StatTile / ShortcutRow / Kbd / Card / HairlineList / HairlineRow / SectionTitle / PillField / FloatingAction
@@ -88,37 +90,40 @@ flutter/lib/                        67 个文件，28,593 行（test/ 另有 45 
         icon_paths.dart SVG path 数据
         keyboard_hints.dart showKeyboardHints()：按平台判断是否显示键帽（32 行）
         toast.dart     轻提示：堆叠、悬停暂停、入场/退场（367 行）
-        entrance.dart   入场原语 FadeRise：一个控制器，延迟走 Interval（126 行）
+        entrance.dart   入场原语 FadeRise：一个控制器，延迟走 Interval（249 行）
     features/
+      onboarding/
+        view_models/onboarding_view_model.dart      登录/跳过/错误映射（211 行）
+        views/onboarding_page.dart                  只画（529 行）
       home/
         view_models/home_view_model.dart           首页聚合：今日目标 / 连续天数 / 近七天（306 行）
         views/home_page.dart                       只画（1034 行）
       words/
-        view_models/words_view_model.dart          列表 + 筛选 + 批量操作（477 行）
+        view_models/words_view_model.dart          列表 + 筛选 + 批量操作 + 现成词库（503 行）
         view_models/word_editor_view_model.dart    新建/编辑词的草稿与查词（486 行）
-        views/words_page.dart                     只画，不含判断（1973 行）
+        views/words_page.dart                     只画，不含判断（2256 行）
         views/word_editor.dart                    只画（767 行）
       practice/
-        views/practice_page.dart                   复习 / 测验二选一的外壳（95 行）
+        views/practice_page.dart                   复习 / 测验二选一的外壳（97 行）
       flashcards/
         view_models/flashcards_view_model.dart     会话 / 翻面 / 评分 / 撤销（582 行）
-        views/flashcards_page.dart                 只画（1439 行）
+        views/flashcards_page.dart                 只画（1604 行）
         views/session_result.dart                  会话结果卡（两个学习页共用）
       quiz/
         view_models/quiz_view_model.dart           一轮测验 / 答案 / 错题（364 行）
-        views/quiz_page.dart                       只画（1020 行）
+        views/quiz_page.dart                       只画（999 行）
       stats/
-        view_models/stats_view_model.dart          图表数据推导（276 行）
+        view_models/stats_view_model.dart          图表数据推导（280 行）
         views/stats_page.dart                      只画（943 行）
       settings/
-        view_models/settings_view_model.dart       设置项、词典缓存、同步表单
-        views/settings_page.dart                   只画
+        view_models/settings_view_model.dart       设置项、词典缓存、同步表单（548 行）
+        views/settings_page.dart                   只画（1708 行）
       update/
         view_models/update_view_model.dart         升级卡状态（393 行）
         views/update_sheet.dart                    只画（384 行）
       shell/
         view_models/shell_view_model.dart          三档布局 + 五页切换（215 行）
-        views/app_shell.dart                       只画（997 行）
+        views/app_shell.dart                       只画（1394 行）
   third_party/
     flutter_tts/       flutter_tts 4.2.5 的原样拷贝，只改 Windows 的 C++（见 7.2）
 ```
@@ -290,7 +295,7 @@ view model 并把草稿推回 7 个 `TextEditingController`——**必须在构�
 
 ## 5. 页面实现要点
 
-### 首页（`home_page.dart`，982 行 + `home_view_model.dart` 306 行）
+### 首页（`home_page.dart`，1034 行 + `home_view_model.dart` 306 行）
 打开应用落在的那一页，回答的是「现在该做什么」，不是「一共有多少数据」——统计页
 已经在答后一个问题了，两页若都铺数字，就没有哪一页是入口。
 
@@ -330,7 +335,7 @@ transform 与 opacity，不越界回弹。
 「今天还有 7 张卡片在等你」占 312dp，可用 363dp，不折行；320dp 下五个标签各占
 25×14dp，最大的一行也没挤到相邻项。
 
-### 词库页（`words_page.dart`，2031 行 + `words_view_model.dart` 477 行）
+### 词库页（`words_page.dart`，2256 行 + `words_view_model.dart` 503 行）
 最复杂的一页：搜索框、五个状态筛选（全部/新词/复习中/学习中/已掌握）、排序、
 收藏筛选、批量选择模式、行内收藏/朗读/删除、空状态。批量模式下底部浮出一条操作栏。
 
@@ -349,7 +354,48 @@ transform 与 opacity，不越界回弹。
 `test/words_layout_test.dart` 用几何断言锁住这三点（释义在词条下方、释义列宽占行宽
 一半以上、窄屏不溢出），因为截图只能证明「看起来对了」，不能证明「为什么对了」。
 
-### 练习页（`practice_page.dart`，95 行）
+### 现成词库：五十音（`kana.dart` 191 行 + `deck_templates.dart` 108 行）
+
+新建词库对话框顶部多了一栏「快速开始」，两行各是一个现成词库：平假名 46 张、片假名
+46 张。点一下就建好整个词库，不用逐个录入。
+
+**做成词库，而不是新的「假名模式」。** 闪卡、测验、统计、连续天数、同步全都照着
+list + word 写；第二种内容类型要挨个教一遍，第一个会被弄坏的是每日新卡上限——它按
+word 计数。生成出来的词库就是普通内容，下游不需要知道它从哪来。`ja` 早就在
+`languages.dart` 里，而 `speech.dart` 的 `speakWord` 用 `word.sourceLang` 选 TTS
+语言，所以只要 `sourceLang == 'ja'` 假名就自动用日语朗读——缺的只是内容与入口。
+
+**字段映射是这里唯一容易做错的地方。** 一张卡如果把自己的答案印在问题面上，整个
+功能就白做了。四条：
+
+- `phonetic` 放罗马字。它**不会**出现在卡片正面，所以答案不印在问题上；`definition`
+  也放罗马字，因为背面 display 字体印的就是它——问「这是哪个音」，`a` 就是完整答案。
+- `pos` 放行名（あ行/カ行）。它是正面的 overline：缩小答案范围，但不给答案。
+- `definition2` **刻意留空**。例词的中文已经在 `exampleZh` 里，再写一份会让每张卡
+  背面把同一句中文印两遍。
+- `listId` 留空，由 store 铸造。
+
+平假名和片假名不是转写关系：两套覆盖同样的 46 个音，但平假名承载和语（あめ/いぬ/うみ）、
+片假名承载外来语（アイス/イス/ウール），所以各自存例词而不是共享。写成数据表而不是
+生成器——例外本身就是表（し是 `shi` 不是 `si`、ち是 `chi`、つ是 `tsu`、ふ是 `fu`、
+を没有辅音），把例外枚举一次比推导它们的代码更短。濁音/半濁音（が/ざ/だ/ば/ぱ）
+**不收**：那是第二张表，会让牌堆翻倍，还没学完第一张的人不需要 142 张卡等着。
+
+**`Store.createListWithWords`：一次 `_commit`。** 46 张卡走 `createList` + 46 次
+`addWord` 会通知监听者 47 次、排 47 次保存，对话框还没关词库页就重绘 46 次。同样两个
+操作放进一次 `_commit`，监听者只会看到「没有列表」或「完整列表」，永远看不到半成品；
+`journal.touch` 的记账没有被跳过，所以同步照常上传，别处合并也不会丢。
+
+**`NewWordInput` 从 data 层搬到 domain 层。** 它是每个 `Store.addWord` 调用者都要填的
+形状，不是存储细节，而 `deck_templates.dart` 在 domain 层要引用它。`store.dart` 保留
+一个 `export`，既有 import 继续解析。
+
+`test/kana_deck_test.dart` 14 条钉住这些：两张表各 46 条且字形/罗马字不重复、两套音
+一一对应、模板字段映射（罗马字进 `phonetic`、`definition2` 为空、`listId` 为空）、
+`createListWithWords` 只通知一次且每个 id 都进 pending。变异测试：把 `definition`
+改成 `wordZh` 后 1 条挂。
+
+### 练习页（`practice_page.dart`，97 行）
 一个入口装两种练习。参考图里只有「练习」一个位置，而旧版把闪卡与测验做成两个并列
 的导航项——两件事共用同一套牌堆、同一份进度、同一组快捷键，却各占一格标签栏。现在
 `PageId.practice` 一个位置，页内一个 `Segmented<PracticeMode>`（复习 / 测验）切换。
@@ -362,20 +408,20 @@ transform 与 opacity，不越界回弹。
 解析成 `practice`：首页的「开始复习」「开始测验」、统计页空图表的「去复习」、复习页
 自己的「去测验」都还在用旧 id 说话，直接删 id 会让这些按钮静默失效。
 
-### 闪卡页（`flashcards_page.dart`，1439 行 + `flashcards_view_model.dart` 582 行）
+### 闪卡页（`flashcards_page.dart`，1604 行 + `flashcards_view_model.dart` 582 行）
 会话状态机来自 `domain/models/session.dart`。卡片翻面是两段式 Y 轴旋转（`Matrix4.rotateY`），
 键盘：空格翻面、1/2/3 评分、←/→ 跳过、Ctrl+Z 撤销。右侧面板显示快捷键与进度。
 会话结束复用 `session_result.dart`。
 
-### 测验页（`quiz_page.dart`，1020 行 + `quiz_view_model.dart` 364 行）
+### 测验页（`quiz_page.dart`，999 行 + `quiz_view_model.dart` 364 行）
 四个选项自适应排成 1/2/4 列（240px 最小宽度）。答完即时反馈：正确项描边 accent，
 错选项描边 cinnabar，其余降到 55% 不透明度。键盘 A–D / 1–4 选择，Enter 下一题。
 
-### 统计页（`stats_page.dart`，899 行 + `stats_view_model.dart` 276 行）
+### 统计页（`stats_page.dart`，943 行 + `stats_view_model.dart` 280 行）
 目标环 + 六个统计块 + 状态分布条 + 今日待复习列表。全部数值来自
 `domain/use_cases/word_query.dart` 的 `summarize()`，页面本身不做计算。
 
-### 设置页（`settings_page.dart`，1822 行 + `settings_view_model.dart` 627 行）
+### 设置页（`settings_page.dart`，1708 行 + `settings_view_model.dart` 548 行）
 六块：外观（主题三选、界面语言二选）、学习（每日目标、新卡上限、复习顺序）、
 音频（语速、自动发音、音色选择与试听）、词典（缓存条数与清空）、同步（登录态、
 服务器地址、Supabase anon key、自动同步开关、立即同步、退出登录）、数据（计数、
@@ -992,7 +1038,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 ```bash
 cd flutter
 ../.flutter-sdk/flutterc analyze           # No issues found!
-../.flutter-sdk/flutterc test              # 827 passed, 6 skipped
+../.flutter-sdk/flutterc test              # 887 passed, 9 skipped
 ./tool/build_apk.sh                        # 出 release APK 到 dist/
 ./tool/build_windows.sh                    # 出 Windows release 包
 ./tool/release.sh                          # 出签名 APK + dist/update.json
