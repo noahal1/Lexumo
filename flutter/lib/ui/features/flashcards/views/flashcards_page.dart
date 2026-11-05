@@ -573,13 +573,17 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
           const SizedBox(height: Sp.x4),
           Row(
             children: <Widget>[
-              LexButton(
-                label: t('flashcards.showAnswer'),
-                kind: BtnKind.primary,
-                size: BtnSize.lg,
-                onPressed: onReveal,
-                trailing:
-                    context.showsKeyHints ? Kbd(t('flashcards.spaceKey')) : null,
+              Expanded(
+                child: LexButton(
+                  label: t('flashcards.showAnswer'),
+                  kind: BtnKind.primary,
+                  size: BtnSize.lg,
+                  block: true,
+                  onPressed: onReveal,
+                  trailing: context.showsKeyHints
+                      ? Kbd(t('flashcards.spaceKey'))
+                      : null,
+                ),
               ),
             ],
           ),
@@ -673,25 +677,32 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             ),
           ],
         ),
-        const SizedBox(height: Sp.x2),
-        Wrap(
-          spacing: Sp.x3,
-          alignment: WrapAlignment.center,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: <Widget>[
-            Text(
-              '${t('flashcards.reviewedCount')} ${progress.reviewed}',
-              style: _metaStyle(p),
-            ),
-            if (progress.reviewed > 0)
-              Text('· ${formatAccuracy(progress.accuracy)}', style: _metaStyle(p)),
-            if (progress.skipped > 0)
+        // Nothing reviewed and nothing skipped yet: the two counters would both
+        // read zero, and "Cards 0" above a card the reader has not touched
+        // reads as "this round is empty" rather than as a tally. The progress
+        // line above already says where the round stands.
+        if (progress.reviewed > 0 || progress.skipped > 0) ...<Widget>[
+          const SizedBox(height: Sp.x2),
+          Wrap(
+            spacing: Sp.x3,
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
               Text(
-                '· ${t('flashcards.skippedCount', <String, Object>{'n': progress.skipped})}',
+                '${t('flashcards.reviewedCount')} ${progress.reviewed}',
                 style: _metaStyle(p),
               ),
-          ],
-        ),
+              if (progress.reviewed > 0)
+                Text('· ${formatAccuracy(progress.accuracy)}',
+                    style: _metaStyle(p)),
+              if (progress.skipped > 0)
+                Text(
+                  '· ${t('flashcards.skippedCount', <String, Object>{'n': progress.skipped})}',
+                  style: _metaStyle(p),
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }

@@ -264,9 +264,10 @@ class _PracticePageState extends State<PracticePage> {
           mainAxisSize: MainAxisSize.min,
           children: options,
         ),
+        // No rule here: the last option row already closes the list with its own
+        // bottom border. A second hairline 28dp below it reads as an empty row
+        // — a setting with nothing in it — rather than as a section break.
         const SizedBox(height: Sp.x7),
-        Container(height: 1, color: p.line),
-        const SizedBox(height: Sp.x5),
         LexButton(
           label: cards ? t('flashcards.start') : t('quiz.start'),
           kind: BtnKind.primary,

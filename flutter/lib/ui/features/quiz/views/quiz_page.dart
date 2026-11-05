@@ -202,9 +202,13 @@ class _QuizPageState extends State<QuizPage> {
 
     final List<Widget> body;
     if (_vm.phase == QuizPhase.idle) {
-      body = <Widget>[
-        _idleState(t, _vm.eligibleCount, _vm.enough, side),
-      ];
+      // A plan means the round starts in the post-frame callback, so the idle
+      // intro never belonged to this mount. Drawing it for the frame before the
+      // session lands would flash a screen the reader never chose — the same
+      // reason the flashcard page hides its deck picker.
+      body = widget.plan == null
+          ? <Widget>[_idleState(t, _vm.eligibleCount, _vm.enough, side)]
+          : const <Widget>[];
     } else if (_vm.phase == QuizPhase.active && current != null && progress != null) {
       body = <Widget>[
         _studySplit(
