@@ -1,4 +1,4 @@
-/// Ports `src/lib/translate.test.ts` (60 cases).
+/// Ports the web build's `translate.test.ts` (60 cases).
 ///
 /// The one structural difference is the HTTP seam: the web build patched
 /// `globalThis.fetch`, this port injects a [LookupHttp]. That makes the

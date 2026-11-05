@@ -1,4 +1,4 @@
-/// Port of the vitest suites in `src/lib/*.test.ts`.
+/// Port of the vitest suites in the web build's `*.test.ts`.
 ///
 /// One Dart test per vitest `it`, with the same fixtures, the same expected
 /// values and the same Chinese descriptions, so the two builds can be diffed
@@ -6,7 +6,7 @@
 /// the DOM; every pure assertion is here.
 ///
 /// Deferred until the Flutter port needs it: `previewIntervals` (the old
-/// `intervalLabel` helper) has no counterpart in `src/lib/srs.ts`, so its
+/// `intervalLabel` helper) has no counterpart in the web build's `srs.ts`, so its
 /// assertions do not exist in the TS suite either.
 library;
 

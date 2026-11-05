@@ -1,7 +1,7 @@
 /// Per-day activity helpers: how much was reviewed today, and how many days in
 /// a row the user has studied.
 ///
-/// Ported from `src/lib/dayStats.ts`. Two very different consumers need the
+/// Ported from the web build's `dayStats.ts`. Two very different consumers need the
 /// same numbers — the sidebar and the stats headline — so there is exactly one
 /// definition here, as in the TS.
 ///

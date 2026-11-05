@@ -8,27 +8,11 @@ and the project's homepage.
 All licenses below are compatible with the project's GNU Affero General Public
 License v3.0.
 
-## Tauri / React app (`package.json`)
-
-| Component | Purpose | License |
-| --- | --- | --- |
-| react | UI library | MIT |
-| react-dom | DOM renderer | MIT |
-| @tauri-apps/api | Native bridge from the webview | Apache-2.0 / MIT |
-| tauri-plugin-tts-api | Text-to-speech | MIT |
-
-### Build and test only
-
-| Component | Purpose | License |
-| --- | --- | --- |
-| vite | Dev server and bundler | MIT |
-| @vitejs/plugin-react | React plugin for Vite | MIT |
-| typescript | Type checker and compiler | Apache-2.0 |
-| vitest | Test runner | MIT |
-| jsdom | DOM implementation for tests | MIT |
-| @tauri-apps/cli | Tauri build tooling | Apache-2.0 / MIT |
-
 ## Flutter app (`flutter/pubspec.yaml`)
+
+This is the only implementation in the repository. The earlier Tauri 2 + React 19
+build (`src/`, `src-tauri/`, `package.json`) was removed in November 2026, so its
+React, Vite, TypeScript, Vitest and Tauri entries no longer apply.
 
 | Component | Purpose | License |
 | --- | --- | --- |

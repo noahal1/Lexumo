@@ -1,7 +1,7 @@
 /// First-run demo content: a small, curated English → Chinese deck so the app
 /// opens alive instead of empty. Users can wipe it in Settings.
 ///
-/// Ported from `src/lib/seed.ts` — the words, definitions, examples, the list
+/// Ported from the web build's `seed.ts` — the words, definitions, examples, the list
 /// id and the synthesised review history are the app's existing demo content
 /// and must not be retranslated or retuned here.
 library;

@@ -1,4 +1,4 @@
-/// The app's stroke icon set, copied verbatim from `src/components/Icon.tsx`.
+/// The app's stroke icon set, copied verbatim from the web build's `Icon.tsx`.
 ///
 /// GENERATED FILE — regenerate from the web source rather than editing by hand.
 /// Each value is a 24x24 SVG path string drawn with a 1.7 stroke, round caps

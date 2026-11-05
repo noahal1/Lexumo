@@ -1,6 +1,6 @@
 /// The sync engine: one round at a time, and the loop that schedules rounds.
 ///
-/// A port of `src/lib/sync.ts` (389 lines). The shape is unchanged because the
+/// A port of the web build's `sync.ts` (389 lines). The shape is unchanged because the
 /// shape is the design: **one `POST /api/sync` per round** that both pushes
 /// everything pending and pulls everything newer than this device's cursor. The
 /// server applies before it answers, so a round is a single exchange and there

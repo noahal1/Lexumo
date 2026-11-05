@@ -4,7 +4,7 @@
 /// Application store: one observable snapshot plus the domain operations —
 /// words, lists, reviews, settings.
 ///
-/// Ported from `src/lib/store.ts`. The shape survives the port:
+/// Ported from the web build's `store.ts`. The shape survives the port:
 ///
 ///   * [Store] is built from a [Persistence] adapter and a clock, so a test can
 ///     drive real mutations instead of hand-assembling snapshots.

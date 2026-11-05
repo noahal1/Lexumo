@@ -312,7 +312,7 @@ void main() {
       // precedence — so undoing a grade silently wiped the `reviewCount` /
       // `dueAt` / ease it had just restored. `store.dart` now derives the flag
       // from the snapshot (`clearSrs: restored.srs == null`), which is also what
-      // `src/lib/store.ts:458` does by simply not passing it.
+      // the web build's `store.ts:458` does by simply not passing it.
       expect(after.srs, before.srs);
       expect(after.srs!.reviewCount, before.srs!.reviewCount);
       expect(after.srs!.dueAt, before.srs!.dueAt);

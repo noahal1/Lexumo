@@ -421,7 +421,7 @@ abstract final class SvgPathParser {
   }
 }
 
-/// The app mark, drawn from the same geometry as `public/icon.svg`.
+/// The app mark, drawn from the same geometry as `docs/icon/icon.svg`.
 ///
 /// A stone frame holding a paper sheet, an azurite spine down the left edge
 /// and one ink dot — the word you are on. The mark is a multi-shape FILLED

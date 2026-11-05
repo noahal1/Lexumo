@@ -124,7 +124,7 @@ void main() {
 
   group('touch floor', () {
     // Only the pages. `AppShell` contains every page *and* the chrome, so it is
-    // already covered by the five below plus its own test.
+    // already covered by the six below plus its own test.
     final List<(String, Widget)> pages = kScreens
         .where((s) => s.$1 != 'shell')
         .toList();

@@ -1,4 +1,4 @@
-/// Shared UI primitives, ported from `src/components/ui.tsx`.
+/// Shared UI primitives, ported from the web build's `ui.tsx`.
 ///
 /// The web build had one file of small building blocks that every page used so
 /// headers, empty states and progress read the same everywhere. The Flutter

@@ -1,6 +1,6 @@
 /// Data transfer: JSON snapshots, CSV, and Anki TXT.
 ///
-/// A direct port of `src/lib/transfer.ts` (302 lines). Two things are worth
+/// A direct port of the web build's `transfer.ts` (302 lines). Two things are worth
 /// knowing before reading it:
 ///
 ///   · **The CSV export is a superset of what the importer reads.** The header
@@ -78,7 +78,7 @@ const List<String> csvColumns = [
 /// [AppData.toJson] is already the scrubbed projection — `Word.toJson` and
 /// friends spell out every field rather than spreading the object, so no
 /// server bookkeeping can leak in. `pending` and `tombstones` are dropped
-/// explicitly for the same reason `src/lib/wire.ts` had `encodeAppData`.
+/// explicitly for the same reason the web build's `wire.ts` had `encodeAppData`.
 ///
 /// Indented by two spaces so a diff between two backups is readable; that is
 /// the whole point of a backup you might need to inspect by hand.

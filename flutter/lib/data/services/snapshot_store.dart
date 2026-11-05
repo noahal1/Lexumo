@@ -1,7 +1,7 @@
 /// Persistence: one versioned JSON snapshot on disk.
 ///
 /// The web build stored the snapshot in IndexedDB with a localStorage fallback
-/// (`src/lib/db.ts`). A Flutter app has no IndexedDB, and the honest desktop
+/// (the web build's `db.ts`). A Flutter app has no IndexedDB, and the honest desktop
 /// equivalent is a file — the same file the Tauri build's SQLite/JSON layer
 /// would have used under `%APPDATA%`.
 ///

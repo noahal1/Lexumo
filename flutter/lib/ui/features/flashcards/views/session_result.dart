@@ -1,6 +1,6 @@
 /// End-of-session card shared by the flashcards and quiz pages.
 ///
-/// Ports `src/components/SessionResult.tsx`. Both study modes finish on the
+/// Ports the web build's `SessionResult.tsx`. Both study modes finish on the
 /// same ring + three-stat layout, so the accuracy figure is formatted in one
 /// place instead of twice. The mode-specific parts (which stats, which actions,
 /// what the ring measures) come in as parameters; only the shared shape lives

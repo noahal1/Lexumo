@@ -8,7 +8,7 @@
 /// from the earned interval (not from answer counts) and then only ever
 /// promoted, never demoted — see [nextStatus].
 ///
-/// Ported line-for-line from `src/lib/srs.ts`. The constants and the grade table
+/// Ported line-for-line from the web build's `srs.ts`. The constants and the grade table
 /// are not tunable here, they *are* the app's existing behaviour: a snapshot
 /// reviewed by the web build and one reviewed here must land on the same
 /// schedule. Any change belongs in both files until the web build is retired.

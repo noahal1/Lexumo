@@ -1,6 +1,6 @@
 /// The flashcard review screen.
 ///
-/// Ports `src/pages/study/FlashcardsPage.tsx`. Three states live in one page —
+/// Ports the web build's `FlashcardsPage.tsx`. Three states live in one page —
 /// deck picker, the card in hand, and the finished-session card — because they
 /// are three faces of one session, and splitting them into routes would mean
 /// passing the session object through the shell.

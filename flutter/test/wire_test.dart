@@ -1,4 +1,4 @@
-/// Port of `src/lib/wire.test.ts` (17 `it` cases, one Dart test each).
+/// Port of the web build's `wire.test.ts` (17 `it` cases, one Dart test each).
 ///
 /// Same fixtures and the same expected values as the vitest file, so the two
 /// builds can be diffed case by case. Two assertions could not be transcribed

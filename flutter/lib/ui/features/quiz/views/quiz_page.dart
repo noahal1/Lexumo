@@ -1,6 +1,6 @@
 /// The multiple-choice quiz screen.
 ///
-/// Ports `src/pages/study/QuizPage.tsx`. A round is a list of [QuizQuestion]s
+/// Ports the web build's `QuizPage.tsx`. A round is a list of [QuizQuestion]s
 /// built once by `domain/quiz.dart`; the page only walks them with a [Session]
 /// so the score, the progress bar and "did this round finish" all come from the
 /// same counters the flashcard page uses.

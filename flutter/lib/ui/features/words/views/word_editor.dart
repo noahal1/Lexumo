@@ -1,6 +1,6 @@
 /// Add / edit one word — the dialog behind "Add word" and a row click.
 ///
-/// Ports `src/pages/words/WordEditor.tsx`. The behaviour is deliberately the
+/// Ports the web build's `WordEditor.tsx`. The behaviour is deliberately the
 /// same: the draft owns every keystroke, nothing is written to the store until
 /// Save, closing a dirty draft asks first (inline in the footer, so a second
 /// dialog never stacks on this one), and duplicate detection runs on every

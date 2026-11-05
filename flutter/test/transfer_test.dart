@@ -1,4 +1,4 @@
-/// Port of `src/lib/transfer.test.ts` (22 assertions).
+/// Port of the web build's `transfer.test.ts` (22 assertions).
 ///
 /// One Dart test per vitest `it`, same fixtures, same expected strings, so the
 /// two builds can be diffed case by case. The CSV column list and the import

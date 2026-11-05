@@ -1,7 +1,9 @@
 # Lexumo · 词砚 — Flutter 实现
 
-同一套功能、同一套设计令牌，用 Flutter 重写的版本，编译到 **Windows** 与 **Android**。
-`../src/` 是原本的 Tauri 2 + React 19 版；这一份不是它的替代，而是并行的另一份。
+同一套功能、同一套设计令牌，编译到 **Windows** 与 **Android**。
+这是仓库里**唯一**的实现：早期的 Tauri 2 + React 19 网页版（`src/`、`src-tauri/`）
+已于 2026-11 移除，那一段的历史记录留在 `../docs/usability-round.md` 与
+`../docs/supabase-sync-plan.md` 里。
 
 - 视觉决策的权威文档是 [`../docs/design.md`](../docs/design.md)（石与纸、单一石青强调、
   朱砂只留给不可恢复的删除）。
@@ -17,13 +19,18 @@
 ```bash
 cd flutter
 
-../.flutter-sdk/flutterc analyze     # No issues found!
-../.flutter-sdk/flutterc test        # 897 passed, 9 skipped
+../.flutter-sdk/flutterc analyze --no-pub     # No issues found!
+../.flutter-sdk/flutterc test --no-pub        # 930 passed, 6 skipped
 
 ./tool/build_apk.sh                  # release APK → dist/lexumo-android-release.apk
 ./tool/release.sh                    # 签名 APK + dist/update.json（发布用）
 ./tool/reinstall.sh                  # 装到模拟器并校验
 ```
+
+**`--no-pub` 是必须的。** 不带它时 flutter 会先跑一次 `pub get`，而本机的
+plugin 符号链接支持没开（Developer Mode 未启用），于是直接以
+`Building with plugins requires symlink support.` 退出——和代码无关。
+`.dart_tool/` 已经在仓库里，跳过这一步不影响任何东西。
 
 `flutter build apk` / `flutter run` 在本机会失败于一个**与代码无关**的原因：
 它们交给 Gradle 的环境只有 `JAVA_HOME` 和 `PATH`，`gradlew.bat` 于是找不到
@@ -33,9 +40,9 @@ cd flutter
 判断（同一行命令在裸 shell 里失败，钉住变量后成功）。完整分析见
 `../docs/flutter-design.md` 的 7.4。
 
-包名是 **`dev.lexumo.lexumo`**（`android/app/build.gradle.kts`）。注意不是
-`com.lexumo.app`——那是 Tauri 版的 identifier。写错会让 `pm path` 永远返回空，
-很容易把「已经装上了」误判成「没装上」。
+包名是 **`dev.lexumo.lexumo`**（`android/app/build.gradle.kts`）。别写成
+`com.lexumo.app`——那是已移除的 Tauri 版用过的 identifier，写错会让 `pm path`
+永远返回空，很容易把「已经装上了」误判成「没装上」。
 
 ## 目录
 
@@ -61,7 +68,8 @@ lib/
       view_model.dart / context_feedback.dart   三层之间的契约
       system_ui.dart                           系统栏：edgeToEdge +
                                                AnnotatedRegion 的图标明暗
-    features/        按功能切：home / words / flashcards / quiz / stats / settings / update / shell
+    features/        按功能切：home / words / practice / flashcards / quiz / stats
+                     / profile / settings / onboarding / update / shell
       <feature>/
         view_models/ ChangeNotifier：状态 + 意图，不 import material
         views/       只画界面：读状态、发意图，不含业务判断
@@ -99,7 +107,7 @@ lib/
 - 查询带在手机上是两行（搜索+排序+收藏 / 状态+批量选择），不是三行。
 
 这些不靠看截图确认，`test/mobile_layout_test.dart` 用三条预算断言管住：
-七个界面在 411dp 下不抛布局异常、五个页面每个 `GestureDetector` 两维 ≥ 44dp、
+七个界面在 411dp 下不抛布局异常、六个页面每个 `GestureDetector` 两维 ≥ 44dp、
 首屏预算（顶栏 ≤ 84dp、第一行单词 ≤ 320dp、查询带 ≤ 120dp）。
 数字取「设计能容忍的最大值」而不是某一次量到的值，所以字体度量浮动半个像素不会
 让测试变成绊线。理由与修之前的数字见 `../docs/flutter-design.md`。
@@ -162,7 +170,7 @@ CI 读同一个文件。没有这个文件时清单里就没有 `notes`，应用
 ../.flutter-sdk/flutterc test test/app_mount_test.dart       # 真实 main.dart 的嵌套能挂载、能点
 ```
 
-897 个通过、9 个跳过（6 条要真 Postgres 桥接，见
+930 个通过、6 个跳过（要真 Postgres 桥接的几条，见
 `../docs/supabase-sync-plan.md`）。四层验证各自抓不到什么，记在
 `../docs/flutter-design.md` 末节：
 
@@ -175,7 +183,12 @@ CI 读同一个文件。没有这个文件时清单里就没有 `notes`，应用
 
 ## 已知缺口
 
-按优先级列在 `../docs/flutter-design.md` 第 8 节。最实在的四条：签名密钥与第一次发布
-还没做（在那之前装上的都是 debug 签名包，互相不能覆盖升级）；真 Supabase 项目上没跑过；
-没有自绘标题栏（走系统原生的）；没有拖拽导入。另外查词翻译的**引擎**已经移植完并测试
-到位（`lib/data/services/translate.dart`），只是编辑器里那两个按钮还没接上，仍是禁用占位。
+按优先级列在 `../docs/flutter-design.md` 第 8 节。最实在的几条：只在 Windows 与
+Android 上构建过，**桌面版从没发布过任何产物**（现在所有 release 资产都只有
+`.apk` 和 `update.json`）；没有自绘标题栏（走系统原生的）；没有拖拽导入；查词翻译
+只在**有网时**可用（有道 → 有道网页 → MyMemory → Google 四段链路，
+`dart:io` 的 `HttpClient` 不读系统代理，需要代理时得另配）；同步只做了单账号的
+整档合并，量级没压过几十万词。
+
+查词翻译本身已经接上：编辑器里的「翻译」「由释义查词」两个按钮走
+`lib/data/services/translate.dart`，服务端不参与。

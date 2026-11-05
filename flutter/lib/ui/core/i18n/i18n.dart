@@ -1,6 +1,6 @@
 /// Minimal i18n: dot-path lookup, `{var}` interpolation.
 ///
-/// Ported from `src/i18n/index.tsx`. The web build kept the dictionaries as
+/// Ported from the web build's `index.tsx`. The web build kept the dictionaries as
 /// nested objects and walked them per lookup; the Dart port pre-flattens them
 /// to `Map<String, String>` (see `zh_cn.dart` / `en.dart`) so a lookup is one
 /// hash probe instead of a path split. The observed behaviour is identical:

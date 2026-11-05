@@ -1,7 +1,7 @@
 /// Pure helpers that translate between the local [AppData] snapshot and the
 /// domain [ChangeSet] that is merged into it.
 ///
-/// Ported from `src/lib/syncMerge.ts` (262 lines). No I/O here — everything is
+/// Ported from the web build's `syncMerge.ts` (262 lines). No I/O here — everything is
 /// a function of its inputs, which keeps the merge rules unit-testable.
 ///
 /// The wire format lives in `data/wire.dart`: records reach these functions

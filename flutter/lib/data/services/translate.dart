@@ -1,6 +1,6 @@
 /// Term lookup for the word editor.
 ///
-/// Ports `src/lib/translate.ts`. The app is offline-first, so this module is
+/// Ports the web build's `translate.ts`. The app is offline-first, so this module is
 /// strictly a convenience layer: every call is best-effort, results are cached
 /// aggressively, and a failure never blocks the user from typing a definition
 /// by hand.

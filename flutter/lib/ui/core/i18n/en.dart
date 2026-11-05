@@ -1,6 +1,6 @@
 /// English copy. Same key set as `zh_cn.dart`.
 ///
-/// Ported verbatim from `src/i18n/locales/en.ts`.
+/// Ported verbatim from the web build's `en.ts`.
 /// The TS sources nest objects and address them with dot paths
 /// (`common.save`, `study.flashcards.gradeHard`); the Dart port flattens
 /// them to the same dot-path strings so no key moves or changes shape.
@@ -474,9 +474,10 @@ const Map<String, String> enRaw = {
   'profile.importTitle': 'Import from a file',
   'profile.importHint': 'Add many words at once from a spreadsheet or a backup.',
   'profile.settingsHint': 'Reading, listening, cards, account.',
-  'profile.desktopTitle': 'Tried Lexumo on a computer?',
-  'profile.desktopBody': 'Keep your words in step across every device.',
-  'profile.desktopAction': 'Get the desktop build',
+  'profile.desktopTitle': 'No desktop build yet',
+  'profile.desktopBody':
+      'Android is out today; sign in and your words follow you between phones.',
+  'profile.desktopAction': 'See every build',
   'profile.copyLink': 'Copy link',
   'profile.linkCopied': 'Link copied',
   'profile.about': 'About {app}',

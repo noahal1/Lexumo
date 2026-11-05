@@ -1,6 +1,6 @@
 /// The sync wire edge: the only module that knows what the server sends.
 ///
-/// Ported from `src/lib/wire.ts` (311 lines). The TS header explains the bug
+/// Ported from the web build's `wire.ts` (311 lines). The TS header explains the bug
 /// that created the module: the server stamps `_rev` onto every record it
 /// returns, the merge used to store that object verbatim, and `_rev` was then
 /// persisted as domain data, re-uploaded by the next push and written into the

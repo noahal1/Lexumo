@@ -1,7 +1,7 @@
 /// One study session's bookkeeping: which card is up, what has been answered,
 /// and what a mis-tap should roll back.
 ///
-/// Ported from `src/lib/session.ts`. It lives outside the pages because both
+/// Ported from the web build's `session.ts`. It lives outside the pages because both
 /// study modes run the same state machine, and because the "hard is reviewed
 /// but not recalled" rule used to be written twice in opposite directions
 /// (once when grading, once when undoing). Keeping it here means the counters

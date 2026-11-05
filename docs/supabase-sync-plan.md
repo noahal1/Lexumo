@@ -1,5 +1,7 @@
 # Supabase 同步后端：方案与实施路线
 
+> 说明：本文撰写时仓库里还有 Tauri 2 + React 的网页版，下文的 `src/...` 是那个网页版的路径；该网页版其后已从仓库移除，`flutter/` 是现在唯一的实现，这些 `src/...` 路径均已不存在（`server/` 那个 Node 后端仍在）。
+
 > 状态：三步全部落地。本文只记录**决策与依据**，实现细节以代码为准。
 > 前置阅读：`docs/sync-protocol.md`（协议本身，187 行）、`docs/flutter-design.md` 第 6 节（当前缺口）。
 
@@ -7,8 +9,8 @@
 
 **可行，而且现有协议几乎是为 Supabase 量身定做的。** 原因是它把「合并逻辑」和「传输层」分开了：
 
-- 合并只吃 `ChangeSet` 吐 `ChangeSet`（`src/lib/syncMerge.ts` 262 行），不知道背后是 HTTP 还是 Postgres
-- 传输是 `src/lib/sync.ts` 389 行，里面只有 `POST /api/sync` 一个业务端点
+- 合并只吃 `ChangeSet` 吐 `ChangeSet`（网页版（已移除）的 `syncMerge.ts` 262 行），不知道背后是 HTTP 还是 Postgres
+- 传输是网页版（已移除）的 `sync.ts` 389 行，里面只有 `POST /api/sync` 一个业务端点
 
 换后端 = **只换传输层**，合并逻辑一行不用重写。
 
@@ -85,7 +87,7 @@ uses-permission: name='android.permission.INTERNET'
 
 ## 5. token 不能进 `AppData`
 
-TS 版把 `SyncConfig{server, email, token, rev, lastSyncAt}` 存 localStorage（`src/lib/sync.ts:62-89` 的 `readConfig`/`writeConfig`），与 AppData 分开。
+TS 版把 `SyncConfig{server, email, token, rev, lastSyncAt}` 存 localStorage（网页版（已移除）的 `sync.ts:62-89` 的 `readConfig`/`writeConfig`），与 AppData 分开。
 
 Flutter 版必须同样分开，原因是 **`Settings` 会被 `collectChanges` 打包上传**。token 落进 `AppData.settings` 等于把自己的令牌同步给服务器。
 
@@ -95,7 +97,7 @@ Flutter 版必须同样分开，原因是 **`Settings` 会被 `collectChanges` �
 
 ### 第一步：导出/导入（✅ 已完成）
 
-纯 Dart 文件 I/O，无网络。移植 `src/lib/transfer.ts`（302 行）→ `flutter/lib/data/services/transfer.dart`
+纯 Dart 文件 I/O，无网络。移植网页版（已移除）的 `transfer.ts`（302 行）→ `flutter/lib/data/services/transfer.dart`
 （394 行），`test/transfer_test.dart` 21 条测试对应 TS 的 21 个 `it`。
 
 为什么先做这个：
@@ -121,9 +123,9 @@ Flutter 版必须同样分开，原因是 **`Settings` 会被 `collectChanges` �
 
 ### 第二步：合并逻辑（✅ 已完成）
 
-- `flutter/lib/data/models/wire.dart`（539 行）← `src/lib/wire.ts`（311 行）：`decodeChangeSet` /
+- `flutter/lib/data/models/wire.dart`（539 行）← 网页版（已移除）的 `wire.ts`（311 行）：`decodeChangeSet` /
   `encodeChangeSet` / `encodeAppData`，17 条测试
-- `flutter/lib/data/models/sync_merge.dart`（316 行）← `src/lib/syncMerge.ts`（262 行）：
+- `flutter/lib/data/models/sync_merge.dart`（316 行）← 网页版（已移除）的 `syncMerge.ts`（262 行）：
   `collectChanges` / `hasChanges` / `applyRemote` / `applyRound`，36 条测试
 
 合计 53 条测试，正好等于 TS 的 `it` 总数（wire 17 + syncMerge 23 + syncRound 13）。

@@ -7,7 +7,7 @@
 // a card that already had a schedule silently threw that schedule away —
 // `reviewCount`, `dueAt`, ease, all of it — while the log was correctly removed
 // and the status was correctly put back, which is why it looked like it worked.
-// The reference implementation (`src/lib/store.ts:458`) patches `srs` with no
+// The reference implementation (the web build's `store.ts:458`) patches `srs` with no
 // clear flag at all; the port had drifted.
 //
 // The view-model tests could only assert this indirectly (through the deck's

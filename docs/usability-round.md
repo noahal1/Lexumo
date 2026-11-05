@@ -1,5 +1,7 @@
 # 这轮改了什么：让它更好用，也更像人做的
 
+> 说明：本文是 2026-10-27 对当时仓库里 Tauri 2 + React 网页版的审计记录，讲的是**那一天**的状况，不代表当前行为。那个网页版（`src/`、`src-tauri/`）其后已从仓库移除，`flutter/` 是现在唯一的实现，下文提到的 `src/...` 路径均已不存在。
+
 审计 + 修改记录。日期 2026-10-27，基线 14 个 commit 的干净工作树。
 
 一句话：**没有换视觉风格**。你的设计系统（暖纸 + 玉绿、纸感层次、衬线标题）本身是好的，问题不在"好不好看"，在**细节在真实使用里露出的破洞**——深色模式有 7 处白字压在白字上、图表在手机上标签被裁成一个数字、Ctrl+1 会在你填了一半的编辑框上把页面切走、提示条盖住手机底部标签栏还会吃掉你的第一次点击。这轮修的就是这些。
@@ -10,7 +12,7 @@
 
 ### 1. 深色模式的按钮字是"白底白字"
 
-`src/styles/tokens.css:135` 的深色主题里，`--jade` 被提亮成 `#58cfb2`（浅玉色，为了在深底上能看见），但**按钮上的字还是写死的浅色** `#f7fffc`。
+网页版的 `tokens.css:135` 的深色主题里，`--jade` 被提亮成 `#58cfb2`（浅玉色，为了在深底上能看见），但**按钮上的字还是写死的浅色** `#f7fffc`。
 
 对比度算下来 **1.88:1**。WCAG AA 要求 4.5:1。也就是说深色模式下主按钮的文字几乎看不见——这是这轮最严重的可用性问题，而它出现在每一页的主操作按钮上。
 
@@ -31,7 +33,7 @@
 
 桌面端提示条浮在右下角没问题。手机上底部有 61px 的标签栏，提示条 `bottom: 24px` 正好压在上面，而提示条容器带 `pointerEvents: auto` ——**你想点"闪卡"标签，点到的是提示条**。
 
-第一次修的时候我写了个 `.app.mobile .toast-stack{...}` 的规则，实测发现**没生效**。原因值得记下来：`ToastProvider` 在 `src/main.tsx` 里是 `.app` 的**兄弟节点**，不是子节点，所以后代选择器永远匹配不上。改成媒体查询（不依赖 DOM 嵌套）才真正修好：
+第一次修的时候我写了个 `.app.mobile .toast-stack{...}` 的规则，实测发现**没生效**。原因值得记下来：`ToastProvider` 在网页版的 `main.tsx` 里是 `.app` 的**兄弟节点**，不是子节点，所以后代选择器永远匹配不上。改成媒体查询（不依赖 DOM 嵌套）才真正修好：
 
 ```css
 @media (max-width: 720px) {
@@ -45,11 +47,11 @@
 
 ### 3. `scroll-behavior: smooth` 让每次翻页都在滚
 
-`src/styles/global.css:401` 给 `.page` 设了 `scroll-behavior: smooth`，而 `src/App.tsx:115` 在切页时执行 `scrollTop = 0`。
+网页版的 `global.css:401` 给 `.page` 设了 `scroll-behavior: smooth`，而网页版的 `App.tsx:115` 在切页时执行 `scrollTop = 0`。
 
 结果：**每换一个页面，你要看着列表慢悠悠滚回顶部**（几百毫秒）。在长词库上尤其难受——你点"闪卡"，看到的是词库列表慢慢往上滑。
 
-删掉那一行。`prefers-reduced-motion` 的保护块（`global.css:1692`）保留，那是给需要减少动效的人的，和这个是两件事。
+删掉那一行。`prefers-reduced-motion` 的保护块（网页版的 `global.css:1692`）保留，那是给需要减少动效的人的，和这个是两件事。
 
 ---
 
@@ -67,7 +69,7 @@
 
 **音标**登上桌面：`Word.phonetic` 原来是查到了但没地方存/显示，现在存进词条，行内和闪卡背面都能看到。
 
-**记住你的视图**：列表 / 筛选 / 排序 / 状态选择存进 localStorage（`lexumo.words.view.v1`），下次打开还是你上次的样子，不用每次重设。
+**记住你的视图**：列表 / 筛选 / 排序 / 状态选择由网页版存进 localStorage（`lexumo.words.view.v1`），下次打开还是你上次的样子，不用每次重设。
 
 **行内按钮的键盘误触**：在行内某个按钮上按回车会**同时**打开编辑器（事件冒泡到行）。加了 `if (e.target !== e.currentTarget) return;`。
 
@@ -108,13 +110,13 @@ if (labelIdx[labelIdx.length - 1] !== lastIdx) labelIdx.push(lastIdx);  // 今�
 
 ### 设置（SettingsPage）
 
-**「清空所有数据」之前是假的。** `handleWipe` 只调 `wipeAll()` 清本机数据，但**同步会话还在**（token 和 `rev` 存在 localStorage），而且没写墓碑。后果：你点了"无法恢复"的清空，登录状态还在，下次同步会把服务器上的东西**全部拉回来**。文案在骗人。
+**「清空所有数据」之前是假的。** 网页版的 `handleWipe` 只调 `wipeAll()` 清本机数据，但**同步会话还在**（token 和 `rev` 存在 localStorage），而且没写墓碑。后果：你点了"无法恢复"的清空，登录状态还在，下次同步会把服务器上的东西**全部拉回来**。文案在骗人。
 
 现在：先 `signOut()` 再清空，登录状态下文案改成诚实的版本（`会先退出登录，再清空这台设备上的所有数据...服务器上的副本还在，重新登录会同步回来`），提示也区分「已退出并清空」和「数据已清空」两种情况。
 
 **同步状态在手机上不可见**：同步状态徽标只在侧栏底部，而手机上侧栏是 `display: none`。现在后台同步失败会弹一次提示（带「去同步设置」按钮），点它跳到设置页并**滚动定位**到同步卡片（`id="set-sync"` + `pendingAnchor`）。
 
-**快捷键说明是三套互相打架的**：设置页「关于」写 `Ctrl N` / `Ctrl F`，但应用实际用的是裸键 `n` 和 `/`。现在快捷键只有一个来源（`src/lib/shortcuts.ts` 的 `SHORTCUTS`），「?」帮助面板和「关于」卡片都从它渲染——显示和实际行为不可能再对不上。
+**快捷键说明是三套互相打架的**：设置页「关于」写 `Ctrl N` / `Ctrl F`，但应用实际用的是裸键 `n` 和 `/`。现在快捷键只有一个来源（网页版的 `shortcuts.ts` 的 `SHORTCUTS`），「?」帮助面板和「关于」卡片都从它渲染——显示和实际行为不可能再对不上。
 
 设置页「这次复习里最多先放几张新卡进来。设成 0 就只复习旧词」这类解释也补上了。
 
@@ -170,7 +172,7 @@ if (labelIdx[labelIdx.length - 1] !== lastIdx) labelIdx.push(lastIdx);  // 今�
 
 **类型检查**：`npx tsc --noEmit` 干净（strict + `noUnusedLocals` + `noUnusedParameters`）。
 
-**生产构建**：`npm run build` 通过，`index-*.js 386.88 kB (gzip 122.23)`。
+**生产构建**：网页版的 `npm run build` 通过，`index-*.js 386.88 kB (gzip 122.23)`。
 
 **真实浏览器实测**（headless Edge + DevTools 协议，`.shots/` 里，已被 gitignore）：
 
@@ -192,7 +194,7 @@ if (labelIdx[labelIdx.length - 1] !== lastIdx) labelIdx.push(lastIdx);  // 今�
 1. **首次启动的样例数据没有出口。** `seedData()` 会写入「示例词库 · 英语」和一批演示复习记录，所以"词库是空的"这句空状态文案**新装用户根本看不到**——他们看到的是样例数据。这本身不算错（有东西可玩比空屏好），但应该给个"清掉样例，开始我自己的"的入口，现在没有。
 2. **84 个 i18n 键定义了但没用上**（`node .shots/i18n-audit.mjs` 可复算）。不报错、不影响功能，但词典在慢慢腐烂。其中有些是准备做但没做的功能，有些是真死了。
 3. **没有 CI。** 上面的所有校验都得手动跑。要接 CI 的话脚本已经现成。
-4. **Cargo 侧没改。** 这轮全在前端；`src-tauri` 一行没动。收尾时跑过一次 `npx tauri build --no-bundle` 重新产出 `lexumo.exe`（1m24s，12.9 MB），确认前端改动在真实 WebView 里能打包进去；安装包（MSI/NSIS）仍未产出，原因见 README「已知限制」。
+4. **Cargo 侧没改。** 这轮全在前端；已移除的 Tauri 工程 `src-tauri` 一行没动。收尾时在当时的工程里跑过一次 `npx tauri build --no-bundle`，重新产出 `lexumo.exe`（1m24s，12.9 MB），确认前端改动在真实 WebView 里能打包进去；安装包（MSI/NSIS）仍未产出，原因见 README「已知限制」。
 5. **9 处离群圆角/间距**只收敛了大部分，不是全部。
 6. **没做跨平台像素级回归**，也没在真实 iOS/Android 上测（只有 Chromium 模拟）。
 
@@ -202,7 +204,7 @@ if (labelIdx[labelIdx.length - 1] !== lastIdx) labelIdx.push(lastIdx);  // 今�
 
 - **`en.ts` 受 `Dictionary` 类型约束**，`zh-CN.ts` 的形状就是它的形状。少一个键 `tsc` 就报错。这是这个项目最好的一个决定——加中文键时英文不跟会立刻被发现。这轮补了 37 个键。
 - **37 个键在 HEAD 上就缺失**，不是我改坏的。`translate()` 查不到时返回键名本身，所以它们一直以 `shell.skipToContent` 这样的字面量显示在界面上。是子代理新加的调用点让它们暴露出来。
-- **新模块两个**：`src/lib/shortcuts.ts` 是快捷键的唯一来源（作用域 modal > page > app，输入框内单键自动让位）；`src/lib/wire.ts` 是同步线格式的边界，逐字段重建记录，让服务器盖的 `_rev` 无法回写/回推/进备份。
+- **新模块两个**：网页版的 `shortcuts.ts` 是快捷键的唯一来源（作用域 modal > page > app，输入框内单键自动让位）；网页版的 `wire.ts` 是同步线格式的边界，逐字段重建记录，让服务器盖的 `_rev` 无法回写/回推/进备份。
 - **`translate.ts` 改动很大**（+326/−158）看着吓人，但它是把适配器注入化（`createLookup`/`LookupCache`/`LookupClock`），符合仓库自己"一个概念一个接缝"的历史风格，不是顺手重构。
 - 三个子代理在跑到一半时挂了，留下未使用的导入和半成品功能（`tsc` 报 TS6133）。这些是我接手补完的——批量选择、发音守卫等。**没有留下死代码。**
 
@@ -240,7 +242,7 @@ if (labelIdx[labelIdx.length - 1] !== lastIdx) labelIdx.push(lastIdx);  // 今�
 
 ### 减少动态
 
-CSS 侧有全局兜底（`animation-duration: .01ms !important`）。但闪卡的换面时序是 JS 排的，CSS 管不到，所以 `src/lib/motion.ts` 的 `prefersReducedMotion()` 在**点击那一刻**读，直接跳过两个定时器，答案立刻出现。
+CSS 侧有全局兜底（`animation-duration: .01ms !important`）。但闪卡的换面时序是 JS 排的，CSS 管不到，所以网页版的 `motion.ts` 的 `prefersReducedMotion()` 在**点击那一刻**读，直接跳过两个定时器，答案立刻出现。
 
 验证时用 CDP 模拟 `prefers-reduced-motion: reduce` 复测：`transform: none`、`is-flipped: true`、时长 `1e-05s`，即真的没有转。
 
@@ -248,7 +250,7 @@ CSS 侧有全局兜底（`animation-duration: .01ms !important`）。但闪卡�
 
 `.shots/verify-motion.mjs` **16/16**，每条都是数值断言，不是"看起来有动画"：computed `animation-name` / `animation-delay`、翻面过程中途采样 `transform` 矩阵、退出时元素仍在 DOM 且动画名是 `toast-out`、之后确实卸载、以及上面那组 reduce 复测。
 
-这里踩到一个值得记的坑：`toast-out` 的规则在**源码里有、Vite 提供的 CSS 里没有**——CSS 缓存没跟上那次写入。所以我把一个"注入同 class 的空元素读 computed style"的对照断言也留在了脚本里，并且重启 dev server 后才一致。**动效这种东西光看源码会骗人，必须在真实浏览器里断言。**
+这里踩到一个值得记的坑：`toast-out` 的规则在**源码里有、Vite 提供的 CSS 里没有**——CSS 缓存没跟上那次写入。所以我把一个"注入同 class 的空元素读 computed style"的对照断言也留在了脚本里，并且重启网页版的 dev server 后才一致。**动效这种东西光看源码会骗人，必须在真实浏览器里断言。**
 
 回归全绿：297 个测试、`tsc` 干净、构建通过，以及 `verify-round` 17/17、`verify-mobile` 8/8、对比度 0 处不达标、`verify-chart` 18/18、`tabbar-check` 6/6、`rail-check` 7/7。
 

@@ -3,7 +3,7 @@
 /// The design system asks for exactly one motion recipe: opacity plus a few
 /// pixels of travel, decelerating, nothing overshooting (`docs/design.md`: "Only
 /// transform and opacity animate"). The web build spells that recipe out as
-/// keyframes in `src/styles/global.css` — `fade-in` for a page, `pop-in` for a
+/// keyframes in the web build's `global.css` — `fade-in` for a page, `pop-in` for a
 /// panel, `row-in`/`tile-in`/`bar-rise` for content arriving in sequence — and
 /// this widget is their shared Flutter shape.
 ///

@@ -1,6 +1,6 @@
 /// The settings sheet.
 ///
-/// Ports `src/pages/settings/SettingsPage.tsx` and its `parts.tsx` helpers. The
+/// Ports the web build's `SettingsPage.tsx` and its `parts.tsx` helpers. The
 /// page is a single card of sections — appearance, study, audio, sync, data —
 /// followed by an about card. Every control writes through
 /// `Store.updateSettings` the moment it changes; there is no save button,

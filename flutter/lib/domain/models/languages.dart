@@ -2,7 +2,7 @@
 ///
 /// A pragmatic subset of the reference app's 105 languages, with BCP-47 tags
 /// that Web Speech and Google Translate accept. Ported from
-/// `src/lib/languages.ts` — the list order and every label are the app's
+/// the web build's `languages.ts` — the list order and every label are the app's
 /// existing content, not a new choice.
 library;
 

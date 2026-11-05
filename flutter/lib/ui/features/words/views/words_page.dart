@@ -1,6 +1,6 @@
 /// The word library.
 ///
-/// Ports `src/pages/WordsPage.tsx`. One page owns five things the web build
+/// Ports the web build's `WordsPage.tsx`. One page owns five things the web build
 /// spread across a component and three dialogs: the list tabs, the query bar
 /// (search + status filter + sort + tools), the table itself, select mode's
 /// bulk bar, and the list manager.

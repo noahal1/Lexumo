@@ -1,6 +1,6 @@
 /// The insights dashboard.
 ///
-/// Ports `src/pages/stats/StatsPage.tsx`. Every figure, bucket and flag comes
+/// Ports the web build's `StatsPage.tsx`. Every figure, bucket and flag comes
 /// from [StatsViewModel]; this file only spells labels and lays out widgets.
 /// One `summarize` call inside the view model owns the headline figures — the
 /// arithmetic must not be re-derived here or the sidebar, the words header and

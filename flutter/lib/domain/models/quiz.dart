@@ -1,6 +1,6 @@
 /// 测验出题：纯函数，不触碰 store，也不写入 SRS。
 ///
-/// Ported from `src/lib/quiz.ts`. The tests only assert the properties a round
+/// Ported from the web build's `quiz.ts`. The tests only assert the properties a round
 /// must have (option count, answer position, de-duplication, direction), never
 /// a specific random order — [shuffle] differs on every call.
 library;

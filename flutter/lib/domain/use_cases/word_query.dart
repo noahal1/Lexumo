@@ -2,7 +2,7 @@
 /// used to each hand-roll: per-list buckets, status counts and the
 /// filtered/sorted query.
 ///
-/// Ported from `src/lib/wordIndex.ts`. Deliberately pure: no Flutter, no DOM
+/// Ported from the web build's `wordIndex.ts`. Deliberately pure: no Flutter, no DOM
 /// and no store import (types only), so the pages and the tests share exactly
 /// one implementation. That is what stops the header, the filter controls and
 /// the stats page from disagreeing.

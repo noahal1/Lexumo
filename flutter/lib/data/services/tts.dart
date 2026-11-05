@@ -1,6 +1,6 @@
 /// Text-to-speech, behind one seam.
 ///
-/// Ports `src/lib/tts.ts`. The web module had two engines (Web Speech and the
+/// Ports the web build's `tts.ts`. The web module had two engines (Web Speech and the
 /// Tauri `tts` plugin) and picked between them at runtime; here there is one
 /// engine — `flutter_tts`, which is itself a thin wrapper over each platform's
 /// native synthesiser (SAPI on Windows, `TextToSpeech` on Android). So the
@@ -69,7 +69,7 @@ class VoiceInfo {
 
 /// The seam. Tests inject a fake; the app injects [FlutterTtsEngine].
 ///
-/// Keeping this an interface is the same call `src/lib/tts.ts` made when it
+/// Keeping this an interface is the same call the web build's `tts.ts` made when it
 /// hid two engines behind one module: the pages must not know which
 /// synthesiser is underneath, and the test suite must not need a real one.
 abstract class TtsEngine {
@@ -279,7 +279,7 @@ String _baseLang(String lang) {
 }
 
 /// Voices matching [lang], best first — exact tag, then same base language,
-/// then local before network. Mirrors `voicesFor` in `src/lib/tts.ts`.
+/// then local before network. Mirrors `voicesFor` in the web build's `tts.ts`.
 List<VoiceInfo> voicesFor(List<VoiceInfo> all, String lang) {
   if (lang.isEmpty) return const <VoiceInfo>[];
   final base = _baseLang(lang);

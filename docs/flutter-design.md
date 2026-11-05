@@ -1,11 +1,12 @@
 # Lexumo · 词砚 — Flutter 移植说明
 
-这份文档记录 `flutter/` 这一份实现：它从 `src/`（Tauri 2 + React 19）逐层移植而来，
-**不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
+这份文档记录 `flutter/` 这一份实现：它从 `src/`（Tauri 2 + React 19，已移除）逐层移植
+而来，**不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
 Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
+文中出现的 `src/...` 都是那个已移除网页版的路径，留作「这段代码从哪来」的出处记录。
 
-工程规模：`lib/` 与 `test/` 共 50,423 行 Dart，897 个测试通过（另有 6 条需要真 Postgres
-桥接的 E2E 默认 skip，3 条 release 资产校验在没有 `dist/` 时也 skip），`flutter analyze` 零问题。
+工程规模：`lib/` 与 `test/` 共 52,187 行 Dart（lib 33,282 / test 18,905），930 个测试
+通过（另有 6 条需要真 Postgres 桥接的 E2E 默认 skip），`flutter analyze --no-pub` 零问题。
 
 ---
 
@@ -20,7 +21,7 @@ Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果�
 上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
 React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 
-这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，897 个测试覆盖纯逻辑与
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，930 个测试覆盖纯逻辑与
 共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
 
 ---
@@ -507,6 +508,39 @@ chevron 且点它不弹菜单、从下拉选一本后表格与胶囊同时换。
 view model 构造时读一次、清空后再读一次，而不是每次 build 都调 `cacheSize()`；缓存为 0
 时按钮置灰——新装的机器上「无可清」是真实状态，一个看着能按却什么都不做的按钮比
 一个看着不可用的更糟。
+
+**标题网格：一块只有一个名字，且三处同名。** 三个块标题曾经是三种样式：
+`SectionTitle`（13dp / `ink3`）、更新块自绘的 display 面 16dp、关于卡里 13dp 的行内标签。
+三条都在给一个块命名，所以它们必须是同一种东西。现在全部走 `_heading()`：
+`SectionTitle(label:, padded: false, color: p.ink2)` 外面套 `_kHeadingInset`
+（`EdgeInsets.symmetric(horizontal: Sp.x4)`）。
+
+两处 inset 都要解释，因为它们是同一个 bug 的两半：
+
+- `SectionTitle` 默认自带 `Sp.x6` 的左内边距，与页面的 gutter 齐平；而它命名的那些
+  行在 hover 盒里内缩 `Sp.x4`。结果是组名比它下方的标签右移 8dp（实测量到 11 物理
+  像素），读起来像渲染错位而不是层级。所以 `padded: false` + 自己补 `Sp.x4`，让名字
+  落在它命名的列正上方。
+- 颜色默认是 `ink3`，比行标签的 `ink` 弱四档。`ink3` 是眉标（eyebrow）的颜色——它
+  的语义是「在内容之下」。设置页**没有页面标题**（外壳已经说了「设置」，
+  `docs/flutter-design.md` 第 5 节第 4 条记录过页头被整条删掉的原因），所以块名是
+  这一页唯一的命名层，不能是最淡的那行。改成 `ink2`，比对页仍低一档。
+
+三条测试钉住这些（`settings_layout_test.dart` 的 `settings headings name their own rows`）：
+标题与它命名的第一行 `getTopLeft().dx` 相差 ≤0.5dp；标题色 `ink2` 而行标签色 `ink`；
+`noVoice` 警告是 `maxLines == null` 的独立行、色 `ink2`（见下）。
+
+**长句不能塞进表头尾部。** `settings.noVoice`（22 字）曾作为 `note` 传进
+`SectionTitle.trailing`：单行、`maxLines: 1`、省略号、`ink4` 装饰灰。它是发音段里唯一
+改变「用户能做什么」的句子，却和标题同行且最淡。`_Section` 因此多了 `warning` 参数：
+渲染成标题下一行独立的警示行（`Ic.info` 14dp `p.warn` + `Fs.sm` / `Lh.body` / `ink2`）。
+`note` 的文档注释也补了一行——它只配一行以内，其余归 `hint` 或 `warning`。
+
+**关于卡的信息堆。** 版本 chip 与 `Flutter · Dart` 曾在同一个 `Wrap` 里，读成一堆
+元信息；它们不是同一类事实（前者标识这一份拷贝，后者说它是用什么写的）。现在栈名单独
+一行、降到 `ink4` 字幕级；`Wrap` 换成 `Align(centerStart)` 包 chip——一个被拉伸到整卡
+宽的 chip 就不再读作一个 chip。产品名也从 13dp `ink3` 提到 display 面 16dp `ink`：
+一张关于卡上，唯一能叫出 App 名字的那行必须是卡片里最响的。
 
 同步这一块有两种登录形态，靠 `detectBackend(server)` 判断当前是哪一种：自建协议只要
 服务器地址 + 邮箱 + 密码，Supabase 还要一个 anon key——这个输入框**只在地址看起来像
@@ -1111,13 +1145,16 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 
 ```bash
 cd flutter
-../.flutter-sdk/flutterc analyze           # No issues found!
-../.flutter-sdk/flutterc test              # 897 passed, 9 skipped
+../.flutter-sdk/flutterc analyze --no-pub  # No issues found!
+../.flutter-sdk/flutterc test --no-pub     # 930 passed, 6 skipped
 ./tool/build_apk.sh                        # 出 release APK 到 dist/
 ./tool/build_windows.sh                    # 出 Windows release 包
 ./tool/release.sh                          # 出签名 APK + dist/update.json
 ./tool/reinstall.sh                        # 装到模拟器并校验
 ```
+
+**`--no-pub` 是必须的**：不带它时 flutter 先跑 `pub get`，本机没开 Developer Mode、
+建不了插件符号链接，于是以 `Building with plugins requires symlink support.` 退场。
 
 **不要用 `flutterc build apk`**。这条路径在本机会失败于一个与代码无关的原因，
 见 7.4；`tool/build_apk.sh` 是唯一能用的出包方式。
@@ -1563,20 +1600,16 @@ Android SDK 36.0.0  build-tools 36.0.0  platform android-37.0
 
 按优先级：
 
-1. **把密钥送上 GitHub，然后打第一个标签**。本机这一半已经做完了：
-   `android/upload-keystore.jks` 已生成（`CN=lexumo, OU=Mobile, O=lexumo,
-   L=Hangzhou`），`setup_signing.sh` 写出了 `android/key.properties`，
-   `tool/release.sh` 出的包用 `apksigner verify --print-certs` 能验到这张证书而不是
-   `CN=Android Debug`。剩下的两步都要凭据，脚本故意不做：用
-   `flutter/tool/github_secrets.sh` 逐个把四个值送进剪贴板、粘进 GitHub 的 Settings →
-   Secrets（它不打印任何值，也不上传），然后打第一个 `v*` 标签让 workflow 跑起来。
-   **两个文件都已 gitignore**（`android/.gitignore` 的 `**/*.jks` 与 `key.properties`），
-   而 keystore 一旦丢失，所有已安装的包就再也无法覆盖升级——它比仓库本身更该备份。
-2. **在真 Supabase 项目上验证一次**。SQL 函数、13 条 Postgres 测试、差分测试都已
-   就位，但那跑的是「真 Postgres + 手写 RPC 垫片」，GoTrue 是 `rpc_bridge.cjs` 模拟的。
-   真实 GoTrue 发的是 JWT，`auth.uid()` 从 `request.jwt.claim.sub` 读——协议一致，
-   但没在线上项目走过一遍。顺带补 `supabase/config.toml` 与 `db push` 的部署流程
-   （本机无 supabase CLI）。
+1. **桌面版需要一个发布产物**。「我的」页那张卡讲的是「电脑版」，而现在所有 release
+   资产只有 `.apk` 与 `update.json`——12 个版本全部如此。要么补 Windows 的
+   `build_windows.sh` 产物并进 CI（`flutter build windows` 在本机卡在 Developer Mode
+   的符号链接探测上），要么把这张卡改成不承诺桌面版。
+2. **在真 Supabase 项目上验证一次登录**。SQL 函数、Postgres 测试、差分测试都已就位，
+   默认项目也已接上（`kDefaultServer` / `kDefaultAnonKey`），但那个项目的 **Email
+   provider 是关的**：`POST /auth/v1/signup` 返回
+   `{"code":400,"error_code":"email_provider_disabled"}`，`/token?grant_type=password`
+   返回 422 `email_provider_disabled`。在 Dashboard → Authentication → Sign In /
+   Providers 里打开 Email 之前，登录这条路径在线上走不通。
 3. **自绘标题栏**。Windows 版现在能跑，但窗口用的是系统标题栏，而 Web 版是 36px
    石色自绘条（`--frame-bar-h`）。要补需要 `window_manager` 加窗口拖拽/最小化/
    最大化/关闭的原生接线，`Layout.frameBarH` 这个令牌是给它留的。
@@ -1596,8 +1629,9 @@ Android SDK 36.0.0  build-tools 36.0.0  platform android-37.0
 
 这一项原在缺口清单里，现已完成，但它的形状值得记一笔，因为**难点不在网络请求**。
 
-`platform/translate.dart` 早就移植好了（三个适配器、30 天缓存、429 冷却、音标与双语
-例句解析），编辑器里的两个按钮也一直在原位——只是 `onPressed` 是 null。接线本身很短：
+`data/services/translate.dart`（当时还叫 `platform/translate.dart`）早就移植好了（三个
+适配器、30 天缓存、429 冷却、音标与双语例句解析），编辑器里的两个按钮也一直在原位——
+只是 `onPressed` 是 null。接线本身很短：
 
 - 词 → 释义：`_runLookup` 调 `lookupTerm(term, LookupOptions(from, to, force: true))`，
   把 `posTags` / `primaryMeaning` / `alternativeMeaning` / `examples.first` / `phonetic`

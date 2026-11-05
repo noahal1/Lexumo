@@ -1,6 +1,6 @@
 /// Simplified Chinese copy — the reference dictionary.
 ///
-/// Ported verbatim from `src/i18n/locales/zh-CN.ts`.
+/// Ported verbatim from the web build's `zh-CN.ts`.
 /// The TS sources nest objects and address them with dot paths
 /// (`common.save`, `study.flashcards.gradeHard`); the Dart port flattens
 /// them to the same dot-path strings so no key moves or changes shape.
@@ -454,9 +454,9 @@ const Map<String, String> zhCnRaw = {
   'profile.importTitle': '从 Excel 导入',
   'profile.importHint': '从表格或备份里一次添加很多单词。',
   'profile.settingsHint': '朗读、听力、卡片、账号。',
-  'profile.desktopTitle': '你在电脑上试过 Lexumo 吗？',
-  'profile.desktopBody': '让单词在各设备间保持同步。',
-  'profile.desktopAction': '下载电脑版 Lexumo',
+  'profile.desktopTitle': '电脑版还没有发布',
+  'profile.desktopBody': '现在只有安卓版；登录后两台手机之间的词会自动同步。',
+  'profile.desktopAction': '查看所有版本',
   'profile.copyLink': '复制链接',
   'profile.linkCopied': '链接已复制',
   'profile.about': '关于 {app}',

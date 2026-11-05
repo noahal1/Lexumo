@@ -1,9 +1,9 @@
-"""Generate the Lexumo app icon set.
+"""Generate the Lexumo launcher icon set for the Flutter app.
 
 Design: two materials, one shell — the same idea the app is built on.
 
-    A dark stone frame (--frame) holds a light paper sheet (--bg). Down the
-    left edge of the sheet runs an azurite spine (--accent), and a single ink
+    A dark stone frame (`--frame`) holds a light paper sheet (`--bg`). Down the
+    left edge of the sheet runs an azurite spine (`--accent`), and a single ink
     dot sits on the paper: the mark of the one word you are on right now.
 
 No gradients, no drop shadow, no second accent hue. The icon is the sidebar
@@ -18,12 +18,23 @@ does this — one drawing where the details survive, one where they cannot.
 Everything is drawn at 1024px and downsampled with LANCZOS.
 
 Usage:
-    python generate-icons.py          # writes every size next to this file
-    python generate-icons.py --check  # prints the geometry, writes nothing
+    python generate_icons.py           # writes every size into the app trees
+    python generate_icons.py --check   # prints the geometry, writes nothing
 
-Requires Pillow. Outputs:
-    icon.png (512), 32x32.png, 128x128.png, 128x128@2x.png (256),
-    icon.ico (16/32/48/64/128/256), icon.icns (16 through 1024)
+Requires Pillow. Outputs (paths relative to the repo root):
+    flutter/windows/runner/resources/app_icon.ico   16/32/48/64/128/256
+    flutter/android/app/src/main/res/mipmap-mdpi/ic_launcher.png     48
+    flutter/android/app/src/main/res/mipmap-hdpi/ic_launcher.png     72
+    flutter/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png    96
+    flutter/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png   144
+    flutter/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png  192
+
+Regeneration is a no-op on a clean tree *by eye*: the Windows `.ico` comes back
+byte-identical, and the Android PNGs come back pixel-identical but with different
+bytes, because Pillow's PNG encoder has changed since they were committed — so
+check icon changes by comparing pixels, never by comparing file hashes. Run it
+after changing the geometry below, then commit the result; nothing regenerates
+these files during a build.
 """
 
 from __future__ import annotations
@@ -36,10 +47,12 @@ import sys
 from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+APP = os.path.dirname(HERE)          # flutter/
+ROOT = os.path.dirname(APP)          # repo root
 MASTER = 1024
 
 # Palette — the app's own tokens, not new colours.
-#   src/styles/tokens.css: --frame, --bg, --line, --accent, --ink
+#   flutter/lib/ui/core/tokens.dart: Palette.frame, .bg, .line, .accent, .ink
 STONE = (0x25, 0x2C, 0x28)        # --frame  #252c28
 PAPER = (0xF9, 0xF7, 0xF3)        # --bg     #f9f7f3
 PAPER_EDGE = (0xE0, 0xDE, 0xD7)   # --line   #e0ded7, where the paper meets stone
@@ -63,24 +76,23 @@ SIMPLE_WALL_EXTRA = 0.045   # of the frame, added to PAPER_INSET
 SIMPLE_SPINE_SCALE = 1.55   # of SPINE_W
 SIMPLE_BELOW = 32           # px — this variant is used strictly below it
 
-# Sizes the Windows shell and Tauri ask for.
+# Sizes the Windows shell asks for when it draws the .ico.
 ICO_SIZES = [16, 32, 48, 64, 128, 256]
 
-# ICNS chunk types, PNG payloads. Modern macOS reads these; ic10 (1024) is what
-# the Dock uses on a Retina display.
-ICNS_TYPES = [
-    ("icp4", 16),
-    ("icp5", 32),
-    ("icp6", 64),
-    ("ic07", 128),
-    ("ic08", 256),
-    ("ic09", 512),
-    ("ic10", 1024),
-    ("ic11", 32),
-    ("ic12", 64),
-    ("ic13", 256),
-    ("ic14", 512),
+# Android's launcher densities, as the mipmap directory and its pixel size. These
+# are the 48dp baseline scaled by each bucket (mdpi 1x, hdpi 1.5x, …).
+ANDROID_DENSITIES = [
+    ("mipmap-mdpi", 48),
+    ("mipmap-hdpi", 72),
+    ("mipmap-xhdpi", 96),
+    ("mipmap-xxhdpi", 144),
+    ("mipmap-xxxhdpi", 192),
 ]
+
+ICO_PATH = os.path.join("flutter", "windows", "runner", "resources", "app_icon.ico")
+ANDROID_DIR = os.path.join(
+    "flutter", "android", "app", "src", "main", "res"
+)
 
 
 def geometry(simple: bool = False) -> dict[str, int]:
@@ -173,8 +185,8 @@ def png_bytes(image: Image.Image) -> bytes:
     return buf.getvalue()
 
 
-def write_ico(master: Image.Image, simple: Image.Image, path: str) -> None:
-    """Write an .ico container by hand.
+def ico_bytes(master: Image.Image, simple: Image.Image) -> bytes:
+    """Assemble an .ico container by hand.
 
     Pillow's ICO writer rescales one image into every slot, which would throw
     away the simplified 16px drawing, and it cannot mix sources. The format is
@@ -198,25 +210,7 @@ def write_ico(master: Image.Image, simple: Image.Image, path: str) -> None:
             offset,
         )
         offset += len(payload)
-    with open(path, "wb") as handle:
-        handle.write(header + bytes(entries) + b"".join(payloads))
-
-
-def write_icns(master: Image.Image, simple: Image.Image, path: str) -> None:
-    """Write an .icns container by hand.
-
-    iconutil only exists on macOS, and the build has to run from Windows too,
-    so the container is assembled directly. Each entry is a PNG payload.
-    """
-    chunks = bytearray()
-    for kind, size in ICNS_TYPES:
-        payload = png_bytes(render(master, simple, size))
-        chunks += kind.encode("ascii")
-        chunks += struct.pack(">I", len(payload) + 8)
-        chunks += payload
-    body = b"icns" + struct.pack(">I", len(chunks) + 8) + bytes(chunks)
-    with open(path, "wb") as handle:
-        handle.write(body)
+    return header + bytes(entries) + b"".join(payloads)
 
 
 def main() -> None:
@@ -230,24 +224,18 @@ def main() -> None:
     master = build_master(False)
     simple = build_master(True)
 
-    for name, size in [
-        ("icon.png", 512),
-        ("32x32.png", 32),
-        ("128x128.png", 128),
-        ("128x128@2x.png", 256),
-    ]:
-        render(master, simple, size).save(
-            os.path.join(HERE, name), "PNG", optimize=True
-        )
-        print(f"  {name}: {size}x{size}")
+    ico = os.path.join(ROOT, ICO_PATH)
+    os.makedirs(os.path.dirname(ico), exist_ok=True)
+    with open(ico, "wb") as handle:
+        handle.write(ico_bytes(master, simple))
+    print(f"  {ICO_PATH}: {', '.join(f'{s}x{s}' for s in ICO_SIZES)}")
 
-    # Pillow's ICO writer rescales a single image into every slot, which would
-    # lose the simplified 16px drawing, so the container is built directly.
-    write_ico(master, simple, os.path.join(HERE, "icon.ico"))
-    print(f"  icon.ico: {', '.join(f'{s}x{s}' for s in ICO_SIZES)}")
-
-    write_icns(master, simple, os.path.join(HERE, "icon.icns"))
-    print(f"  icon.icns: {', '.join(f'{s}x{s}' for _, s in ICNS_TYPES)}")
+    for bucket, size in ANDROID_DENSITIES:
+        path = os.path.join(ROOT, ANDROID_DIR, bucket, "ic_launcher.png")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(png_bytes(render(master, simple, size)))
+        print(f"  android/…/{bucket}/ic_launcher.png: {size}x{size}")
 
 
 if __name__ == "__main__":

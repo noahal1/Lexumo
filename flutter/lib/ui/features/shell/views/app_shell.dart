@@ -1,6 +1,6 @@
 /// The app shell: navigation rail, page switching, theme, global shortcuts.
 ///
-/// Mirrors `src/App.tsx`. Three layout modes, chosen by width exactly as the CSS
+/// Mirrors the web build's `App.tsx`. Three layout modes, chosen by width exactly as the CSS
 /// media queries did:
 ///
 ///   · wide (>1000px)   — stone sidebar with labels,
@@ -567,7 +567,7 @@ class _Sidebar extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // The app mark: the same drawing as public/icon.svg — a
+                  // The app mark: the same drawing as docs/icon/icon.svg — a
                   // stone frame holding a paper sheet, an azurite spine and
                   // one ink dot. It is the one mark in the chrome that is
                   // neither text nor an icon, and it is what makes the slab

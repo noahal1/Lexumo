@@ -1,6 +1,6 @@
 /// Core domain types for Lexumo. Persisted as a single versioned snapshot.
 ///
-/// Ported from `src/lib/types.ts`. The Dart port keeps the exact field names
+/// Ported from the web build's `types.ts`. The Dart port keeps the exact field names
 /// and the JSON shape, so a snapshot exported by the web build (or by the old
 /// Tauri shell) loads here without a transformation step.
 library;

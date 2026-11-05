@@ -1,6 +1,6 @@
 /// The change journal — the single owner of `pending` and `tombstones`.
 ///
-/// Ported from `src/lib/journal.ts`. Two invariants govern sync, and neither can
+/// Ported from the web build's `journal.ts`. Two invariants govern sync, and neither can
 /// be expressed by remembering to call `markWordDirty` at the right moment:
 ///
 ///   1. every local edit must be recorded as pending, otherwise another device

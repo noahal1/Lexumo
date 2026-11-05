@@ -1,4 +1,4 @@
-/// Design tokens, ported 1:1 from `src/styles/tokens.css`.
+/// Design tokens, ported 1:1 from the web build's `tokens.css`.
 ///
 /// The CSS was the source of truth for the web build; this file is the Flutter
 /// equivalent. Both materials survive the port:

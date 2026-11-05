@@ -1,4 +1,4 @@
-/// Port of `src/lib/syncMerge.test.ts` (23 `it`) and `src/lib/syncRound.test.ts`
+/// Port of the web build's `syncMerge.test.ts` (23 `it`) and `syncRound.test.ts`
 /// (13 `it`) — 36 cases, one Dart test each.
 ///
 /// The first half exercises the pure merge functions directly, exactly as the

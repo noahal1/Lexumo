@@ -1,6 +1,6 @@
 /// Small shared helpers: ids, dates, class names, text utils.
 ///
-/// Ported from `src/lib/utils.ts`. Everything that read the clock or the DOM in
+/// Ported from the web build's `utils.ts`. Everything that read the clock or the DOM in
 /// the TS version takes an explicit `now` here (`relativeDay`, `daysBetween`)
 /// or is dropped (`downloadText` — that belonged to the browser build, the
 /// Flutter shell saves files itself).

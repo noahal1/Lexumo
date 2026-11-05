@@ -1,7 +1,7 @@
 /// Where the sync session lives — deliberately **not** in `lexumo.json`.
 ///
 /// The web build kept `SyncConfig` in `localStorage` under `lexumo.sync.v1`
-/// (`src/lib/sync.ts:62-89`), apart from the IndexedDB snapshot. That split is
+/// (the web build's `sync.ts:62-89`), apart from the IndexedDB snapshot. That split is
 /// not an accident of storage: [Settings] is part of [AppData], and
 /// `collectChanges` packs the whole settings record into every upload. A bearer
 /// token living in `Settings` would therefore be *synced to the server it
