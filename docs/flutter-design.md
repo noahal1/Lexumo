@@ -4,7 +4,7 @@
 **不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
 Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
 
-工程规模：`lib/` 与 `test/` 共 49,871 行 Dart，891 个测试通过（另有 6 条需要真 Postgres
+工程规模：`lib/` 与 `test/` 共 50,135 行 Dart，894 个测试通过（另有 6 条需要真 Postgres
 桥接的 E2E 默认 skip，3 条 release 资产校验在没有 `dist/` 时也 skip），`flutter analyze` 零问题。
 
 ---
@@ -20,7 +20,7 @@ Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果�
 上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
 React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 
-这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，891 个测试覆盖纯逻辑与
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，894 个测试覆盖纯逻辑与
 共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
 
 ---
@@ -28,7 +28,7 @@ React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 ## 2. 目录结构与职责
 
 ```
-flutter/lib/                        73 个文件，31,679 行（test/ 另有 50 个文件 18,192 行）
+flutter/lib/                        73 个文件，31,811 行（test/ 另有 50 个文件 18,324 行）
   main.dart            入口：Store 初始化 → UpdateService → 作用域树 → MaterialApp
   app/                 组合根：谁在什么时候构造谁
     scope.dart         InheritedWidget 层：StoreNotifier / StoreScope / I18nScope / ToastScope / NavScope
@@ -101,7 +101,7 @@ flutter/lib/                        73 个文件，31,679 行（test/ 另有 50 
       words/
         view_models/words_view_model.dart          列表 + 筛选 + 批量操作 + 现成词库（503 行）
         view_models/word_editor_view_model.dart    新建/编辑词的草稿与查词（486 行）
-        views/words_page.dart                     只画，不含判断（2265 行）
+        views/words_page.dart                     只画，不含判断（2397 行）
         views/word_editor.dart                    只画（767 行）
       practice/
         views/practice_page.dart                   复习 / 测验二选一的外壳（97 行）
@@ -335,7 +335,7 @@ transform 与 opacity，不越界回弹。
 「今天还有 7 张卡片在等你」占 312dp，可用 363dp，不折行；320dp 下五个标签各占
 25×14dp，最大的一行也没挤到相邻项。
 
-### 词库页（`words_page.dart`，2265 行 + `words_view_model.dart` 503 行）
+### 词库页（`words_page.dart`，2397 行 + `words_view_model.dart` 503 行）
 最复杂的一页：搜索框、五个状态筛选（全部/新词/复习中/学习中/已掌握）、排序、
 收藏筛选、批量选择模式、行内收藏/朗读/删除、空状态。批量模式下底部浮出一条操作栏。
 
@@ -408,6 +408,42 @@ word 计数。生成出来的词库就是普通内容，下游不需要知道它
 又消失、点平假名那行会建出 `sourceLang == 'ja'` 的 46 词词库并关掉对话框。变异测试：
 去掉 `.where((d) => d.sourceLang == _sourceLang)` 后前两条挂——「英语时不出现」这条
 断言是唯一能区分「推荐」和「广告」的东西。
+
+### 词库标签条：永远一行，横向滚动
+
+词库页顶部那条标签条（`_ListTabs`）原来是个 `Wrap`：三个词库放得下，五个就折行。
+两个问题叠在一起，第一个是它折在 **pinned 条**里面——条带向下长高，长出来的高度是
+从词条区扣的，于是「选择你要读哪个词库」的控件吃掉了「你要读的词」。第二个是改名
+会重排整条，把指针底下的 tab 挪走。
+
+现在固定一行：`Row` 左边 `Expanded` 里是横向 `SingleChildScrollView`，右边是
+`_AddTabButton`，滚动的只有 tab，`+` 不动。手机 411dp 上九个词库量下来条带高度还是
+一个控件高，多出来的部分滑到窗口边缘外面去——所以 `_ListTabs` 自己带 `Sp.x6` 的起始
+gutter，`pinned` 里不再套 `_gutter`，否则 tab 会在内边距处被切掉一截，看起来像渲染
+错误而不是「还有更多」。
+
+**三件配套的事，缺一件这条带子就不像能滚的：**
+
+- **选中项要自己滚进来。** 词库可以从管理对话框选、也可以在启动时恢复，此时高亮的
+  tab 可能在视野外——条带上没有任何选中项，读起来是「切了没反应」。`_activeTab` 这个
+  `GlobalKey` 挂在当前选中的 `Padding` 上，`didUpdateWidget` 里 `activeId` 一变就在
+  post-frame 里 `Scrollable.ensureVisible(alignment: 0.5)`。
+- **竖直滚轮要重映射成横向。** Flutter 的横向 scrollable 把竖直滚轮当竖直输入直接
+  忽略，所以桌面版只有触控板能滚——一个看着能滚的区域，鼠标滚轮在上面没反应。
+  `Listener.onPointerSignal` 里把 `PointerScrollEvent.scrollDelta.dy` 加进
+  `_scroll.position.pixels` 再 clamp。
+- **鼠标要能拖。** `ScrollConfiguration` 默认的 `dragDevices` 不含
+  `PointerDeviceKind.mouse`，`behavior.copyWith(dragDevices: {...默认, mouse})` 补上。
+
+`test/words_layout_test.dart` 的 `the wordbook strip is one row and scrolls sideways`
+3 条钉住这些：六个词库时三个 tab 的 `Rect.center.dy` 相差 <1（折行会立刻拉开）、
+九个词库滚到底后 `+` 的 `Rect` 不变且仍 `hitTestable`、从对话框选一个视野外的词库后
+`pixels > 0` 且那个 tab `hitTestable`。变异测试：注释掉 `didUpdateWidget` 里的
+`_revealActive()` 后第三条挂。
+
+**踩到的坑：** 对话框里最后一行可能在折之下，`tester.tap` 会点到 barrier 把对话框
+关掉——必须先 `ensureVisible`；而 `find.text('词库 8 号')` 会同时命中页面上的 tab 和
+对话框里的行，得用 `find.descendant(of: find.byType(Dialog), ...)` 收窄。
 
 ### 练习页（`practice_page.dart`，97 行）
 一个入口装两种练习。参考图里只有「练习」一个位置，而旧版把闪卡与测验做成两个并列
@@ -517,7 +553,7 @@ Supabase 项目时才出现**，且每次 build 重算而不是存字段，否�
    android/iOS/fuchsia 为假），不是按窗口宽度：窄化的桌面窗口仍然由键盘驱动，
    而横屏平板很宽却没有键盘——宽度会把这两种情况都答错。页面里统一走
    `context.showsKeyHints`，共 14 处调用点（`app_shell.dart:401`、`flashcards_page.dart`
-   6 处、`quiz_page.dart` 4 处、`settings_page.dart:1635`、`words_page.dart:1717`、
+   6 处、`quiz_page.dart` 4 处、`settings_page.dart:1635`、`words_page.dart:1798`、
    `word_editor.dart:265`）。`test/keyboard_hints_test.dart` 的 11 条测试在桌面与
    Android 两个分支上分别 pump 页面，断言键帽出现/消失。
 
@@ -1037,7 +1073,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
    上判断「真的能用」要求语音列表非空，其它平台只要求通道通——因为 Windows 那份
    vendored 插件在引擎没激活时仍会应答每个方法，见 7.2。
 
-调用点：`words_page.dart:92`（行内发音）、`flashcards_page.dart:104/106`（显式朗读 /
+调用点：`words_page.dart:94`（行内发音）、`flashcards_page.dart:104/106`（显式朗读 /
 自动朗读，后者不计数）、`quiz_page.dart:95`（题干与复习行）、设置页音色下拉 + 试听。
 三处都是把闭包注入 view model，因为真正的 `speakWord` 要 `BuildContext` 读设置。
 `word.listenCount` 现在有触发点了——`speakWord` 每次调用都 `bumpListen`，
@@ -1052,7 +1088,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 ```bash
 cd flutter
 ../.flutter-sdk/flutterc analyze           # No issues found!
-../.flutter-sdk/flutterc test              # 891 passed, 9 skipped
+../.flutter-sdk/flutterc test              # 894 passed, 9 skipped
 ./tool/build_apk.sh                        # 出 release APK 到 dist/
 ./tool/build_windows.sh                    # 出 Windows release 包
 ./tool/release.sh                          # 出签名 APK + dist/update.json

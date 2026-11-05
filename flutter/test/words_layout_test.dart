@@ -234,6 +234,9 @@ void main() {
       expect(created.sourceLang, 'en');
       expect(created.targetLang, 'zh-CN');
       expect(find.text(kNameLabel), findsNothing, reason: 'the card closed');
+      // `createList` schedules a debounced save; flushing cancels that timer so
+      // the test does not end with "pending timers" (same reason as freshStore).
+      await store.flush();
     });
 
     testWidgets('the keyboard action key creates the list too', (WidgetTester tester) async {
@@ -248,6 +251,7 @@ void main() {
 
       expect(store.data.lists.last.name, '日语 N2');
       expect(find.text(kNameLabel), findsNothing);
+      await store.flush();
     });
 
     testWidgets('a phone stacks the language pair and stretches the actions', (
@@ -396,6 +400,134 @@ void main() {
         reason: 'one _commit carries the whole deck',
       );
       expect(find.text('词库名称'), findsNothing, reason: 'the dialog closed');
+    });
+  });
+
+  // The wordbook strip used to be a `Wrap`: three lists fit on a phone and five
+  // did not, so the surplus wrapped onto a second and then a third line inside
+  // the pinned strip. The strip grew downwards and took the room from the words
+  // — the control that picks what you read was eating what you read. These lock
+  // the fix: exactly one row high no matter how many wordbooks exist, and the
+  // surplus reached by scrolling sideways.
+  group('the wordbook strip is one row and scrolls sideways', () {
+    /// Seeds [count] extra wordbooks, each with one word.
+    Future<void> addLists(Store store, int count) async {
+      for (int i = 0; i < count; i++) {
+        final WordList list = store.createList(
+          name: '词库 ${i + 1} 号',
+          sourceLang: 'en',
+          targetLang: 'zh-CN',
+        );
+        store.addWord(
+          NewWordInput(term: 'term$i', definition: '释义 $i', listId: list.id),
+        );
+      }
+      await store.flush();
+    }
+
+    /// The horizontal scrollable the strip owns (the body's is vertical).
+    ScrollableState stripScrollable(WidgetTester tester) =>
+        tester.stateList<ScrollableState>(find.byType(Scrollable)).firstWhere(
+              (ScrollableState s) => s.position.axis == Axis.horizontal,
+              orElse: () => fail('the strip has to scroll horizontally'),
+            );
+
+    testWidgets('six wordbooks stay on one line', (WidgetTester tester) async {
+      final Store store = await pumpWordsAt(tester, 411);
+      await addLists(store, 5);
+      await tester.pumpAndSettle();
+
+      // Six wordbooks plus the + cannot fit across a phone, so a `Wrap` here
+      // would be several rows tall. One row means every tab shares one top edge
+      // and the strip's height is a single control height.
+      final List<Rect> tabRects = <Rect>[
+        for (final String name in <String>[
+          '示例词库 · 英语',
+          '词库 1 号',
+          '词库 2 号',
+        ])
+          tester.getRect(find.text(name).first),
+      ];
+      for (final Rect r in tabRects.skip(1)) {
+        expect(
+          (r.center.dy - tabRects.first.center.dy).abs(),
+          lessThan(1),
+          reason: 'a wrapped strip would put these on different lines',
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the + stays put while the tabs scroll under it', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpWordsAt(tester, 411);
+      await addLists(store, 8);
+      await tester.pumpAndSettle();
+
+      final Finder addButton = find.byTooltip('新建词库');
+      final Rect addBefore = tester.getRect(addButton);
+      final ScrollableState strip = stripScrollable(tester);
+      expect(
+        strip.position.maxScrollExtent,
+        greaterThan(0),
+        reason: 'nine wordbooks have to overflow a phone, or nothing is proved',
+      );
+
+      strip.position.jumpTo(strip.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getRect(addButton),
+        addBefore,
+        reason: 'a + that scrolls off the edge is the bug this fixes',
+      );
+      expect(
+        find.byTooltip('新建词库').hitTestable(),
+        findsOneWidget,
+        reason: 'the only way into the list manager must stay tappable',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('selecting a wordbook off-screen brings it into view', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpWordsAt(tester, 411);
+      await addLists(store, 8);
+      await tester.pumpAndSettle();
+
+      final ScrollableState strip = stripScrollable(tester);
+      expect(strip.position.pixels, 0, reason: 'the strip starts at the front');
+
+      // Selecting through the manager is the case a `Wrap` never had to handle:
+      // the highlight moves to a tab that may be scrolled out of sight, and a
+      // strip showing no highlight reads as "the switch did nothing".
+      await tester.tap(find.byTooltip('新建词库'));
+      await tester.pumpAndSettle();
+      final Finder row = find.descendant(
+        of: find.byType(Dialog),
+        matching: find.text('词库 8 号'),
+      );
+      // The manager lists every wordbook, so the last one may itself be below
+      // the dialog's fold; tapping its recorded position would land on the
+      // barrier and dismiss the dialog instead of selecting.
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+
+      expect(
+        strip.position.pixels,
+        greaterThan(0),
+        reason: 'the newly active tab has to be revealed',
+      );
+      expect(
+        find.text('词库 8 号').hitTestable(),
+        findsWidgets,
+        reason: 'and it has to actually be on screen, not merely scrolled to',
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 

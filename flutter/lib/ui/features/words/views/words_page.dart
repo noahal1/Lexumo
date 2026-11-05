@@ -22,6 +22,8 @@
 library;
 
 
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, PointerScrollEvent, PointerSignalEvent;
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter/services.dart';
 
@@ -203,14 +205,15 @@ class _WordsPageState extends State<WordsPage> {
               // out of sight is a list you cannot trust, and changing wordbook
               // meant scrolling to the top first.
               pinned: <Widget>[
-                _gutter(
-                  _ListTabs(
-                    lists: context.data.lists,
-                    activeId: _vm.listId,
-                    counts: _vm.index.byList,
-                    onSelect: _vm.selectList,
-                    onManage: _openListManager,
-                  ),
+                // Not wrapped in [_gutter]: the tab strip supplies its own
+                // leading gutter so that tabs can scroll off the window's edge
+                // instead of vanishing at an inner margin.
+                _ListTabs(
+                  lists: context.data.lists,
+                  activeId: _vm.listId,
+                  counts: _vm.index.byList,
+                  onSelect: _vm.selectList,
+                  onManage: _openListManager,
                 ),
                 const SizedBox(height: Sp.x4),
                 _gutter(
@@ -318,7 +321,26 @@ class _WordsPageState extends State<WordsPage> {
 /* List tabs                                                           */
 /* ------------------------------------------------------------------ */
 
-class _ListTabs extends StatelessWidget {
+/// The wordbook strip: one fixed row, scrolled sideways when it overflows.
+///
+/// It used to be a `Wrap`, which was wrong in both directions. Three lists fit
+/// on a phone and five did not: the surplus wrapped onto a second and then a
+/// third line inside the pinned strip, so the strip grew downwards and took the
+/// room from the words — the control that chooses what you read was eating what
+/// you read. Wrapping also re-flowed whenever a list was renamed, which moved
+/// every tab out from under the pointer.
+///
+/// Now the strip is exactly one row high no matter how many wordbooks exist.
+/// The tabs scroll horizontally; the + does not scroll with them, because a +
+/// that can be pushed off the edge is the same bug as a + that wraps off it.
+///
+/// Two things are needed to make that row usable with a mouse, and both are
+/// done here rather than left to the platform: Flutter's scrollables ignore the
+/// mouse wheel on a horizontal axis (it is a vertical input) and ignore mouse
+/// dragging entirely, so on the desktop build the strip would scroll only if
+/// the user happened to have a trackpad. The wheel is mapped onto the axis and
+/// the mouse joins the drag devices.
+class _ListTabs extends StatefulWidget {
   const _ListTabs({
     required this.lists,
     required this.activeId,
@@ -334,20 +356,130 @@ class _ListTabs extends StatelessWidget {
   final VoidCallback onManage;
 
   @override
+  State<_ListTabs> createState() => _ListTabsState();
+}
+
+class _ListTabsState extends State<_ListTabs> {
+  final ScrollController _scroll = ScrollController();
+
+  /// Marks the tab of [widget.activeId] so it can be scrolled into view.
+  final GlobalKey _activeTab = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _revealActive();
+  }
+
+  @override
+  void didUpdateWidget(_ListTabs oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeId != widget.activeId) _revealActive();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Scrolls the active tab into view after the frame that may have moved it.
+  ///
+  /// A list can be selected without touching the strip — from the manager
+  /// dialog, or restored from settings on launch — and a strip scrolled to some
+  /// other wordbook would then show no highlight at all, so the page would look
+  /// like it had failed to switch. Centring is right for both cases: when
+  /// everything already fits there is nothing to scroll, and when it does not,
+  /// the tab the user is reading is the one worth the middle of the strip.
+  void _revealActive() {
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      final BuildContext? tab = _activeTab.currentContext;
+      if (!mounted || tab == null) return;
+      Scrollable.ensureVisible(
+        tab,
+        alignment: 0.5,
+        duration: Motion.dur2,
+        curve: Motion.ease,
+      );
+    });
+  }
+
+  /// Turns a vertical wheel notch into horizontal travel.
+  ///
+  /// Only a pure vertical notch is remapped: a horizontal wheel (or shift+wheel,
+  /// which the engine reports as `dx`) is already understood by the scrollable,
+  /// and handling it here as well would scroll twice for one notch.
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    final double dy = event.scrollDelta.dy;
+    if (dy == 0 || !_scroll.hasClients) return;
+    final ScrollPosition position = _scroll.position;
+    final double next = (position.pixels + dy).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (next == position.pixels) return;
+    _scroll.jumpTo(next);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: Sp.x2,
-      runSpacing: Sp.x2,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        for (final l in lists)
-          _ListTab(
-            label: l.name,
-            count: counts[l.id]?.length ?? 0,
-            active: l.id == activeId,
-            onTap: () => onSelect(l.id),
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: ScrollConfiguration(
+            // A mouse cannot drag a scrollable by default; on the desktop build
+            // that leaves the wheel as the only input, and the wheel is what
+            // [_onPointerSignal] has to translate.
+            behavior: ScrollConfiguration.of(context).copyWith(
+              dragDevices: <PointerDeviceKind>{
+                ...ScrollConfiguration.of(context).dragDevices,
+                PointerDeviceKind.mouse,
+              },
+            ),
+            child: Listener(
+              onPointerSignal: _onPointerSignal,
+              child: SingleChildScrollView(
+                controller: _scroll,
+                scrollDirection: Axis.horizontal,
+                // The strip runs edge to edge so tabs can disappear at the
+                // window's edge rather than at an inner margin; the gutter the
+                // rest of the page uses lives on the content instead.
+                padding: const EdgeInsetsDirectional.only(
+                  start: Sp.x6,
+                  end: Sp.x2,
+                ),
+                child: Row(
+                  children: <Widget>[
+                    for (int i = 0; i < widget.lists.length; i++)
+                      Padding(
+                        key: widget.lists[i].id == widget.activeId
+                            ? _activeTab
+                            : null,
+                        padding: EdgeInsetsDirectional.only(
+                          end: i == widget.lists.length - 1 ? 0 : Sp.x2,
+                        ),
+                        child: _ListTab(
+                          label: widget.lists[i].name,
+                          count: widget.counts[widget.lists[i].id]?.length ?? 0,
+                          active: widget.lists[i].id == widget.activeId,
+                          onTap: () => widget.onSelect(widget.lists[i].id),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ),
-        _AddTabButton(onTap: onManage, tooltip: context.t('words.newList')),
+        ),
+        const SizedBox(width: Sp.x2),
+        Padding(
+          padding: const EdgeInsetsDirectional.only(end: Sp.x6),
+          child: _AddTabButton(
+            onTap: widget.onManage,
+            tooltip: context.t('words.newList'),
+          ),
+        ),
       ],
     );
   }
