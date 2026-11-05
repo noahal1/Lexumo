@@ -724,8 +724,14 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     final Palette p = Palette.of(context);
     final Size size = MediaQuery.sizeOf(context);
     final double minHeight = (size.height * 0.46).clamp(330.0, 520.0);
-    // On a phone the card may grow past the fold rather than trap a long
-    // definition in a nested scroll area.
+    // Every window gets the same height floor. Without it a phone's front face
+    // shrinks to its content (~175dp) while the revealed answer is ~322dp, so
+    // flipping the card grows it by ~147dp and shoves every control below it
+    // down by the same amount. Holding the card to one height keeps the round
+    // action row and the answer button in the same place on both faces — the
+    // tap target never moves out from under the reader's hand.
+    // On a phone the card may still grow past the fold rather than trap a long
+    // definition in a nested scroll area: the floor is a minimum, not a cap.
     final bool compact = size.width <= Layout.mobileBreakpoint;
     final double faceMax = compact ? double.infinity : size.height * 0.48;
 
@@ -774,7 +780,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       // throw; on the front there is no grade to compete with, so any
       // decisive throw — sideways or down — discards the unseen card.
       onSwipeDown: onSkip,
-      minHeight: compact ? 0 : minHeight,
+      minHeight: minHeight,
       head: Row(
         children: <Widget>[
           Text(
