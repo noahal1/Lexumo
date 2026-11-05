@@ -163,7 +163,20 @@ SyncEngine engineFor(
   );
 }
 
+/// A stored session that has already completed a round: boot is quiet for it,
+/// because syncing is manual.
 const SyncConfig signedIn = SyncConfig(
+  server: 'http://127.0.0.1:8787',
+  email: 'a@b.c',
+  token: 'tok-1',
+  rev: 0,
+  lastSyncAt: T0,
+);
+
+/// A stored session whose *first* round never completed — a fresh sign-in, or
+/// one the app closed mid-flight. This is the only session shape the engine
+/// still syncs without being asked.
+const SyncConfig neverSynced = SyncConfig(
   server: 'http://127.0.0.1:8787',
   email: 'a@b.c',
   token: 'tok-1',
@@ -854,119 +867,68 @@ void main() {
   });
 
   /* ---------------------------------------------------------------- */
-  /* Engine: the loop                                                 */
+  /* Engine: rounds happen when asked                                 */
   /* ---------------------------------------------------------------- */
 
   group('loop', () {
-    test('autoSync off means the timer does nothing', () async {
+    test('a device that never completed a round syncs once at boot', () async {
       final harness = await freshStore();
       final transport = FakeTransport();
       final engine = SyncEngine(
         store: harness.store,
-        configStore: MemorySyncConfigStore(signedIn),
+        configStore: MemorySyncConfigStore(neverSynced),
         transport: transport,
-        interval: const Duration(milliseconds: 20),
-        soonDelay: const Duration(milliseconds: 5),
-        bootDelay: const Duration(milliseconds: 5),
       );
       await engine.init();
       addTearDown(engine.dispose);
 
-      harness.store.updateSettings((s) => s.copyWith(autoSync: false));
-
-      await Future<void>.delayed(const Duration(milliseconds: 60));
-      expect(transport.seen, isEmpty);
+      // The round is started (not awaited) by `init`; the fake answers on the
+      // next microtask, so one turn of the event queue is enough to see it.
+      await Future<void>.delayed(Duration.zero);
+      expect(transport.seen.length, 1);
+      expect(transport.seen.single.path, '/api/sync');
     });
 
-    test('a local edit schedules a push after the debounce', () async {
+    test('a device that has synced before stays quiet at boot', () async {
       final harness = await freshStore();
       final transport = FakeTransport();
       final engine = SyncEngine(
         store: harness.store,
         configStore: MemorySyncConfigStore(signedIn),
         transport: transport,
-        // Long poll so only the debounced push can fire.
-        interval: const Duration(hours: 1),
-        soonDelay: const Duration(milliseconds: 10),
-        bootDelay: const Duration(hours: 1),
+      );
+      await engine.init();
+      addTearDown(engine.dispose);
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(transport.seen, isEmpty);
+    });
+
+    test('a local edit waits for the user to ask', () async {
+      final harness = await freshStore();
+      final transport = FakeTransport();
+      final engine = SyncEngine(
+        store: harness.store,
+        configStore: MemorySyncConfigStore(signedIn),
+        transport: transport,
       );
       await engine.init();
       addTearDown(engine.dispose);
 
       harness.store.addWord(const NewWordInput(
-        term: 'debounced',
+        term: 'manual',
         definition: 'x',
         listId: DEFAULT_LIST_ID,
       ));
 
+      // No debounce, no background push: the edit sits there until a tap.
       await Future<void>.delayed(const Duration(milliseconds: 80));
-      expect(transport.seen.length, 1);
-      expect(transport.seen.single.path, '/api/sync');
-    });
+      expect(transport.seen, isEmpty);
 
-    test('several edits inside the debounce window send one round', () async {
-      final harness = await freshStore();
-      final transport = FakeTransport();
-      final engine = SyncEngine(
-        store: harness.store,
-        configStore: MemorySyncConfigStore(signedIn),
-        transport: transport,
-        interval: const Duration(hours: 1),
-        soonDelay: const Duration(milliseconds: 30),
-        bootDelay: const Duration(hours: 1),
-      );
-      await engine.init();
-      addTearDown(engine.dispose);
-
-      for (var i = 0; i < 5; i++) {
-        harness.store.addWord(NewWordInput(
-          term: 'word$i',
-          definition: 'x',
-          listId: DEFAULT_LIST_ID,
-        ));
-      }
-
-      await Future<void>.delayed(const Duration(milliseconds: 120));
+      await engine.syncNow();
       expect(transport.seen.length, 1);
       final changes = (transport.seen.single.body! as Map)['changes'] as Map;
-      expect((changes['words'] as List).length, 5);
-    });
-
-    test('the poll timer keeps running while signed in', () async {
-      final harness = await freshStore();
-      final transport = FakeTransport();
-      final engine = SyncEngine(
-        store: harness.store,
-        configStore: MemorySyncConfigStore(signedIn),
-        transport: transport,
-        interval: const Duration(milliseconds: 20),
-        soonDelay: const Duration(hours: 1),
-        bootDelay: const Duration(hours: 1),
-      );
-      await engine.init();
-      addTearDown(engine.dispose);
-
-      await Future<void>.delayed(const Duration(milliseconds: 90));
-      expect(transport.seen.length, greaterThanOrEqualTo(2));
-    });
-
-    test('stop cancels the timers', () async {
-      final harness = await freshStore();
-      final transport = FakeTransport();
-      final engine = SyncEngine(
-        store: harness.store,
-        configStore: MemorySyncConfigStore(signedIn),
-        transport: transport,
-        interval: const Duration(milliseconds: 20),
-        soonDelay: const Duration(hours: 1),
-        bootDelay: const Duration(hours: 1),
-      );
-      await engine.init();
-      addTearDown(engine.dispose);
-
-      engine.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 70));
-      expect(transport.seen, isEmpty);
+      expect((changes['words'] as List).length, 1);
     });
 
     test('start is idempotent', () async {
@@ -974,11 +936,8 @@ void main() {
       final transport = FakeTransport();
       final engine = SyncEngine(
         store: harness.store,
-        configStore: MemorySyncConfigStore(signedIn),
+        configStore: MemorySyncConfigStore(neverSynced),
         transport: transport,
-        interval: const Duration(milliseconds: 30),
-        soonDelay: const Duration(hours: 1),
-        bootDelay: const Duration(hours: 1),
       );
       await engine.init();
       addTearDown(engine.dispose);
@@ -986,10 +945,9 @@ void main() {
       engine.start();
       engine.start();
 
-      await Future<void>.delayed(const Duration(milliseconds: 80));
-      // Two timers would double the request count; one timer at 30ms over 80ms
-      // gives 2, three timers would give ~6.
-      expect(transport.seen.length, lessThanOrEqualTo(3));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      // A second `start` must not queue a second first round.
+      expect(transport.seen.length, 1);
     });
 
     test('dispose closes the transport and stops publishing', () async {

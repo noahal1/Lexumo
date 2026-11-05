@@ -357,7 +357,6 @@ class Settings {
     this.audioFirst = false,
     this.newCardsPerDay = 15,
     this.reviewOrder = 'due',
-    this.autoSync = true,
     this.roundSize = 20,
     this.translationFirst = false,
     this.autoPlayFront = false,
@@ -376,7 +375,6 @@ class Settings {
 
   /// `"due"` or `"random"`.
   final String reviewOrder;
-  final bool autoSync;
 
   /// How many cards one round aims for.
   ///
@@ -421,7 +419,6 @@ class Settings {
     bool? audioFirst,
     int? newCardsPerDay,
     String? reviewOrder,
-    bool? autoSync,
     int? roundSize,
     bool? translationFirst,
     bool? autoPlayFront,
@@ -436,7 +433,6 @@ class Settings {
       audioFirst: audioFirst ?? this.audioFirst,
       newCardsPerDay: newCardsPerDay ?? this.newCardsPerDay,
       reviewOrder: reviewOrder ?? this.reviewOrder,
-      autoSync: autoSync ?? this.autoSync,
       roundSize: roundSize ?? this.roundSize,
       translationFirst: translationFirst ?? this.translationFirst,
       autoPlayFront: autoPlayFront ?? this.autoPlayFront,
@@ -453,7 +449,6 @@ class Settings {
         'audioFirst': audioFirst,
         'newCardsPerDay': newCardsPerDay,
         'reviewOrder': reviewOrder,
-        'autoSync': autoSync,
         'roundSize': roundSize,
         'translationFirst': translationFirst,
         'autoPlayFront': autoPlayFront,
@@ -472,7 +467,6 @@ class Settings {
       audioFirst: m['audioFirst'] as bool? ?? d.audioFirst,
       newCardsPerDay: (m['newCardsPerDay'] as num?)?.toInt() ?? d.newCardsPerDay,
       reviewOrder: m['reviewOrder'] as String? ?? d.reviewOrder,
-      autoSync: m['autoSync'] as bool? ?? d.autoSync,
       roundSize: (m['roundSize'] as num?)?.toInt() ?? d.roundSize,
       translationFirst:
           m['translationFirst'] as bool? ?? d.translationFirst,

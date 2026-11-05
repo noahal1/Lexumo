@@ -8,8 +8,8 @@
 ///
 /// Three properties are load-bearing and easy to break:
 ///
-///   · **Concurrent callers share one request.** A user tapping "sync now" while
-///     the 15-second timer fires must not send two rounds; two in-flight rounds
+///   · **Concurrent callers share one request.** Two taps on "sync now" while a
+///     round is in flight must not send two rounds; two in-flight rounds
 ///     would push the same pending records twice and race on the cursor.
 ///   · **Encode at the edge.** The snapshot may hold records decoded from the
 ///     wire; re-encoding through [encodeChangeSet] is what keeps `_rev` (and an
@@ -80,50 +80,31 @@ class SyncStatus {
   }
 }
 
-/// How often the loop polls for another device's edits.
-const Duration kSyncInterval = Duration(seconds: 15);
-
-/// Debounce after a local edit, so devices converge quickly without a request
-/// per keystroke.
-const Duration kSyncSoonDelay = Duration(milliseconds: 2500);
-
-/// Delay before the first round after boot, so a fresh device fills up fast.
-const Duration kSyncBootDelay = Duration(milliseconds: 800);
-
 class SyncEngine {
   SyncEngine({
     required this.store,
     required this.configStore,
     required this.transport,
-    this.interval = kSyncInterval,
-    this.soonDelay = kSyncSoonDelay,
-    this.bootDelay = kSyncBootDelay,
   });
 
   final Store store;
   final SyncConfigStore configStore;
   final SyncTransport transport;
-  final Duration interval;
-  final Duration soonDelay;
-  final Duration bootDelay;
 
   SyncConfig? _config;
   SyncStatus _status = const SyncStatus(state: SyncState.signedOut);
   final List<void Function()> _listeners = [];
 
-  Timer? _pollTimer;
-  Timer? _soonTimer;
-  Timer? _bootTimer;
   bool _started = false;
+
+  /// Detaches the pending-count listener installed by [start].
+  void Function()? _detachStore;
 
   /// In-flight round, shared by every concurrent caller.
   Future<bool>? _inFlight;
 
   /// Set while the app is being torn down, so a late response does not publish.
   bool _disposed = false;
-
-  /// True from the moment a round merges until it has settled. See [start].
-  bool _inRound = false;
 
   /// The Supabase project key of the sign-in in flight. Held only until the
   /// resulting [SyncConfig] exists and can carry it durably.
@@ -159,7 +140,7 @@ class SyncEngine {
     );
   }
 
-  /// Read the saved session, then start the background loop.
+  /// Read the saved session, then boot the engine.
   Future<void> init() async {
     _config = await configStore.load();
     _adoptCredentials(_config);
@@ -204,65 +185,45 @@ class SyncEngine {
     };
   }
 
-  /// Boot the loop (idempotent).
+  /// Boot the engine (idempotent).
+  ///
+  /// Sync is manual by design: nothing here schedules a round behind the
+  /// user's back — no poll timer, no push-after-edit debounce. The one
+  /// automatic round is the **first** one for a device that has never
+  /// completed a sync (`lastSyncAt == 0`): a fresh sign-in, or one whose
+  /// first round was cut short because the app closed mid-flight. Without
+  /// it the account's words would stay invisible until the user found
+  /// "sync now", which is not what signing in promises.
   void start() {
     if (_started) return;
     _started = true;
 
-    // A local edit bumps the pending counter immediately and schedules a push.
-    //
-    // The `_inRound` guard is not an optimisation. A round ends by calling
-    // `applyMerged`, which notifies like any other write — so without it every
-    // round would observe its own settle (pending drops), schedule a debounced
-    // push, and send a second, empty round 2.5 seconds later. The engine would
-    // then never be quiet: each round begets another, forever.
-    store.addListener(() {
-      if (_inRound) return;
+    // Republish when the pending count moves, so the settings page's "N records
+    // waiting" line stays honest between manual rounds. This only records a
+    // number — it schedules nothing.
+    _detachStore = store.addListener(() {
       if (_status.pending == store.pendingChangeCount()) return;
       _publish(_status);
-      _scheduleSoon();
     });
 
-    // Poll even when nothing is pending: an idle device still has to learn about
-    // another device's edits. The request is a normal round with empty
-    // `changes`, so the server contract is unchanged.
-    _pollTimer = Timer.periodic(interval, (_) => _maybeSync());
-    _bootTimer = Timer(bootDelay, _maybeSync);
+    final config = _config;
+    if (config != null && config.lastSyncAt == 0) {
+      unawaited(syncNow());
+    }
   }
 
   void stop() {
-    _pollTimer?.cancel();
-    _soonTimer?.cancel();
-    _bootTimer?.cancel();
-    _pollTimer = null;
-    _soonTimer = null;
-    _bootTimer = null;
+    _detachStore?.call();
+    _detachStore = null;
     _started = false;
   }
 
-  /// Release timers and the socket pool.
+  /// Release listeners and the socket pool.
   void dispose() {
     _disposed = true;
     stop();
     _listeners.clear();
     transport.close();
-  }
-
-  bool get _autoSync => store.data.settings.autoSync;
-
-  void _maybeSync() {
-    if (!isSignedIn || !_autoSync) return;
-    unawaited(syncNow());
-  }
-
-  void _scheduleSoon() {
-    if (!isSignedIn || !_autoSync) return;
-    _soonTimer?.cancel();
-    _soonTimer = Timer(soonDelay, () {
-      _soonTimer = null;
-      if (!isSignedIn || !_autoSync) return;
-      unawaited(syncNow());
-    });
   }
 
   /* ---------------------------------------------------------------- */
@@ -448,18 +409,10 @@ class SyncEngine {
       // One round, one call: `applyRound` owns the settle-then-merge order, so
       // the "clear before merge" rule cannot be forgotten here. Decoding first
       // keeps the server's `_rev` out of the snapshot and out of any backup.
-      //
-      // `_inRound` brackets the merge because `applyMerged` notifies listeners
-      // exactly like a user edit does; see the guard in [start].
-      _inRound = true;
-      try {
-        store.applyMerged(applyRound(
-          store.data,
-          SyncRound(sent: delta, received: decodeChangeSet(body['changes'])),
-        ));
-      } finally {
-        _inRound = false;
-      }
+      store.applyMerged(applyRound(
+        store.data,
+        SyncRound(sent: delta, received: decodeChangeSet(body['changes'])),
+      ));
 
       // Rebase on the *current* config, not the snapshot taken before the
       // request. A 401 mid-round can mint a new access token (and a new

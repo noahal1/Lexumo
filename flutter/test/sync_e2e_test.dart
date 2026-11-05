@@ -76,9 +76,6 @@ class Device {
       configStore: MemorySyncConfigStore(),
       transport: transport,
       // No background loop in a test: rounds are driven explicitly.
-      interval: const Duration(hours: 1),
-      soonDelay: const Duration(hours: 1),
-      bootDelay: const Duration(hours: 1),
     );
     await engine.init();
     return Device._(store, engine, transport);

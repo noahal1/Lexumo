@@ -92,11 +92,8 @@ Future<(Store, SyncEngine, List<ToastRecord>)> pumpSettings(
     store: store,
     configStore: configStore,
     transport: transport,
-    // Long intervals so no timer fires during a test; every round here is
-    // triggered by a tap.
-    interval: const Duration(hours: 1),
-    soonDelay: const Duration(hours: 1),
-    bootDelay: const Duration(hours: 1),
+    // Every round in these tests is triggered by a tap; the engine has no
+    // background loop to fire one on its own.
   );
   await engine.init();
 

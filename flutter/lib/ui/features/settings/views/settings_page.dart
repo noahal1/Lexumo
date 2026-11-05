@@ -460,8 +460,6 @@ class _SettingsPageState extends State<SettingsPage> {
                     const SizedBox(height: Sp.x5),
                     _SyncSection(
                       vm: vm,
-                      autoSync: settings.autoSync,
-                      onAutoSync: (v) => vm.patch((s) => s.copyWith(autoSync: v)),
                     ),
                     const SizedBox(height: Sp.x5),
                     _Section(
@@ -1081,12 +1079,9 @@ class _TrackPainter extends CustomPainter {
 class _SyncSection extends StatelessWidget {
   const _SyncSection({
     required this.vm,
-    required this.autoSync,
-    required this.onAutoSync,
   });
 
   final SettingsViewModel vm;
-  final bool autoSync;
 
   /// Opens the first-run gate as a pushed page, reusing the exact form the app
   /// starts with.
@@ -1124,7 +1119,6 @@ class _SyncSection extends StatelessWidget {
       ),
     );
   }
-  final ValueChanged<bool> onAutoSync;
 
   @override
   Widget build(BuildContext context) {
@@ -1215,15 +1209,9 @@ class _SyncSection extends StatelessWidget {
             title: context.t('settings.syncStatusError'),
             body: vm.errorLabel(formError),
           ),
-        _Row(
-          label: context.t('settings.syncAuto'),
-          hint: context.t('settings.syncAutoHint'),
-          control: LexSwitch(
-            checked: autoSync,
-            label: context.t('settings.syncAuto'),
-            onChanged: onAutoSync,
-          ),
-        ),
+        // No automatic-sync switch: rounds happen when the user asks for one,
+        // plus the first round after signing in. The row that used to live
+        // here promised a background loop that no longer exists.
         Padding(
           padding: const EdgeInsets.only(top: Sp.x3),
           child: Text(

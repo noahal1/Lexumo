@@ -93,9 +93,6 @@ Future<(Store, SyncEngine, RecordingTransport)> pumpSync(
     store: store,
     configStore: configStore,
     transport: transport,
-    interval: const Duration(hours: 1),
-    soonDelay: const Duration(hours: 1),
-    bootDelay: const Duration(hours: 1),
   );
   await engine.init();
 

@@ -80,16 +80,13 @@ class PathTransport implements SyncTransport {
   void close() {}
 }
 
-/// An engine with the timers pushed out of reach, so every round in these tests
-/// is one the test asked for.
+/// An engine with no background loop, so every round in these tests is one the
+/// test asked for — or the first round a never-synced session earns.
 SyncEngine buildEngine(Store store, SyncTransport transport) {
   return SyncEngine(
     store: store,
     configStore: MemorySyncConfigStore(),
     transport: transport,
-    interval: const Duration(hours: 1),
-    soonDelay: const Duration(hours: 1),
-    bootDelay: const Duration(hours: 1),
   );
 }
 
@@ -188,7 +185,7 @@ Future<_Harness> _pumpApp(
   return harness;
 }
 
-/// Unmounts the tree so `LexumoApp.dispose` stops the engine's timers.
+/// Unmounts the tree so `LexumoApp.dispose` releases the engine.
 Future<void> unmount(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpAndSettle();
@@ -458,9 +455,6 @@ void main() {
         store: store,
         configStore: configStore,
         transport: PathTransport(),
-        interval: const Duration(hours: 1),
-        soonDelay: const Duration(hours: 1),
-        bootDelay: const Duration(hours: 1),
       );
       // Init first: the address lives on the engine's status, which `init`
       // publishes from the saved session. `main()` does the same before

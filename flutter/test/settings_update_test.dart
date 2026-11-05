@@ -147,9 +147,6 @@ Future<({UpdateService service, FakeAppInstaller installer, SyncEngine engine, _
     store: store,
     configStore: MemorySyncConfigStore(),
     transport: _DeadTransport(),
-    interval: const Duration(hours: 1),
-    soonDelay: const Duration(hours: 1),
-    bootDelay: const Duration(hours: 1),
   );
   await engine.init();
 

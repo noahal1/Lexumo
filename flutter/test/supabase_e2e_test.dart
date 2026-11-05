@@ -52,9 +52,6 @@ void main() {
       store: store,
       configStore: MemorySyncConfigStore(),
       transport: BackendTransport(backend: SyncBackend.supabase, key: anonKey),
-      interval: const Duration(hours: 1),
-      soonDelay: const Duration(hours: 1),
-      bootDelay: const Duration(hours: 1),
     );
     await engine.init();
     return engine;
@@ -190,9 +187,6 @@ void main() {
       store: store,
       configStore: configStore,
       transport: BackendTransport(backend: SyncBackend.supabase, key: anonKey),
-      interval: const Duration(hours: 1),
-      soonDelay: const Duration(hours: 1),
-      bootDelay: const Duration(hours: 1),
     );
     await engine.init();
     addTearDown(engine.dispose);
@@ -215,9 +209,6 @@ void main() {
       store: store,
       configStore: configStore,
       transport: BackendTransport(backend: SyncBackend.supabase, key: anonKey),
-      interval: const Duration(hours: 1),
-      soonDelay: const Duration(hours: 1),
-      bootDelay: const Duration(hours: 1),
     );
     await relaunch.init();
     addTearDown(relaunch.dispose);

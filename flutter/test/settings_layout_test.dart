@@ -55,10 +55,9 @@ class _DeadTransport implements SyncTransport {
 
 /// Pumps [SettingsPage] at an exact logical size. Portrait phone by default.
 ///
-/// Returns the engine the page needs, because `SyncEngine.start` arms a periodic
-/// poll timer and `flutter_test` fails a test that ends with a timer pending. The
-/// caller must `engine.dispose()` as the last statement of the body — not in a
-/// tear-down, which runs after the pending-timer assertion has already fired.
+/// Returns the engine the page needs. The caller must `engine.dispose()` as the
+/// last statement of the body, so the transport and listeners are released
+/// before the test returns.
 Future<SyncEngine> pumpSettingsAt(
   WidgetTester tester, {
   double width = 411,
@@ -72,9 +71,6 @@ Future<SyncEngine> pumpSettingsAt(
     store: store,
     configStore: MemorySyncConfigStore(),
     transport: _DeadTransport(),
-    interval: const Duration(hours: 1),
-    soonDelay: const Duration(hours: 1),
-    bootDelay: const Duration(hours: 1),
   );
   await engine.init();
 

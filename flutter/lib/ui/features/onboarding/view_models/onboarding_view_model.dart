@@ -189,8 +189,9 @@ class OnboardingViewModel extends ViewModel {
       if (isDisposed) return;
       await _onboarding.complete(OnboardingChoice.sync);
       if (isDisposed) return;
-      // Pull the account down now rather than at the engine's next poll tick,
-      // so the words are already there when the shell appears.
+      // The first round, run here rather than left to a background loop that
+      // no longer exists: the account's words should be there when the shell
+      // appears. Later rounds wait for the user to ask for one.
       unawaited(_engine.syncNow());
       update(() => _busy = false);
       _onConfigured();

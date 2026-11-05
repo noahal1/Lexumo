@@ -394,9 +394,6 @@ const Map<String, String> enRaw = {
   'settings.syncSignUp': 'Create account',
   'settings.syncSignOut': 'Sign out',
   'settings.syncNow': 'Sync now',
-  'settings.syncAuto': 'Automatic sync',
-  'settings.syncAutoHint':
-      'Checks in the background and uploads as soon as something changes.',
   'settings.syncStatus': 'Status',
   'settings.syncStatusIdle': 'Up to date',
   'settings.syncStatusSyncing': 'Syncing…',
@@ -505,7 +502,8 @@ const Map<String, String> enRaw = {
   'profile.settingsHint': 'Reading, listening, cards, account.',
   'profile.desktopTitle': 'No desktop build yet',
   'profile.desktopBody':
-      'Android is out today; sign in and your words follow you between phones.',
+      'Android is out today; sign in, then tap Sync now in Settings to '
+      'line your words up between phones.',
   'profile.desktopAction': 'See every build',
   'profile.copyLink': 'Copy link',
   'profile.linkCopied': 'Link copied',

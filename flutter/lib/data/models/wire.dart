@@ -397,7 +397,6 @@ Settings _cleanSettings(Object? value) {
     audioFirst: _bool(raw['audioFirst']),
     newCardsPerDay: _int(raw['newCardsPerDay']),
     reviewOrder: raw['reviewOrder'] == 'random' ? 'random' : 'due',
-    autoSync: _bool(raw['autoSync']),
     // Both of these are new, so a document written by an older client has no
     // value for them — and following the rule above would decode `roundSize`
     // to 0, i.e. "a round of no cards", which is not a setting the user could

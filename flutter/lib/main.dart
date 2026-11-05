@@ -64,9 +64,10 @@ Future<void> main() async {
   );
   await store.init();
 
-  // The sync engine starts here, after the snapshot is readable, because its
-  // loop asks `settings.autoSync` on every tick. Failing to read the saved
-  // session is not fatal: the engine comes up signed out.
+  // The sync engine starts here, after the snapshot is readable: it reads the
+  // saved session at boot and, if this device has never completed a round,
+  // runs that first round. Failing to read the saved session is not fatal:
+  // the engine comes up signed out.
   //
   // One transport serves both backends; it routes on the server URL, so the
   // engine never learns whether it is talking to server/ or to Supabase.
