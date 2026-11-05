@@ -186,8 +186,30 @@ const Map<String, String> zhCnRaw = {
   'words.switchList': '切换到同语言的词库',
   'words.deleteListConfirm': '删除词库「{name}」，其中的 {n} 个词语会一起删掉，不能恢复。',
   // practice
-  'practice.review': '复习',
+  // 练习页自己命名。别的页面靠侧栏/标签条命名，这一页不行：它一上来就要你先
+  // 做决定，没标题的话第一眼看到的是一个没有上下文的分段控件。
+  'practice.title': '练习',
+  'practice.cards': '卡片',
   'practice.quiz': '测验',
+  // 大号数字下面那个词：说清这个数字是「这一轮要做多少」，不是「今天已做多少」。
+  'practice.thisRound': '本轮',
+  'practice.options': '选项',
+  'practice.scopeDue': '待复习',
+  'practice.scopeCustom': '自定义',
+  'practice.autoPlay': '自动朗读',
+  'practice.autoPlayOff': '关',
+  'practice.autoPlayFront': '正面',
+  'practice.autoPlayBack': '背面',
+  'practice.autoPlayBoth': '两者',
+  'practice.random': '随机',
+  'practice.translationFirst': '先显示译文',
+  'practice.direction': '出题方向',
+  'practice.roundSizeCards': '每轮卡片数',
+  'practice.roundSizeQuiz': '每轮题目数',
+  'practice.fewer': '减少',
+  'practice.more': '增加',
+  'practice.emptyPool': '这一组现在没有可复习的卡片。',
+  'practice.needWords': '至少需要 4 个有释义的词语才能出题。',
   // flashcards
   'flashcards.start': '开始复习',
   // 一句话说完：三个数字并排时，每个都要拖一行标签，读起来像一块统计面板。
@@ -200,7 +222,13 @@ const Map<String, String> zhCnRaw = {
   'flashcards.deckAll': '全部词语',
   'flashcards.deckFavorites': '收藏词语',
   'flashcards.deckSize': '本组 {n} 张',
-  'flashcards.cardOf': '第 {i} / {n} 张',
+  // 读法跟着进度条走：总数在前，因为它是一分钟前刚选的那个数；位置在后，因为
+  // 它是唯一会动的东西。「20 中的 0」比「第 1 / 20 张」少一个「第」字，也更像
+  // 一句话。
+  'flashcards.progressOf': '{n} 中的 {i}',
+  // 先显示译文时正面的眉标：它要说的是「你正在读一段释义」，而中文释义没有词性
+  // 可以标。
+  'flashcards.meaningOverline': '释义',
   'flashcards.showAnswer': '显示答案',
   'flashcards.gradeHard': '困难',
   'flashcards.gradeGood': '记得',

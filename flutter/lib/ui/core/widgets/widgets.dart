@@ -487,6 +487,83 @@ class EmptyState extends StatelessWidget {
   }
 }
 
+/// A progress rule cut into one pill per card.
+///
+/// The continuous [ProgressBar] answers "how far through am I" as a fraction;
+/// this one answers it as a count, which is what a review sitting actually
+/// deals in. A round of 20 is 20 things to get through, and a bar that shows
+/// 1/20 as a sliver of blue makes the next card feel further away than it is.
+///
+/// The pills are laid out edge to edge and share the width equally, so the row
+/// is exactly as wide as the surface it sits on and the last pill lands on the
+/// same margin as the first. A round longer than [maxPills] is drawn as
+/// [maxPills] pills with the same fraction filled — a hundred 3dp slivers would
+/// read as a texture, not a count, and the fraction is still honest.
+class SegmentedBar extends StatelessWidget {
+  const SegmentedBar({
+    super.key,
+    required this.value,
+    required this.max,
+    this.gap = 3,
+    this.height = 6,
+    this.maxPills = 40,
+    this.color,
+  });
+
+  /// How many pills are filled.
+  final int value;
+
+  /// How many pills there are in a whole round.
+  final int max;
+
+  final double gap;
+  final double height;
+
+  /// Past this many cards the row stops growing and the fill becomes fractional.
+  final int maxPills;
+
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    if (max <= 0) return const SizedBox.shrink();
+    final int pills = max < maxPills ? max : maxPills;
+    final int filled = max <= maxPills
+        ? value.clamp(0, max)
+        : (value / max * pills).round().clamp(0, pills);
+    final Color on = color ?? p.accent;
+
+    return Semantics(
+      // One label for the whole row: forty separate pills are noise to a
+      // screen reader, and "3 of 20" is the fact being shown.
+      label: '$value/$max',
+      child: SizedBox(
+        height: height,
+        child: Row(
+          // Stretch, not centre: the pills must divide the width the card row
+          // above them uses, so a wide window does not leave a ragged tail.
+          children: <Widget>[
+            for (int i = 0; i < pills; i++) ...<Widget>[
+              if (i > 0) SizedBox(width: gap),
+              Expanded(
+                child: AnimatedContainer(
+                  duration: Motion.dur2,
+                  curve: Motion.easeOut,
+                  decoration: BoxDecoration(
+                    color: i < filled ? on : p.surfaceSunken,
+                    borderRadius: BorderRadius.circular(height / 2),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// A thin progress rule. `thick` is the daily-goal variant.
 class ProgressBar extends StatelessWidget {
   const ProgressBar({

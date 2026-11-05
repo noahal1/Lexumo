@@ -1,21 +1,25 @@
-// The practice screen's chrome: the mode switch as a ruled page header, the
-// deck readout as one sentence, and a decision column that is centred in the
-// pane it was given.
+// The practice screen's front page: the one screen that decides a sitting
+// before it starts.
 //
-// Three separate complaints are pinned here, because all three are the kind of
-// thing a later refactor can quietly undo:
+// What is pinned here is the shape of the decision, not a screenshot of it:
 //
-//   * the switch used to float on the page background with no edge under it,
-//     so it read as a control dropped on top of the screen rather than as the
-//     line naming which page you were on;
-//   * the deck picker printed its three numbers as three labelled figures, one
-//     of them counting cards the side panel already counted on the same screen;
-//   * the intro column was capped at 620dp and pinned to the left edge, which
-//     on a wide pane spent the whole difference as a gap under one edge.
+//   * the page names itself — every other screen lets the sidebar or the tab
+//     bar do that, and this one cannot, because the first thing it shows is a
+//     choice;
+//   * the big figure is the round's real size, clamped to the pool. A number
+//     that promises 20 and delivers 7 is the one thing this screen must never
+//     do;
+//   * every option on the page changes the round it describes — and the quiz
+//     does not show the card-only ones, because a switch that does nothing is
+//     worse than a switch that is absent;
+//   * 开始复习 is the only way in, and it is disabled rather than misleading
+//     when there is nothing to review.
 //
-// The geometry below is computed from the same public constants the layout
-// uses (`Layout.contentMax`, `Sp.x6`, `StudySplit.sideWidth`), so it states the
-// rule rather than a screenshot of one window size.
+// The old assertions here (`组卡方式` in a ruled strip, `待复习 N · 新卡 N · 共 N
+// 张` as one sentence, a 620dp decision column) described the previous
+// arrangement, where the deck picker was a header above a sub-page. The picker
+// moved into this page and became the page, so they are gone rather than
+// rewritten in place.
 
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
@@ -25,25 +29,103 @@ import 'package:lexumo/data/repositories/store.dart';
 import 'package:lexumo/data/services/snapshot_store.dart';
 import 'package:lexumo/data/services/tts.dart';
 import 'package:lexumo/domain/models/seed.dart';
+import 'package:lexumo/domain/models/srs.dart' show DAY_MS;
 import 'package:lexumo/domain/models/types.dart';
+import 'package:lexumo/domain/use_cases/deck_plan.dart';
 import 'package:lexumo/ui/core/i18n/i18n.dart';
 import 'package:lexumo/ui/core/theme.dart';
 import 'package:lexumo/ui/core/tokens.dart';
+import 'package:lexumo/ui/core/widgets/controls.dart';
+import 'package:lexumo/ui/core/widgets/lex_icon.dart';
 import 'package:lexumo/ui/core/widgets/widgets.dart';
+import 'package:lexumo/ui/features/practice/view_models/practice_view_model.dart';
 import 'package:lexumo/ui/features/practice/views/practice_page.dart';
 
 import 'support/fake_tts.dart';
 
+const I18n _i18n = I18n(UiLang.zhCN);
+
+/// One word with no schedule — a card the planner counts as 新卡.
+Word _newWord(String id) => Word(
+      id: id,
+      term: 'term-$id',
+      definition: '释义 $id',
+      definition2: '',
+      example: '',
+      note: '',
+      status: WordStatus.new_,
+      favorite: false,
+      listId: DEFAULT_LIST_ID,
+      sourceLang: 'en',
+      targetLang: 'zh-CN',
+      listenCount: 0,
+      srs: null,
+      createdAt: 0,
+      updatedAt: 0,
+    );
+
+/// A snapshot holding exactly [count] brand-new words, so a test can state what
+/// the pool is instead of reading it back out of the seed.
+///
+/// The daily new-card allowance is lifted well above the pool on purpose: the
+/// figures under test are about the *round*, and the default allowance of 15
+/// would cap a 30-word pool at 15 and make the expected number ambiguous.
+AppData _poolOf(int count) => AppData(
+      lists: <WordList>[
+        const WordList(
+          id: DEFAULT_LIST_ID,
+          name: 'test',
+          sourceLang: 'en',
+          targetLang: 'zh-CN',
+          createdAt: 0,
+          updatedAt: 0,
+        ),
+      ],
+      words: <Word>[for (int i = 0; i < count; i++) _newWord('$i')],
+      logs: const <ReviewLog>[],
+      settings: const Settings(newCardsPerDay: 200),
+    );
+
+/// A snapshot whose [count] words are all scheduled a month out — nothing is
+/// due, so the 待复习 pool is empty without the deck being empty.
+AppData _nothingDue(int count, int now) {
+  final AppData base = _poolOf(count);
+  return base.copyWith(
+    words: <Word>[
+      for (final Word word in base.words)
+        word.copyWith(
+          status: WordStatus.reviewing,
+          srs: SrsState(
+            ease: 2.5,
+            intervalDays: 30,
+            dueAt: now + 30 * DAY_MS,
+            reviewCount: 3,
+            correctCount: 3,
+            lastReviewedAt: now - DAY_MS,
+          ),
+        ),
+    ],
+  );
+}
+
 /// The practice screen inside a [window]-sized window whose page body is
 /// [body] dp wide — the arrangement the shell produces on desktop, where the
 /// sidebar eats 232dp of the window before the page sees any of it.
-Future<void> pumpPractice(
+///
+/// Returns the store so a test can read the snapshot the page is rendering and
+/// compare the figure on screen with the one the domain says it should be.
+Future<Store> pumpPractice(
   WidgetTester tester, {
   required double window,
   required double body,
   double height = 900,
+  AppData Function(int now)? seed,
 }) async {
-  final store = Store(persistence: MemoryStore(), seed: seedData);
+  final Store store = Store(
+    persistence: MemoryStore(),
+    seed: seed ?? seedData,
+    saveDelayMs: 0,
+  );
   await store.init();
   await store.flush();
 
@@ -57,7 +139,7 @@ Future<void> pumpPractice(
       child: StoreScope(
         notifier: StoreNotifier(store),
         child: I18nScope(
-          i18n: I18n(UiLang.zhCN),
+          i18n: _i18n,
           child: ToastScope(
             show: (text, kind, {actionLabel, onAction, durationMs}) {},
             child: NavScope(
@@ -82,13 +164,27 @@ Future<void> pumpPractice(
     ),
   );
   await tester.pumpAndSettle();
+  return store;
 }
 
-/// The one vertical scroll view on the screen: `PageShell`'s body. The two
-/// horizontal strips in the intro are deliberately excluded.
+/// The one vertical scroll view on the screen: `PageShell`'s body.
 Finder get _verticalScrollable => find.byWidgetPredicate(
-      (Widget w) =>
-          w is Scrollable && w.axisDirection == AxisDirection.down,
+      (Widget w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+    );
+
+/// The stepper's + button. Identified by its icon rather than by position: the
+/// minus button sits in the same row and is the same size.
+Finder get _stepperPlus => find.descendant(
+      of: find.byType(LexStepper),
+      matching: find.byWidgetPredicate(
+        (Widget w) => w is LexIcon && w.name == Ic.plus,
+      ),
+    );
+
+/// One switch, found by the label it announces. Two of them sit on this page
+/// and they differ only in that label, so position would be a guess.
+Finder _switch(String label) => find.byWidgetPredicate(
+      (Widget w) => w is LexSwitch && w.label == label,
     );
 
 void main() {
@@ -96,136 +192,206 @@ void main() {
   setUp(() => debugSetSpeech(silentSpeech()));
   tearDown(() => debugSetSpeech(null));
 
-  group('the mode switch is the page header', () {
-    testWidgets('it sits in a ruled strip above the body', (
+  group('the front page names itself', () {
+    testWidgets('the title sits above the first control', (
       WidgetTester tester,
     ) async {
       await pumpPractice(tester, window: 1440, body: 1208);
 
-      expect(find.byType(PinnedStrip), findsOneWidget);
-      final Rect strip = tester.getRect(find.byType(PinnedStrip));
-      final Rect switcher = tester.getRect(
-        find.byType(Segmented<PracticeMode>),
-      );
-      final Rect intro = tester.getRect(find.text('组卡方式'));
+      final Finder title = find.text(_i18n.t('practice.title'));
+      expect(title, findsOneWidget);
 
+      // Above, not beside: the title is the page's name, and a name printed
+      // next to the first control reads as that control's label.
       expect(
-        strip.contains(switcher.center),
-        isTrue,
-        reason: 'the switch is inside the strip, not loose on the body',
-      );
-      expect(
-        strip.bottom,
-        lessThanOrEqualTo(intro.top),
-        reason: 'the strip owns the space above the sub-page',
-      );
-    });
-
-    testWidgets('the strip lives outside the body scroll view', (
-      WidgetTester tester,
-    ) async {
-      await pumpPractice(tester, window: 1440, body: 1208);
-
-      // The invariant, independent of how tall the picker happens to be: the
-      // header is not inside the scroller, so no amount of scrolling can move
-      // it — and the sub-page body is, so it scrolls under the strip.
-      expect(
-        find.ancestor(
-          of: find.byType(PinnedStrip),
-          matching: _verticalScrollable,
+        tester.getRect(title).bottom,
+        lessThanOrEqualTo(
+          tester.getRect(find.byType(Segmented<PracticeMode>)).top,
         ),
-        findsNothing,
-        reason: 'a header inside the scroller would scroll away',
+        reason: 'the page name comes before the choice it introduces',
       );
       expect(
-        find.ancestor(of: find.text('组卡方式'), matching: _verticalScrollable),
+        find.ancestor(of: title, matching: _verticalScrollable),
         findsOneWidget,
-        reason: 'the body scrolls; the header does not',
+        reason: 'the title scrolls with the form; it is not pinned chrome',
       );
     });
   });
 
-  group('the deck readout is one sentence', () {
-    testWidgets('due, new and total print once, on one line', (
+  group('the round figure states what will happen', () {
+    testWidgets('it prints the pool size when the pool is smaller', (
       WidgetTester tester,
     ) async {
-      await pumpPractice(tester, window: 1440, body: 1208);
-
-      final Finder readout = find.textContaining(
-        RegExp(r'^待复习 \d+ · 新卡 \d+ · 共 \d+ 张$'),
+      // Seven words, a round size of 20: the figure must say 7, because that is
+      // how many cards 开始复习 will actually hand over.
+      final Store store = await pumpPractice(
+        tester,
+        window: 1440,
+        body: 1208,
+        seed: (_) => _poolOf(7),
       );
-      expect(readout, findsOneWidget);
-      // The three separate figure labels are gone with their widgets.
-      expect(find.text('张到期'), findsNothing);
-      expect(find.text('张新卡'), findsNothing);
-      expect(find.text('本组卡片'), findsNothing);
-    });
-  });
-
-  group('the decision column is centred', () {
-    testWidgets('it splits the difference either side of the 620dp measure', (
-      WidgetTester tester,
-    ) async {
-      const double body = 1208;
-      await pumpPractice(tester, window: 1440, body: body);
-
-      final double content = body < Layout.contentMax ? body : Layout.contentMax;
-      final double pageLeft = (body - content) / 2;
-      final double inner = content - Sp.x6 * 2;
-      final double main = inner >= StudySplit.splitAt
-          ? inner - StudySplit.sideWidth - Sp.x5
-          : inner;
-      final double expected = pageLeft + Sp.x6 + (main - 620) / 2;
+      expect(summarizeDeck(store.data, 0).counts[DeckSource.due], 7);
+      expect(store.data.settings.roundSize, 20);
 
       expect(
-        tester.getRect(find.text('组卡方式')).left,
-        moreOrLessEquals(expected, epsilon: 1),
-        reason: 'a 620dp column in a ${main}dp pane has equal margins',
+        find.text('7'),
+        findsWidgets,
+        reason: 'the figure is the clamped size, not the requested one',
       );
+      expect(
+        find.text(_i18n.t('practice.thisRound')),
+        findsOneWidget,
+        reason: 'the caption says which number the figure is',
+      );
+    });
+
+    testWidgets('the stepper moves the figure and the setting together', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpPractice(
+        tester,
+        window: 1440,
+        body: 1208,
+        seed: (_) => _poolOf(30),
+      );
+      expect(find.text('20'), findsWidgets);
+
+      await tester.tap(_stepperPlus);
+      await tester.pumpAndSettle();
+      await store.flush();
+
+      expect(store.data.settings.roundSize, 21);
+      expect(find.text('21'), findsWidgets);
+      expect(find.text('20'), findsNothing);
     });
   });
 
-  group('the quiz intro states its size once', () {
-    testWidgets('the direction is named by the picker only', (
+  group('options change the round they describe', () {
+    testWidgets('随机 writes the review order', (WidgetTester tester) async {
+      final Store store = await pumpPractice(tester, window: 1440, body: 1208);
+      expect(store.data.settings.reviewOrder, 'due');
+
+      // Tap the switch, not the label: the label is a separate Text on the far
+      // left of the row, and tapping it would prove nothing.
+      await tester.tap(_switch(_i18n.t('practice.random')));
+      await tester.pumpAndSettle();
+      await store.flush();
+
+      expect(store.data.settings.reviewOrder, 'random');
+    });
+
+    testWidgets('先显示译文 writes the card orientation', (
       WidgetTester tester,
     ) async {
-      final I18n i18n = I18n(UiLang.zhCN);
+      final Store store = await pumpPractice(tester, window: 1440, body: 1208);
+      expect(store.data.settings.translationFirst, isFalse);
+
+      await tester.tap(_switch(_i18n.t('practice.translationFirst')));
+      await tester.pumpAndSettle();
+      await store.flush();
+
+      expect(store.data.settings.translationFirst, isTrue);
+    });
+
+    testWidgets('自动朗读 shows the state the two flags encode', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpPractice(tester, window: 1440, body: 1208);
+      // The defaults are autoPlayAudio: true, autoPlayFront: false — the select
+      // must show 背面, not a placeholder.
+      expect(
+        find.text(_i18n.t('practice.autoPlayBack')),
+        findsOneWidget,
+        reason: 'the select reads its value out of the settings',
+      );
+
+      await tester.tap(find.text(_i18n.t('practice.autoPlayBack')));
+      await tester.pumpAndSettle();
+      for (final String key in <String>[
+        'practice.autoPlayOff',
+        'practice.autoPlayFront',
+        'practice.autoPlayBoth',
+      ]) {
+        expect(find.text(_i18n.t(key)), findsWidgets, reason: 'menu has $key');
+      }
+
+      await tester.tap(find.text(_i18n.t('practice.autoPlayOff')).last);
+      await tester.pumpAndSettle();
+      await store.flush();
+
+      expect(store.data.settings.autoPlayAudio, isFalse);
+      expect(store.data.settings.autoPlayFront, isFalse);
+    });
+  });
+
+  group('the quiz drops the card-only options', () {
+    testWidgets('it keeps the direction and loses the card switches', (
+      WidgetTester tester,
+    ) async {
       await pumpPractice(tester, window: 1440, body: 1208);
 
-      await tester.tap(find.text(i18n.t('practice.quiz')));
+      await tester.tap(find.text(_i18n.t('practice.quiz')));
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining(RegExp(r'^每轮 \d+ 题$')),
-        findsOneWidget,
-        reason: 'the round length is the fact the picker cannot state',
-      );
-      expect(
-        find.text(i18n.t('quiz.termToDef')),
-        findsOneWidget,
-        reason: 'the direction appears in the picker, and nowhere else',
-      );
-      // The switch moved with it: same strip, same page chrome.
-      expect(
-        find.ancestor(
-          of: find.byType(Segmented<PracticeMode>),
-          matching: find.byType(PinnedStrip),
-        ),
-        findsOneWidget,
-      );
+      // Card-only controls are gone: a scope switch above a quiz round, a
+      // translation-first switch on a question that already shows the meaning,
+      // and an auto-play switch on a screen with no faces.
+      expect(find.text(_i18n.t('practice.scopeDue')), findsNothing);
+      expect(find.text(_i18n.t('practice.translationFirst')), findsNothing);
+      expect(find.text(_i18n.t('practice.autoPlay')), findsNothing);
+      // The ones that survive are the ones the quiz reads.
+      expect(find.text(_i18n.t('practice.direction')), findsOneWidget);
+      expect(find.text(_i18n.t('practice.roundSizeQuiz')), findsOneWidget);
+      expect(find.text(_i18n.t('quiz.termToDef')), findsOneWidget);
     });
   });
 
-  group('a phone keeps the header and the readout', () {
+  group('开始复习 is the only way in', () {
+    testWidgets('it mounts the session and drops the picker', (
+      WidgetTester tester,
+    ) async {
+      await pumpPractice(tester, window: 1440, body: 1208);
+
+      await tester.tap(
+        find.widgetWithText(LexButton, _i18n.t('flashcards.start')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('flip-card')), findsOneWidget);
+      // The front page is gone, including its picker: the round was decided
+      // before the card appeared, so there is nothing here to re-decide.
+      expect(find.text(_i18n.t('practice.options')), findsNothing);
+      expect(find.text(_i18n.t('flashcards.buildDeck')), findsNothing);
+      expect(find.text(_i18n.t('practice.title')), findsNothing);
+    });
+
+    testWidgets('an empty pool disables it and says why', (
+      WidgetTester tester,
+    ) async {
+      await pumpPractice(
+        tester,
+        window: 1440,
+        body: 1208,
+        seed: (int now) => _nothingDue(3, now),
+      );
+
+      final LexButton start = tester.widget<LexButton>(
+        find.widgetWithText(LexButton, _i18n.t('flashcards.start')),
+      );
+      expect(start.onPressed, isNull, reason: 'disabled, not a silent no-op');
+      expect(find.text(_i18n.t('practice.emptyPool')), findsOneWidget);
+    });
+  });
+
+  group('a phone keeps the whole form', () {
     testWidgets('nothing overflows at 411dp', (WidgetTester tester) async {
       await pumpPractice(tester, window: 411, body: 411, height: 860);
 
       expect(tester.takeException(), isNull);
       expect(find.byType(Segmented<PracticeMode>), findsOneWidget);
-      expect(
-        find.textContaining(RegExp(r'^待复习 \d+ · 新卡 \d+ · 共 \d+ 张$')),
-        findsOneWidget,
-      );
+      expect(find.byType(Segmented<PracticeScope>), findsOneWidget);
+      expect(find.byType(LexStepper), findsOneWidget);
+      expect(find.byType(LexSwitch), findsNWidgets(2));
     });
   });
 }

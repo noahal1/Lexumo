@@ -77,7 +77,14 @@ void main() {
   tearDown(() => debugSetSpeech(null));
 
   Future<Store> pumpSession(WidgetTester tester) async {
-    final store = Store(persistence: MemoryStore(), seed: seedData);
+    // No save debounce: a grade writes to the store, and the debounce timer
+    // would outlive the test whenever the frames that follow the decision are
+    // shorter than the delay. Real time passes in the app; test time does not.
+    final store = Store(
+      persistence: MemoryStore(),
+      seed: seedData,
+      saveDelayMs: 0,
+    );
     await store.init();
     await store.flush();
     tester.view.physicalSize = const Size(660, 1200);

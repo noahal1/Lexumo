@@ -412,7 +412,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         _Row(
                           label: context.t('settings.autoPlay'),
                           hint: context.t('settings.autoPlayHint'),
-                          control: _LexSwitch(
+                          control: LexSwitch(
                             checked: settings.autoPlayAudio,
                             label: context.t('settings.autoPlay'),
                             onChanged: (v) => vm.patch((s) => s.copyWith(autoPlayAudio: v)),
@@ -421,7 +421,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         _Row(
                           label: context.t('settings.audioFirst'),
                           hint: context.t('settings.audioFirstHint'),
-                          control: _LexSwitch(
+                          control: LexSwitch(
                             checked: settings.audioFirst,
                             label: context.t('settings.audioFirst'),
                             onChanged: (v) => vm.patch((s) => s.copyWith(audioFirst: v)),
@@ -940,87 +940,6 @@ class _Notice extends StatelessWidget {
 /* Controls the design system does not ship                            */
 /* ------------------------------------------------------------------ */
 
-/// The web build's `.switch`.
-///
-/// Material's [Switch] is not an option here: it ships a 48px touch target, a
-/// ripple, its own thumb shadow and a colour-scheme mapping, so it reads as a
-/// foreign object on this page. This is 42×24 with a 2px inset knob and a
-/// 120ms border tint on hover, matching `.switch` exactly.
-class _LexSwitch extends StatefulWidget {
-  const _LexSwitch({required this.checked, required this.label, required this.onChanged});
-
-  final bool checked;
-  final String label;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  State<_LexSwitch> createState() => _LexSwitchState();
-}
-
-class _LexSwitchState extends State<_LexSwitch> {
-  bool _hover = false;
-  bool _down = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    final on = widget.checked;
-    return Semantics(
-      toggled: on,
-      label: widget.label,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: (_) => setState(() => _down = true),
-          onTapCancel: () => setState(() => _down = false),
-          onTap: () {
-            setState(() => _down = false);
-            widget.onChanged(!on);
-          },
-          child: TapTarget(
-            child: AnimatedScale(
-              scale: _down ? 0.96 : 1,
-              duration: Motion.dur1,
-              curve: Motion.ease,
-              child: AnimatedContainer(
-                duration: Motion.dur2,
-                curve: Motion.ease,
-                width: 42,
-                height: 24,
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: on ? p.accent : p.surface2,
-                  borderRadius: BorderRadius.circular(R.full),
-                  border: Border.all(color: on ? p.accent : (_hover ? p.accent : p.lineStrong)),
-                ),
-                child: AnimatedAlign(
-                  alignment: on ? Alignment.centerRight : Alignment.centerLeft,
-                  duration: Motion.dur2,
-                  curve: Motion.easeOut,
-                  child: Container(
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color: on ? p.onAccent : p.surface,
-                      shape: BoxShape.circle,
-                      // `.switch-knob` carries `--shadow-xs`, which tokens.css
-                      // sets to `none` — the knob's separation comes from the
-                      // track colour, so no shadow is drawn here either.
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// The web build's `.range` slider: a 6px track, a 16px accent thumb ringed in
 /// the surface colour, no Material overlay.
 class _RateSlider extends StatefulWidget {
@@ -1299,7 +1218,7 @@ class _SyncSection extends StatelessWidget {
         _Row(
           label: context.t('settings.syncAuto'),
           hint: context.t('settings.syncAutoHint'),
-          control: _LexSwitch(
+          control: LexSwitch(
             checked: autoSync,
             label: context.t('settings.syncAuto'),
             onChanged: onAutoSync,

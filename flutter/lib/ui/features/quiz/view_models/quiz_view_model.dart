@@ -32,6 +32,8 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show VoidCallback;
+
 import '../../../../data/repositories/store.dart';
 import '../../../../domain/models/quiz.dart';
 import '../../../../domain/models/session.dart';
@@ -62,16 +64,33 @@ class QuizViewModel extends ViewModel {
     required Store store,
     required Feedback feedback,
     Future<void> Function(Word word)? speak,
+    VoidCallback? onExit,
+    int? limit,
     int Function()? clock,
   })  : _store = store,
         _feedback = feedback,
         _speak = speak,
+        _onExit = onExit,
+        _limit = limit,
         _clock = clock ?? (() => DateTime.now().millisecondsSinceEpoch) {
     _detachStore = _store.addListener(_onStoreWrite);
   }
 
   final Store _store;
   final Feedback _feedback;
+
+  /// How many questions this round asks, or null to ask [QUIZ_ROUND].
+  ///
+  /// Set from the practice screen's 每轮题目数. Null on its own mount, which
+  /// keeps the round at the constant the intro screen has always promised.
+  final int? _limit;
+
+  /// What to do when the round ends and this page is a sub-page of the practice
+  /// screen: hand control back to that screen's front page.
+  ///
+  /// Null when the page is mounted on its own, in which case [exitToIdle]
+  /// leaves the intro showing instead.
+  final VoidCallback? _onExit;
 
   /// Speaks a term and records the listen — `speakWord` in production.
   ///
@@ -289,8 +308,11 @@ class QuizViewModel extends ViewModel {
   }
 
   void start(QuizDirection direction) {
-    final List<QuizQuestion> built =
-        buildQuiz(_store.data.words, direction, count: QUIZ_ROUND);
+    final List<QuizQuestion> built = buildQuiz(
+      _store.data.words,
+      direction,
+      count: _limit ?? QUIZ_ROUND,
+    );
     if (built.isEmpty) {
       _feedback.toast(_feedback.t('quiz.noWords'), kind: ToastKind.info);
       return;
@@ -346,6 +368,7 @@ class QuizViewModel extends ViewModel {
       _selected = null;
       _progress = null;
     });
+    _onExit?.call();
   }
 
   void _cancelAdvance() {

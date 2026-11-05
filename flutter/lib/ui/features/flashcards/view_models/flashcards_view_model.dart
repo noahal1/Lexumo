@@ -47,77 +47,21 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../../../../data/repositories/store.dart'
-    show GradeResult, Store, dueWords;
+import '../../../../data/repositories/store.dart' show GradeResult, Store;
 import '../../../../domain/models/session.dart';
 import '../../../../domain/models/srs.dart';
 import '../../../../domain/models/types.dart';
-import '../../../../domain/models/utils.dart';
+import '../../../../domain/use_cases/deck_plan.dart';
 import '../../../core/view_model.dart';
 
-/// Sorting sentinel for a card with no schedule — `Number.MAX_SAFE_INTEGER` in
-/// the TS, kept identical so an unscheduled card sorts last.
-const int _kNoDueAt = 9007199254740991;
+/* The deck rules moved to the domain layer when the practice screen started
+   asking the same questions *before* a session exists (its front page prints a
+   deck size, and 开始复习 has to know whether the round is empty). They are
+   re-exported here so every existing import site — including the tests that
+   drive this view model directly — keeps resolving, and so there is still one
+   obvious place to look for "where does a deck come from". */
+export '../../../../domain/use_cases/deck_plan.dart' show DeckSource, DeckSummary;
 
-/// Where the cards in a session come from. `new` is a reserved word in Dart, so
-/// the enum member is [fresh] while the wire value and the i18n key stay `new`.
-enum DeckSource { due, fresh, all, favorites }
-
-/// How many brand-new cards the daily allowance still has room for.
-int _newCardsLeft(AppData data, int now) {
-  final int start = startOfDay(now);
-  /* A card counts as "introduced today" when its earliest review log is from
-     today. Deriving this from logs (rather than reviewCount == 1) keeps the
-     count stable even if a fresh card is graded twice in one day, and undoing a
-     first grade restores the allowance naturally. */
-  final Map<String, int> firstReviewAt = <String, int>{};
-  for (final ReviewLog log in data.logs) {
-    final int? prev = firstReviewAt[log.wordId];
-    if (prev == null || log.at < prev) firstReviewAt[log.wordId] = log.at;
-  }
-  final int introduced = data.words.where((Word word) {
-    final int? at = firstReviewAt[word.id];
-    return at != null && at >= start;
-  }).length;
-  final int left = data.settings.newCardsPerDay - introduced;
-  return left < 0 ? 0 : left;
-}
-
-/// Card ids for a session, ordered by the user's review-order setting.
-List<String> _buildSession(AppData data, int now, DeckSource source) {
-  switch (source) {
-    case DeckSource.all:
-      return shuffle(data.words).map((Word w) => w.id).toList();
-    case DeckSource.favorites:
-      return shuffle(data.words.where((Word w) => w.favorite).toList())
-          .map((Word w) => w.id)
-          .toList();
-    case DeckSource.fresh:
-      final int left = _newCardsLeft(data, now);
-      return data.words
-          .where((Word w) => isNew(w.srs))
-          .take(left)
-          .map((Word w) => w.id)
-          .toList();
-    case DeckSource.due:
-      final List<Word> due = dueWords(data, now);
-      final List<Word> review = due.where((Word w) => !isNew(w.srs)).toList();
-      final List<Word> fresh = due
-          .where((Word w) => isNew(w.srs))
-          .take(_newCardsLeft(data, now))
-          .toList();
-      if (data.settings.reviewOrder == 'random') {
-        return shuffle(<Word>[...review, ...fresh]).map((Word w) => w.id).toList();
-      }
-      final List<Word> ordered = review.toList()
-        ..sort((Word a, Word b) {
-          final int x = a.srs?.dueAt ?? _kNoDueAt;
-          final int y = b.srs?.dueAt ?? _kNoDueAt;
-          return x.compareTo(y);
-        });
-      return <Word>[...ordered, ...fresh].map((Word w) => w.id).toList();
-  }
-}
 
 /// What the page renders of the session. The session itself is a mutable
 /// object, so we take a snapshot after every step to give the view a new value
@@ -150,53 +94,27 @@ class _StoreStep {
   final String logId;
 }
 
-/// The deck picker's numbers for one reading of the snapshot.
-///
-/// Built fresh on every read, exactly as the page used to recompute it inside
-/// `build`: "due today" has to follow a grade written a moment ago, so caching
-/// it would mean a second source of truth for the same question.
-@immutable
-class DeckSummary {
-  const DeckSummary({
-    required this.counts,
-    required this.dueReview,
-    required this.hasNewWords,
-    required this.caughtUp,
-    required this.capReached,
-  });
-
-  /// Card count per deck source, as the segmented control shows it.
-  final Map<DeckSource, int> counts;
-
-  /// Due cards that are already in rotation, for the "待复习" chip.
-  final int dueReview;
-
-  /// The deck still holds a card that has never been reviewed — the daily cap
-  /// can only be "reached" when it does.
-  final bool hasNewWords;
-
-  /// Nothing at all is due right now.
-  final bool caughtUp;
-
-  /// The daily new-card allowance is spent while new cards remain.
-  final bool capReached;
-}
-
 /// Owns the flashcard screen: the deck, the session in flight and the audio.
 class FlashcardsViewModel extends ViewModel {
   FlashcardsViewModel({
     required Store store,
     required Feedback feedback,
+    DeckSource deck = DeckSource.due,
+    int? limit,
     Future<void> Function(Word word, {VoidCallback? onEnd})? speakWord,
     Future<void> Function(Word word, {VoidCallback? onEnd})? speakTerm,
     VoidCallback? stopSpeech,
+    VoidCallback? onExit,
     bool Function()? speechAvailable,
     int Function()? clock,
   })  : _store = store,
         _feedback = feedback,
+        _deck = deck,
+        _limit = limit,
         _speakWord = speakWord,
         _speakTerm = speakTerm,
         _stopSpeech = stopSpeech,
+        _onExit = onExit,
         _speechAvailable = speechAvailable ?? _noSpeech,
         _clock = clock ?? (() => DateTime.now().millisecondsSinceEpoch) {
     _detachStore = _store.addListener(_onStore);
@@ -219,6 +137,13 @@ class FlashcardsViewModel extends ViewModel {
   /// Whether an engine exists at all — `speechAvailable` in production.
   final bool Function() _speechAvailable;
 
+  /// What to do when the session ends and this page is a sub-page of the
+  /// practice screen: hand control back to the front page.
+  ///
+  /// Null when the page is mounted on its own (a test, or the old single-page
+  /// arrangement), in which case 退出 leaves the picker showing instead.
+  final VoidCallback? _onExit;
+
   /// Reads "now" in ms. Injected so a test can freeze "due today".
   final int Function() _clock;
 
@@ -229,7 +154,16 @@ class FlashcardsViewModel extends ViewModel {
   /* State                                                               */
   /* ------------------------------------------------------------------ */
 
-  DeckSource _deck = DeckSource.due;
+  DeckSource _deck;
+
+  /// Cap on one round, or null for "the whole pool".
+  ///
+  /// The practice screen owns the round size now (it is the number under the
+  /// big "20 / 本轮" readout), so it hands the number down rather than letting
+  /// the session re-derive it. Null keeps the old behaviour for a page that
+  /// mounts this view on its own.
+  final int? _limit;
+
   Session? _session;
   _View? _view;
   bool _flipped = false;
@@ -328,35 +262,7 @@ class FlashcardsViewModel extends ViewModel {
   int get deckSize => summary.counts[_deck] ?? 0;
 
   /// Everything the deck picker shows about the snapshot as it stands now.
-  DeckSummary get summary => _buildSummary(_store.data, _clock());
-
-  DeckSummary _buildSummary(AppData data, int now) {
-    final Settings settings = data.settings;
-    final List<Word> due = dueWords(data, now);
-    final int dueReviewCount = due.where((Word w) => !isNew(w.srs)).length;
-    final int dueFreshCount = due.where((Word w) => isNew(w.srs)).length;
-    final int freshLeft = _newCardsLeft(data, now);
-    final bool caughtUp = due.isEmpty;
-    final bool hasNewWords = data.words.any((Word w) => isNew(w.srs));
-    final bool capReached =
-        settings.newCardsPerDay > 0 && freshLeft == 0 && hasNewWords;
-
-    final int newWordCount = data.words.where((Word w) => isNew(w.srs)).length;
-    final Map<DeckSource, int> counts = <DeckSource, int>{
-      DeckSource.due:
-          dueReviewCount + (dueFreshCount < freshLeft ? dueFreshCount : freshLeft),
-      DeckSource.fresh: newWordCount < freshLeft ? newWordCount : freshLeft,
-      DeckSource.all: data.words.length,
-      DeckSource.favorites: data.words.where((Word w) => w.favorite).length,
-    };
-    return DeckSummary(
-      counts: counts,
-      dueReview: dueReviewCount,
-      hasNewWords: hasNewWords,
-      caughtUp: caughtUp,
-      capReached: capReached,
-    );
-  }
+  DeckSummary get summary => summarizeDeck(_store.data, _clock());
 
   /* ------------------------------------------------------------------ */
   /* Session plumbing                                                    */
@@ -418,8 +324,12 @@ class FlashcardsViewModel extends ViewModel {
 
   /// Build the deck for the selected source and start walking it.
   void startSession() {
-    final List<String> ids =
-        _buildSession(_store.data, _clock(), _deck);
+    final List<String> ids = buildDeck(
+      _store.data,
+      _clock(),
+      _deck,
+      limit: _limit,
+    );
     _clearTurn();
     _storeSteps = <_StoreStep>[];
     _spoken = null;
@@ -431,7 +341,8 @@ class FlashcardsViewModel extends ViewModel {
     _sync();
   }
 
-  /// Drop the session and go back to the deck picker.
+  /// Drop the session and go back to the deck picker — or, when this page is
+  /// the practice screen's session, back to that screen's front page.
   void exitSession() {
     _clearTurn();
     _stopSpeech?.call();
@@ -443,6 +354,7 @@ class FlashcardsViewModel extends ViewModel {
       _turn = null;
       _storeSteps = <_StoreStep>[];
     });
+    _onExit?.call();
   }
 
   /// Pick which deck the next session draws from.
@@ -555,8 +467,15 @@ class FlashcardsViewModel extends ViewModel {
     if (!_speechAvailable()) return;
     final Settings settings = _store.data.settings;
     final bool listening = settings.audioFirst;
-    final bool shouldSpeak =
-        listening ? !_flipped : (_flipped && settings.autoPlayAudio);
+    // 听力模式 speaks on the front by definition — the sound *is* the prompt.
+    // Otherwise the two booleans decide, one per face. 正面 under 先显示译文 is
+    // silent: the front is the meaning there, so speaking the term would answer
+    // the question the card is asking.
+    final bool frontSpeaking =
+        settings.autoPlayFront && !settings.translationFirst;
+    final bool shouldSpeak = listening
+        ? !_flipped
+        : (_flipped ? settings.autoPlayAudio : frontSpeaking);
     if (!shouldSpeak) return;
     final String token =
         '${word.id}:${progress.index}:${_flipped ? 'back' : 'front'}';

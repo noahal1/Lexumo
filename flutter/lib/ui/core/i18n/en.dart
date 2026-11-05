@@ -192,8 +192,32 @@ const Map<String, String> enRaw = {
   'words.deleteListConfirm':
       'Delete “{name}”? Its {n} words go with it, and this cannot be undone.',
   // practice
-  'practice.review': 'Review',
+  // The page names itself. Every other screen lets the sidebar or the tab bar
+  // name it; this one cannot, because the first thing it shows is a decision,
+  // and a decision with no title is a control with no context.
+  'practice.title': 'Practice',
+  'practice.cards': 'Cards',
   'practice.quiz': 'Quiz',
+  // The caption under the big figure: it says the number is *this round*, not
+  // *today so far*.
+  'practice.thisRound': 'this round',
+  'practice.options': 'Options',
+  'practice.scopeDue': 'Due',
+  'practice.scopeCustom': 'Custom',
+  'practice.autoPlay': 'Read aloud',
+  'practice.autoPlayOff': 'Off',
+  'practice.autoPlayFront': 'Front',
+  'practice.autoPlayBack': 'Back',
+  'practice.autoPlayBoth': 'Both',
+  'practice.random': 'Shuffle',
+  'practice.translationFirst': 'Meaning first',
+  'practice.direction': 'Direction',
+  'practice.roundSizeCards': 'Cards per round',
+  'practice.roundSizeQuiz': 'Questions per round',
+  'practice.fewer': 'Fewer',
+  'practice.more': 'More',
+  'practice.emptyPool': 'Nothing in this set is due right now.',
+  'practice.needWords': 'A quiz needs at least 4 words with definitions.',
   // flashcards
   'flashcards.start': 'Start review',
   // One sentence, printed once: the numbers are inline because the strip of
@@ -208,7 +232,12 @@ const Map<String, String> enRaw = {
   'flashcards.deckAll': 'All words',
   'flashcards.deckFavorites': 'Favorites',
   'flashcards.deckSize': '{n} cards',
-  'flashcards.cardOf': '{i} / {n}',
+  // Reads with the pill bar: total first, because that is the number you chose a
+  // minute ago; position second, because it is the only thing that moves.
+  'flashcards.progressOf': '{i} of {n}',
+  // The overline on the front when 先显示译文 is on: it says you are reading a
+  // definition, and a definition has no part of speech to name.
+  'flashcards.meaningOverline': 'Meaning',
   'flashcards.showAnswer': 'Show answer',
   'flashcards.gradeHard': 'Hard',
   'flashcards.gradeGood': 'Good',

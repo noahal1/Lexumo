@@ -218,3 +218,17 @@ bool isDue(Word w, int now) {
   if (srs == null) return true;
   return srs.dueAt <= now;
 }
+
+/// The cards a review round should draw from: everything learned-but-not-
+/// mastered that has come due, plus every card that was never scheduled.
+///
+/// It lives here rather than in `data/repositories/store.dart` because the
+/// deck planner (`domain/use_cases/deck_plan.dart`) needs it and the domain
+/// layer must not import the store. Mastered cards are excluded on purpose:
+/// "mastered" is the one status the scheduler will never demote, so putting
+/// those cards back in the due queue would make the badge count a debt the
+/// user can never pay off.
+List<Word> dueWords(List<Word> words, int now) => words.where((Word w) {
+      if (w.status == WordStatus.mastered) return false;
+      return isDue(w, now);
+    }).toList();

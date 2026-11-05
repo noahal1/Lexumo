@@ -511,6 +511,228 @@ class _SelectButtonState<T> extends State<_SelectButton<T>> {
   }
 }
 
+/// The web build's `.switch`.
+///
+/// Material's [Switch] is not an option here: it ships a 48px touch target, a
+/// ripple, its own thumb shadow and a colour-scheme mapping, so it reads as a
+/// foreign object on this app's pages. This is 42×24 with a 2px inset knob and
+/// a 120ms border tint on hover, matching `.switch` exactly.
+///
+/// It lived in the settings page while that was the only screen with a switch.
+/// The practice front page has two, and copying it would have meant two
+/// switches that drift apart one tweak at a time — the same reason every other
+/// control in this file is here.
+class LexSwitch extends StatefulWidget {
+  const LexSwitch({
+    super.key,
+    required this.checked,
+    required this.label,
+    required this.onChanged,
+  });
+
+  final bool checked;
+
+  /// The switch's accessible name. Drawn nowhere: the row that holds the
+  /// switch prints the label, and printing it twice is a bug on a phone.
+  final String label;
+
+  final ValueChanged<bool> onChanged;
+
+  @override
+  State<LexSwitch> createState() => _LexSwitchState();
+}
+
+class _LexSwitchState extends State<LexSwitch> {
+  bool _hover = false;
+  bool _down = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final on = widget.checked;
+    return Semantics(
+      toggled: on,
+      label: widget.label,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapDown: (_) => setState(() => _down = true),
+          onTapCancel: () => setState(() => _down = false),
+          onTap: () {
+            setState(() => _down = false);
+            widget.onChanged(!on);
+          },
+          child: TapTarget(
+            child: AnimatedScale(
+              scale: _down ? 0.96 : 1,
+              duration: Motion.dur1,
+              curve: Motion.ease,
+              child: AnimatedContainer(
+                duration: Motion.dur2,
+                curve: Motion.ease,
+                width: 42,
+                height: 24,
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: on ? p.accent : p.surface2,
+                  borderRadius: BorderRadius.circular(R.full),
+                  border: Border.all(
+                    color: on ? p.accent : (_hover ? p.accent : p.lineStrong),
+                  ),
+                ),
+                child: AnimatedAlign(
+                  alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+                  duration: Motion.dur2,
+                  curve: Motion.easeOut,
+                  child: Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: on ? p.onAccent : p.surface,
+                      shape: BoxShape.circle,
+                      // `.switch-knob` carries `--shadow-xs`, which tokens.css
+                      // sets to `none` — the knob's separation comes from the
+                      // track colour, so no shadow is drawn here either.
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A number you nudge one at a time: round minus, figure, round plus.
+///
+/// A text field would let somebody type 4000 into a field that means "how many
+/// cards this sitting", and the clamp would then have to silently rewrite what
+/// they typed. Stepping cannot produce a value outside the range at all, and
+/// the figure stays centred between the two controls so the row reads as one
+/// object rather than as a field with ornaments.
+///
+/// The ends are disabled rather than wrapped: at the floor the minus greys out,
+/// which says "this is as small as it goes" instead of silently doing nothing.
+class LexStepper extends StatelessWidget {
+  const LexStepper({
+    super.key,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+    this.decrementLabel,
+    this.incrementLabel,
+  });
+
+  final int value;
+  final int min;
+  final int max;
+  final ValueChanged<int> onChanged;
+
+  /// Accessible names for the two buttons; they carry no text of their own.
+  final String? decrementLabel;
+  final String? incrementLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        _StepButton(
+          icon: Ic.minimize,
+          label: decrementLabel,
+          onPressed: value > min ? () => onChanged(value - 1) : null,
+        ),
+        // A fixed slot, so the row does not shuffle sideways when the count
+        // crosses 10 and gains a digit.
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 44),
+          child: Text(
+            '$value',
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            style: TextStyle(
+              fontFamily: Fonts.mono,
+              fontSize: Fs.md,
+              height: Lh.tight,
+              fontWeight: FontWeight.w600,
+              color: p.ink,
+              fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+        _StepButton(
+          icon: Ic.plus,
+          label: incrementLabel,
+          onPressed: value < max ? () => onChanged(value + 1) : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _StepButton extends StatefulWidget {
+  const _StepButton({
+    required this.icon,
+    required this.onPressed,
+    this.label,
+  });
+
+  final String icon;
+  final VoidCallback? onPressed;
+  final String? label;
+
+  @override
+  State<_StepButton> createState() => _StepButtonState();
+}
+
+class _StepButtonState extends State<_StepButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final bool enabled = widget.onPressed != null;
+    final Color fg = enabled ? p.ink : p.ink4;
+    final Color line = !enabled
+        ? fadeFrom(p.line)
+        : (_hover ? p.accent : p.lineStrong);
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: widget.label,
+      child: MouseRegion(
+        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.onPressed,
+          child: TapTarget(
+            child: AnimatedContainer(
+              duration: Motion.dur1,
+              curve: Motion.ease,
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: _hover && enabled ? p.surfaceHover : p.surface,
+                shape: BoxShape.circle,
+                border: Border.all(color: line),
+              ),
+              child: Center(child: LexIcon(widget.icon, size: 15, color: fg)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// The dialog shell: title, optional subtitle, body, footer.
 ///
 /// Escape and the backdrop both close it unless [dismissible] is false. The

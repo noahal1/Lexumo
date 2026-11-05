@@ -22,6 +22,7 @@ import 'package:lexumo/domain/models/seed.dart';
 import 'package:lexumo/ui/core/i18n/i18n.dart';
 import 'package:lexumo/ui/core/theme.dart';
 import 'package:lexumo/ui/core/tokens.dart';
+import 'package:lexumo/ui/core/widgets/controls.dart';
 import 'package:lexumo/ui/core/widgets/widgets.dart';
 import 'package:lexumo/ui/features/practice/views/practice_page.dart';
 
@@ -173,8 +174,16 @@ void main() {
   });
 
   group('the practice screen splits on its body width', () {
-    const String kIntro = '组卡方式';
+    // The split used to be asserted on the practice page's *picker*, which sat
+    // in the same scroll view as the side panel. The picker became the page, so
+    // the split now only exists inside a round: start one, then compare where
+    // the card and the panel ended up.
     const String kReviewsToday = '今日复习';
+
+    Future<void> startRound(WidgetTester tester) async {
+      await tester.tap(find.widgetWithText(LexButton, '开始复习'));
+      await tester.pumpAndSettle();
+    }
 
     testWidgets('a 1081dp window with a 232dp sidebar stacks the panel', (
       WidgetTester tester,
@@ -182,15 +191,18 @@ void main() {
       // 1081 was the first window width that used to put the panel beside the
       // card. The shell leaves 849 for the page and the gutters leave 801.
       await pumpPractice(tester, window: 1081, body: 849);
+      await startRound(tester);
 
-      final Rect intro = tester.getRect(find.text(kIntro));
+      final Rect card = tester.getRect(
+        find.byKey(const ValueKey('flip-card')),
+      );
       final Rect panel = tester.getRect(
         find.widgetWithText(StatTile, kReviewsToday),
       );
 
       expect(
         panel.top,
-        greaterThan(intro.bottom),
+        greaterThan(card.bottom),
         reason: 'the card has 801dp of body; the panel must not squeeze it',
       );
     });
@@ -201,15 +213,18 @@ void main() {
       // 1440 minus the 232dp sidebar is 1208; the page caps its content column
       // at 1180 and the gutters leave 1132 for the split.
       await pumpPractice(tester, window: 1440, body: 1208);
+      await startRound(tester);
 
-      final Rect intro = tester.getRect(find.text(kIntro));
+      final Rect card = tester.getRect(
+        find.byKey(const ValueKey('flip-card')),
+      );
       final Rect panel = tester.getRect(
         find.widgetWithText(StatTile, kReviewsToday),
       );
 
       expect(
         panel.top,
-        lessThan(intro.bottom),
+        lessThan(card.bottom),
         reason: '1160dp of body is enough for a card and the panel in a row',
       );
     });

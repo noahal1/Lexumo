@@ -604,15 +604,16 @@ class Store {
 
 /// Cards the flashcard page should show: everything learned-but-not-mastered that
 /// has come due, plus every card that was never scheduled at all.
-List<Word> dueWords(AppData d, [int? now]) {
-  final at = now ?? _systemClock();
-  return d.words.where((w) {
-    if (w.status == WordStatus.mastered) return false;
-    final s = w.srs;
-    if (s == null) return true;
-    return s.dueAt <= at;
-  }).toList();
-}
+///
+/// The rule itself now lives in `domain/models/srs.dart` as
+/// `dueWords(List<Word>, int)`, because the deck planner in the domain layer
+/// needs it and the domain layer must not import the store. This overload
+/// stays as the snapshot-shaped convenience the pages and the shell's due
+/// badge already call, and it forwards rather than re-implementing — two
+/// copies of "what is due" is exactly how a badge starts disagreeing with the
+/// list under it.
+List<Word> dueWords(AppData d, [int? now]) =>
+    srs.dueWords(d.words, now ?? _systemClock());
 
 /// A word whose term already exists, for the duplicate guard on the edit form.
 Word? findDuplicate(AppData d, String term, [String? listId]) {

@@ -20,7 +20,7 @@
 cd flutter
 
 ../.flutter-sdk/flutterc analyze --no-pub     # No issues found!
-../.flutter-sdk/flutterc test --no-pub        # 930 passed, 6 skipped
+../.flutter-sdk/flutterc test --no-pub        # 927 passed, 9 skipped
 
 ./tool/build_apk.sh                  # release APK → dist/lexumo-android-release.apk
 ./tool/release.sh                    # 签名 APK + dist/update.json（发布用）
@@ -170,8 +170,8 @@ CI 读同一个文件。没有这个文件时清单里就没有 `notes`，应用
 ../.flutter-sdk/flutterc test test/app_mount_test.dart       # 真实 main.dart 的嵌套能挂载、能点
 ```
 
-930 个通过、6 个跳过（要真 Postgres 桥接的几条，见
-`../docs/supabase-sync-plan.md`）。四层验证各自抓不到什么，记在
+927 个通过、9 个跳过（6 条要真 Postgres 桥接的几条，见
+`../docs/supabase-sync-plan.md`；另 3 条校验打包产物、本机有 `dist/` 时才真跑）。四层验证各自抓不到什么，记在
 `../docs/flutter-design.md` 末节：
 
 | 层 | 命令 | 抓不到 |

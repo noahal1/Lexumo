@@ -5,8 +5,9 @@
 Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
 文中出现的 `src/...` 都是那个已移除网页版的路径，留作「这段代码从哪来」的出处记录。
 
-工程规模：`lib/` 与 `test/` 共 52,187 行 Dart（lib 33,282 / test 18,905），930 个测试
-通过（另有 6 条需要真 Postgres 桥接的 E2E 默认 skip），`flutter analyze --no-pub` 零问题。
+工程规模：`lib/` 与 `test/` 共 53,334 行 Dart（lib 34,350 / test 18,984），927 个测试
+通过（另有 9 条默认 skip：6 条需要真 Postgres 桥接的 E2E，3 条校验打包产物、本机存在
+`flutter/dist/` 时才真跑），`flutter analyze --no-pub` 零问题。
 
 ---
 
@@ -21,7 +22,7 @@ Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果�
 上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
 React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 
-这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，930 个测试覆盖纯逻辑与
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，927 个测试覆盖纯逻辑与
 共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
 
 ---
@@ -29,7 +30,7 @@ React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 ## 2. 目录结构与职责
 
 ```
-flutter/lib/                        73 个文件，31,982 行（test/ 另有 50 个文件 18,441 行）
+flutter/lib/                        77 个文件，34,350 行（test/ 另有 51 个文件 18,984 行）
   main.dart            入口：Store 初始化 → UpdateService → 作用域树 → MaterialApp
   app/                 组合根：谁在什么时候构造谁
     scope.dart         InheritedWidget 层：StoreNotifier / StoreScope / I18nScope / ToastScope / NavScope
@@ -72,6 +73,7 @@ flutter/lib/                        73 个文件，31,982 行（test/ 另有 50 
       word_query.dart  索引与查询：buildWordIndex / queryWords / summarize（317 行）
       day_stats.dart   今日复习数、连续天数（49 行）
       deck_templates.dart 现成词库模板：把五十音表映射成 NewWordInput（108 行）
+      deck_plan.dart   本轮取哪些卡：DeckSource / buildDeck / summarizeDeck（177 行）
   ui/                  界面层：按功能分包，每个功能有 view_models 与 views
     core/
       view_model.dart  MVVM 契约：ViewModel 基类 + Feedback 端口 + ToastKind
@@ -81,11 +83,11 @@ flutter/lib/                        73 个文件，31,982 行（test/ 另有 50 
       tokens.dart      全部设计令牌（Palette / Sp / R / Fs / Lh / Fonts / Motion / Layout / Shadows）
       i18n/
         i18n.dart      I18n 运行时：dict / t(key, vars) / has(key)
-        zh_cn.dart     421 条键
+        zh_cn.dart     452 条键
         en.dart        同键英文（键集由 i18n_test 强制一致）
       widgets/
-        widgets.dart   PageShell / Segmented / EmptyState / ProgressBar / Ring / StatusChip / StatTile / ShortcutRow / Kbd / Card / HairlineList / HairlineRow / SectionTitle / PillField / FloatingAction
-        controls.dart  LexButton / LexInput / LexTextArea / LexSelect / showLexModal / confirmLex / ContentCenter / LexField
+        widgets.dart   PageShell / Segmented / SegmentedBar / EmptyState / ProgressBar / Ring / StatusChip / StatTile / ShortcutRow / Kbd / Card / HairlineList / HairlineRow / SectionTitle / PillField / FloatingAction
+        controls.dart  LexButton / LexInput / LexTextArea / LexSelect / LexSwitch / LexStepper / showLexModal / confirmLex / ContentCenter / LexField
         density.dart   触控密度：isTouchPlatform / TouchDensity extension / TapTarget
         lex_icon.dart  图标系统：Ic 常量 + LexIcon
         icon_paths.dart SVG path 数据
@@ -105,20 +107,21 @@ flutter/lib/                        73 个文件，31,982 行（test/ 另有 50 
         views/words_page.dart                     只画，不含判断（2562 行）
         views/word_editor.dart                    只画（767 行）
       practice/
-        views/practice_page.dart                   复习 / 测验二选一的外壳（97 行）
+        view_models/practice_view_model.dart       本轮设定：模式 / 范围 / 数量 / 四态朗读（228 行）
+        views/practice_page.dart                   设定页 + 会话宿主（420 行）
       flashcards/
-        view_models/flashcards_view_model.dart     会话 / 翻面 / 评分 / 撤销（582 行）
-        views/flashcards_page.dart                 只画（1604 行）
+        view_models/flashcards_view_model.dart     会话 / 翻面 / 评分 / 撤销（501 行）
+        views/flashcards_page.dart                 只画（1728 行）
         views/session_result.dart                  会话结果卡（两个学习页共用）
       quiz/
-        view_models/quiz_view_model.dart           一轮测验 / 答案 / 错题（364 行）
-        views/quiz_page.dart                       只画（999 行）
+        view_models/quiz_view_model.dart           一轮测验 / 答案 / 错题（387 行）
+        views/quiz_page.dart                       只画（1017 行）
       stats/
         view_models/stats_view_model.dart          图表数据推导（280 行）
         views/stats_page.dart                      只画（943 行）
       settings/
         view_models/settings_view_model.dart       设置项、词典缓存、同步表单（548 行）
-        views/settings_page.dart                   只画（1708 行）
+        views/settings_page.dart                   只画（1627 行）
       update/
         view_models/update_view_model.dart         升级卡状态（393 行）
         views/update_sheet.dart                    只画（384 行）
@@ -470,27 +473,78 @@ chevron 且点它不弹菜单、从下拉选一本后表格与胶囊同时换。
   没挂，才发现。现在用 `find.byWidgetPredicate((w) => w is LexIcon && w.name == Ic.chevronDown)`，
   并在兄弟齐全的那条里断言它**存在**，两个方向都有牙齿。
 
-### 练习页（`practice_page.dart`，97 行）
-一个入口装两种练习。参考图里只有「练习」一个位置，而旧版把闪卡与测验做成两个并列
-的导航项——两件事共用同一套牌堆、同一份进度、同一组快捷键，却各占一格标签栏。现在
-`PageId.practice` 一个位置，页内一个 `Segmented<PracticeMode>`（复习 / 测验）切换。
+### 练习页（`practice_page.dart` 420 行 + `practice_view_model.dart` 228 行）
+一个入口装两种练习，分两层：**设定页**（进来先看到的那屏）和**会话**（按下开始之后）。
+参考图里只有「练习」一个位置，而旧版把闪卡与测验做成两个并列的导航项——两件事共用
+同一套牌堆、同一份进度、同一组快捷键，却各占一格标签栏。现在 `PageId.practice` 一个
+位置，页内一个 `Segmented<PracticeMode>`（卡片 / 测验）切换。
 
-**同时只挂载一个子页，不是两个都建好再隐藏。** 两个子页各带自己的 `ScrollController`
-（外壳为每个导航项准备的那一个）和自己的 `FocusNode`，同时挂在树上会抢同一个滚动位置
-和同一套键盘绑定。代价是切模式会丢掉正在进行的会话——那正是切模式的意思。
+**旧版把「组卡方式」放在页头，新版把这一屏变成一整页。** 那个页头原本只有一句
+`待复习 12 · 新卡 3 · 共 15 张` 和一个开始按钮，其余决定全在闪卡页里；现在这些决定
+（本轮多少张、取待复习还是全部、要不要随机、自动朗读读哪一面、先看译文还是先看词形）
+按顺序排成一屏，大号数字是这一轮的真实张数（已被池子截断——承诺 20 却发 7 张是这个
+页面最不能做的事），底下一个满宽按钮才进会话。
+
+**设定页自己命名。** 别的页面靠侧栏或标签条命名，这一页不行：它一上来就要你先做
+决定，没有标题的话第一眼看到的是一个没有上下文的分段控件。
+
+**模式决定哪些选项存在，而不是把选项灰掉。** 测验没有正反面，所以「先显示译文」
+「自动朗读」「学习范围」整行消失；留下的只有它真的会读的两项（每轮题目数、出题方向）。
+一个按不动的开关比一个不在的开关更糟。
+
+**大号数字不是新字段。** `Settings.roundSize` 是本轮目标张数，与 `newCardsPerDay`
+（每天允许引入多少张新卡）分开：把本轮设成 10、日上限 15，一天仍然可以有两轮各 10 张。
+`domain/use_cases/deck_plan.dart` 的 `deckRoundSize` / `quizRoundSize` 负责把目标截到
+池子大小；截到 0 就意味着这轮没内容，`canStart` 于是为假，按钮置灰并在下面写一句
+为什么——「开始复习」从来不假装能开始。
+
+**「自动朗读」是一个下拉，不是一个开关。** 它要表达四种状态（关 / 正面 / 背面 / 两者），
+而底层是两个既有布尔：`autoPlayAudio`（背面）与新加的 `autoPlayFront`（正面）。
+四态枚举要迁移，两个布尔不用——而且这两半是真正独立的（读释义的人只想背面读词，
+练发音的人想正面就读），所以 `AutoPlayWhen` 是这两个字段的**视图**，`flags` 负责翻译
+回存储层。
+
+**会话宿主只挂一个子页。** `_running != null` 时挂 `FlashcardsPage` 或 `QuizPage`，
+并把自己的 `plan`（模式 / 张数 / 范围 / 方向）传下去；子页 `initState` 后 post-frame
+直接 `startSession()`，退出时回调 `onExit` 把控制权交还。两个子页各带自己的
+`ScrollController`（外壳为每个导航项准备的那一个）和自己的 `FocusNode`，同时挂在树上
+会抢同一个滚动位置和同一套键盘绑定。
+
+**子页仍然能单独挂载。** `plan == null` 时 `FlashcardsPage` 保留原来的 `_deckPickerState`、
+`QuizPage` 保留 `_idleState`：它们自己的测试直接 pump 这两个页面。
 
 **两个退役的 wire id 仍然可用。** `PageId.fromId` 里 `'flashcards'` 与 `'quiz'` 都
-解析成 `practice`：首页的「开始复习」「开始测验」、统计页空图表的「去复习」、复习页
-自己的「去测验」都还在用旧 id 说话，直接删 id 会让这些按钮静默失效。
+解析成 `practice`：首页的「开始复习」「开始测验」、统计页空图表的「去复习」都还在用
+旧 id 说话，直接删 id 会让这些按钮静默失效。
 
-### 闪卡页（`flashcards_page.dart`，1604 行 + `flashcards_view_model.dart` 582 行）
+**`deck_plan.dart` 为什么在 domain 层。** 取哪些卡这件事原本住在
+`flashcards_view_model.dart` 里，但设定页要在**会话存在之前**回答同样的问题（这轮
+多少张、有没有可复习的卡），而 view model 不该被另一个 view model import。搬到
+`domain/use_cases/` 后两边共用一份规则；`dueWords` 也跟着从
+`data/repositories/store.dart` 搬到 `domain/models/srs.dart`（domain 不能 import data），
+store 那边留一个转发同名函数，因为页面与外壳的角标都在调它——「什么算到期」有两份
+实现，正是角标和它下面的列表开始互相矛盾的方式。
+
+### 闪卡页（`flashcards_page.dart` 1728 行 + `flashcards_view_model.dart` 501 行）
 会话状态机来自 `domain/models/session.dart`。卡片翻面是两段式 Y 轴旋转（`Matrix4.rotateY`），
 键盘：空格翻面、1/2/3 评分、←/→ 跳过、Ctrl+Z 撤销。右侧面板显示快捷键与进度。
 会话结束复用 `session_result.dart`。
 
-### 测验页（`quiz_page.dart`，999 行 + `quiz_view_model.dart` 364 行）
+**进度条是分段药丸，读数是一句话。** `SegmentedBar`（`widgets.dart`）画一排小药丸，
+填满的前缀是 accent，其余是 `surfaceSunken`；下面居中一句 `20 中的 0`——总数在前，
+因为那是一分钟前刚选的那个数；位置在后，因为它是唯一会动的东西。旧写法
+`第 1 / 20 张` 在同一个句子里给了两个数却没说明哪个会变。
+
+**「先显示译文」不是「把答案提前」。** 打开后正面是释义（眉标 `释义`），背面是词形
+并且词形放大加粗——因为此刻词形才是新信息。翻面动画不变，变的只是哪一面在正面。
+自动朗读跟着改：先显示译文时正面**不朗读**，否则等于把答案读出来；听力模式
+（`audioFirst`，藏词形）正面则必读，因为那一面本来就只有声音。
+
+### 测验页（`quiz_page.dart` 1017 行 + `quiz_view_model.dart` 387 行）
 四个选项自适应排成 1/2/4 列（240px 最小宽度）。答完即时反馈：正确项描边 accent，
 错选项描边 cinnabar，其余降到 55% 不透明度。键盘 A–D / 1–4 选择，Enter 下一题。
+每轮题目数现在来自 `Settings.roundSize`（经 `quizRoundSize` 截到可用词数），不再是
+写死的 `QUIZ_ROUND`；`QUIZ_CHOICES`（4）以下出不了题，设定页会把开始按钮置灰。
 
 ### 统计页（`stats_page.dart`，943 行 + `stats_view_model.dart` 280 行）
 目标环 + 六个统计块 + 状态分布条 + 今日待复习列表。全部数值来自
@@ -1146,7 +1200,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 ```bash
 cd flutter
 ../.flutter-sdk/flutterc analyze --no-pub  # No issues found!
-../.flutter-sdk/flutterc test --no-pub     # 930 passed, 6 skipped
+../.flutter-sdk/flutterc test --no-pub     # 927 passed, 9 skipped
 ./tool/build_apk.sh                        # 出 release APK 到 dist/
 ./tool/build_windows.sh                    # 出 Windows release 包
 ./tool/release.sh                          # 出签名 APK + dist/update.json

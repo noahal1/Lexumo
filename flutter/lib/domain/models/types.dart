@@ -358,6 +358,9 @@ class Settings {
     this.newCardsPerDay = 15,
     this.reviewOrder = 'due',
     this.autoSync = true,
+    this.roundSize = 20,
+    this.translationFirst = false,
+    this.autoPlayFront = false,
   });
 
   final ThemeMode_ theme;
@@ -375,6 +378,39 @@ class Settings {
   final String reviewOrder;
   final bool autoSync;
 
+  /// How many cards one round aims for.
+  ///
+  /// Separate from [newCardsPerDay] on purpose: that one is a *rate* — how many
+  /// brand-new cards the day may introduce — and this one is the *shape of a
+  /// sitting*. Setting the round to 10 while the daily allowance is 15 must
+  /// still leave 15 new cards available across two sittings, which is why the
+  /// deck planner caps the round and not the allowance.
+  final int roundSize;
+
+  /// Put the meaning on the front and the term on the back.
+  ///
+  /// The reverse of the default direction, for somebody who is learning to
+  /// produce the word rather than to recognise it. It is a setting rather than
+  /// a per-card flip because the direction of a sitting is a decision about the
+  /// sitting.
+  final bool translationFirst;
+
+  /// Say the word as soon as a card's *front* appears, without waiting for the
+  /// reveal.
+  ///
+  /// Pairs with [autoPlayAudio] (which speaks the back) to give the practice
+  /// screen's 自动朗读 picker its four states: neither, front only, back only,
+  /// both. It is a second flag rather than an enum because the two halves are
+  /// genuinely independent — a learner reading a definition may want the term
+  /// read out on the back only, while somebody drilling pronunciation wants it
+  /// on the front — and because a stored enum would need a migration for the
+  /// one value ([autoPlayAudio]) that already exists in every snapshot.
+  ///
+  /// Distinct from [audioFirst], which is listening mode: that one *hides the
+  /// term* so the ear answers before the eye does. This one changes nothing
+  /// about what is on screen, only when the clip plays.
+  final bool autoPlayFront;
+
   Settings copyWith({
     ThemeMode_? theme,
     UiLang? uiLang,
@@ -386,6 +422,9 @@ class Settings {
     int? newCardsPerDay,
     String? reviewOrder,
     bool? autoSync,
+    int? roundSize,
+    bool? translationFirst,
+    bool? autoPlayFront,
   }) {
     return Settings(
       theme: theme ?? this.theme,
@@ -398,6 +437,9 @@ class Settings {
       newCardsPerDay: newCardsPerDay ?? this.newCardsPerDay,
       reviewOrder: reviewOrder ?? this.reviewOrder,
       autoSync: autoSync ?? this.autoSync,
+      roundSize: roundSize ?? this.roundSize,
+      translationFirst: translationFirst ?? this.translationFirst,
+      autoPlayFront: autoPlayFront ?? this.autoPlayFront,
     );
   }
 
@@ -412,6 +454,9 @@ class Settings {
         'newCardsPerDay': newCardsPerDay,
         'reviewOrder': reviewOrder,
         'autoSync': autoSync,
+        'roundSize': roundSize,
+        'translationFirst': translationFirst,
+        'autoPlayFront': autoPlayFront,
       };
 
   static Settings fromJson(Map<String, dynamic>? m) {
@@ -428,6 +473,10 @@ class Settings {
       newCardsPerDay: (m['newCardsPerDay'] as num?)?.toInt() ?? d.newCardsPerDay,
       reviewOrder: m['reviewOrder'] as String? ?? d.reviewOrder,
       autoSync: m['autoSync'] as bool? ?? d.autoSync,
+      roundSize: (m['roundSize'] as num?)?.toInt() ?? d.roundSize,
+      translationFirst:
+          m['translationFirst'] as bool? ?? d.translationFirst,
+      autoPlayFront: m['autoPlayFront'] as bool? ?? d.autoPlayFront,
     );
   }
 }

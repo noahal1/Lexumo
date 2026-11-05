@@ -398,6 +398,15 @@ Settings _cleanSettings(Object? value) {
     newCardsPerDay: _int(raw['newCardsPerDay']),
     reviewOrder: raw['reviewOrder'] == 'random' ? 'random' : 'due',
     autoSync: _bool(raw['autoSync']),
+    // Both of these are new, so a document written by an older client has no
+    // value for them — and following the rule above would decode `roundSize`
+    // to 0, i.e. "a round of no cards", which is not a setting the user could
+    // have chosen. The planner clamps a non-positive size back to the default
+    // (`domain/use_cases/deck_plan.dart`), so the zero never reaches a screen;
+    // it is decoded honestly rather than invented here.
+    roundSize: _int(raw['roundSize']),
+    translationFirst: _bool(raw['translationFirst']),
+    autoPlayFront: _bool(raw['autoPlayFront']),
   );
 }
 

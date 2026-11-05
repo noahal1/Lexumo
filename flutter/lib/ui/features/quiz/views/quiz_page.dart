@@ -41,6 +41,7 @@ import '../../../core/widgets/keyboard_hints.dart';
 import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../flashcards/views/session_result.dart';
+import '../../practice/view_models/practice_view_model.dart' show PracticePlan;
 import '../view_models/quiz_view_model.dart';
 
 /// The keycap letters on the four options, in order.
@@ -68,10 +69,20 @@ String _formatDuration(int ms) {
 }
 
 class QuizPage extends StatefulWidget {
-  const QuizPage({super.key, this.controller});
+  const QuizPage({super.key, this.controller, this.plan, this.onExit});
 
   /// Owned by the shell, so the page scroll position survives a page switch.
   final ScrollController? controller;
+
+  /// The round the practice screen decided on, or null when this page is
+  /// mounted on its own.
+  ///
+  /// A plan means the round starts as soon as the page appears — 开始测验 was
+  /// already pressed on the front page — and the intro has no reason to show.
+  final PracticePlan? plan;
+
+  /// Called when the round ends and the caller owns what comes next.
+  final VoidCallback? onExit;
 
   @override
   State<QuizPage> createState() => _QuizPageState();
@@ -87,15 +98,22 @@ class _QuizPageState extends State<QuizPage> {
   @override
   void initState() {
     super.initState();
+    final PracticePlan? plan = widget.plan;
     _vm = QuizViewModel(
       store: context.store,
       feedback: ContextFeedback(context),
       // The one thing the view model cannot do itself: the real `speakWord`
       // needs a `BuildContext` for the settings and the listen counter.
       speak: (Word word) => speakWord(context, word),
+      onExit: widget.onExit,
+      limit: plan?.size,
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
+      if (!mounted) return;
+      _focus.requestFocus();
+      // A plan means 开始测验 was already pressed: the round begins with the
+      // first frame, and the intro is never drawn.
+      if (plan != null) _vm.start(plan.direction);
     });
   }
 

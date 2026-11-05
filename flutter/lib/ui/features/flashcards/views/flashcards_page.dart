@@ -56,6 +56,8 @@ import '../../../core/widgets/keyboard_hints.dart';
 import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
 import '../view_models/flashcards_view_model.dart';
+import '../../practice/view_models/practice_view_model.dart'
+    show PracticePlan, PracticeScope;
 import 'session_result.dart';
 
 /// The three grade buttons, in the order the keyboard maps them to 1/2/3.
@@ -75,10 +77,26 @@ const Map<DeckSource, String> _kDeckLabelKey = <DeckSource, String>{
 };
 
 class FlashcardsPage extends StatefulWidget {
-  const FlashcardsPage({super.key, this.controller});
+  const FlashcardsPage({
+    super.key,
+    this.controller,
+    this.plan,
+    this.onExit,
+  });
 
   /// Owned by the shell, so the page scroll position survives a page switch.
   final ScrollController? controller;
+
+  /// The round the practice screen decided on, or null when this page is
+  /// mounted on its own.
+  ///
+  /// A plan means two things: the session starts as soon as the page appears
+  /// (the 开始复习 press already happened on the front page), and there is no
+  /// deck picker to go back to — 退出 returns to that front page instead.
+  final PracticePlan? plan;
+
+  /// Called when the session ends and the caller owns what comes next.
+  final VoidCallback? onExit;
 
   @override
   State<FlashcardsPage> createState() => _FlashcardsPageState();
@@ -94,9 +112,19 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
   @override
   void initState() {
     super.initState();
+    final PracticePlan? plan = widget.plan;
     _vm = FlashcardsViewModel(
       store: context.store,
       feedback: ContextFeedback(context),
+      // The round the practice screen decided on. Both are null when this page
+      // is mounted on its own, which leaves the deck picker in charge.
+      deck: plan?.scope == PracticeScope.custom
+          ? DeckSource.all
+          : DeckSource.due,
+      limit: plan?.size,
+      // Hand control back to the practice screen instead of falling back to the
+      // picker, which this page never showed in the first place.
+      onExit: widget.onExit,
       // The four things the view model cannot do itself, because all of them
       // need a `BuildContext`: the two speech calls (they read the TTS settings
       // off the scope and, for `speakWord`, bump the listen counter), stopping
@@ -111,7 +139,13 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     // The page owns the keyboard while it is open; a focusable node is the only
     // way Flutter delivers key events to `CallbackShortcuts` below.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
+      if (!mounted) return;
+      _focus.requestFocus();
+      // A plan means 开始复习 was already pressed: there is nothing to pick, so
+      // the round begins with the first frame. Post-frame rather than in
+      // `initState` because starting a session notifies listeners, and this
+      // widget has not been built yet.
+      if (plan != null) _vm.startSession();
     });
   }
 
@@ -225,9 +259,12 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
 
     final List<Widget> body;
     if (progress == null) {
-      body = <Widget>[
-        _deckPickerState(t, data, settings, summary, deckSize, side),
-      ];
+      // A plan means the round is about to start in the post-frame callback, so
+      // the picker never belonged to this mount: drawing it for the one frame
+      // before the session lands would flash a screen the reader never chose.
+      body = widget.plan == null
+          ? <Widget>[_deckPickerState(t, data, settings, summary, deckSize, side)]
+          : const <Widget>[];
     } else if (inProgress) {
       body = <Widget>[
         _studySplit(
@@ -562,6 +599,14 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     );
   }
 
+  /// The round's progress, in the reference design's order: the pill bar first,
+  /// then the count, then the card.
+  ///
+  /// The count reads "20 中的 0" — how far into the round you are, total first,
+  /// because the total is the number you chose a moment ago and the position is
+  /// the one that moves. Undo and exit keep their corners: the design has
+  /// neither, but a card screen with no way out is a trap, and undo is the only
+  /// defence against a mis-tap on a grade button.
   Widget _progressBar(
     String Function(String, [Map<String, Object>?]) t,
     SessionProgress progress, {
@@ -574,29 +619,14 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        // Filled pills, one per card: the round is a countable thing, so its
+        // progress is drawn as the count rather than as a fraction of a bar.
+        // Past 40 cards the bar switches to a proportional fill — 100 pills on
+        // a phone would be a grey smear, not a count.
+        SegmentedBar(value: progress.index, max: progress.total),
+        const SizedBox(height: Sp.x3),
         Row(
           children: <Widget>[
-            Text(
-              t('flashcards.cardOf', <String, Object>{
-                'i': progress.index + 1,
-                'n': progress.total,
-              }),
-              style: TextStyle(
-                fontFamily: Fonts.mono,
-                fontSize: Fs.xs,
-                height: Lh.tight,
-                color: p.ink3,
-                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-              ),
-            ),
-            if (word != null) ...<Widget>[
-              const SizedBox(width: Sp.x2),
-              StatusChip(
-                label: t('status.${word.status.wire}'),
-                tone: word.status.wire,
-              ),
-            ],
-            const Spacer(),
             Tooltip(
               message: t('flashcards.undo'),
               child: LexButton(
@@ -607,9 +637,35 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
                 onPressed: canUndo ? onUndo : null,
               ),
             ),
-            const SizedBox(width: Sp.x2),
+            Expanded(
+              child: Center(
+                child: Text(
+                  t('flashcards.progressOf', <String, Object>{
+                    'i': progress.index,
+                    'n': progress.total,
+                  }),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontFamily: Fonts.mono,
+                    fontSize: Fs.sm,
+                    height: Lh.tight,
+                    color: p.ink3,
+                    fontFeatures: const <FontFeature>[
+                      FontFeature.tabularFigures(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (word != null) ...<Widget>[
+              StatusChip(
+                label: t('status.${word.status.wire}'),
+                tone: word.status.wire,
+              ),
+              const SizedBox(width: Sp.x2),
+            ],
             LexButton(
-              label: t('flashcards.exit'),
+              label: '',
               icon: Ic.x,
               kind: BtnKind.quiet,
               size: BtnSize.sm,
@@ -618,14 +674,9 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
           ],
         ),
         const SizedBox(height: Sp.x2),
-        ProgressBar(
-          value: progress.index.toDouble(),
-          max: progress.total.toDouble(),
-          thick: true,
-        ),
-        const SizedBox(height: Sp.x2),
         Wrap(
           spacing: Sp.x3,
+          alignment: WrapAlignment.center,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: <Widget>[
             Text(
@@ -669,11 +720,26 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
 
     // The face is swapped while the card is edge-on, so the answer can never be
     // seen mirrored; `_vm.turn` only drives the rotation.
-    final Widget face = _vm.flipped
-        ? _answerFace(t, word: word)
-        : (_vm.data.settings.audioFirst
-            ? _listenFace(t, word: word)
-            : _termFace(t, word: word));
+    //
+    // 先显示译文 turns the card around: the meaning is the question and the term
+    // is the answer. It is a recognition drill rather than a recall drill —
+    // which is what a beginner with a long definition list actually needs — so
+    // the two faces swap places, and the answer face promotes the term to the
+    // hero line (see `_answerFace`).
+    final Settings settings = _vm.data.settings;
+    final bool translationFirst = settings.translationFirst;
+    final Widget face;
+    if (_vm.flipped) {
+      face = translationFirst
+          ? _answerFace(t, word: word, termEmphasis: true)
+          : _answerFace(t, word: word);
+    } else if (settings.audioFirst) {
+      face = _listenFace(t, word: word);
+    } else {
+      face = translationFirst
+          ? _meaningFace(t, word: word)
+          : _termFace(t, word: word);
+    }
 
     // Two paper edges peek out under the card: the deck the current card
     // was drawn from. They are Positioned inside a Stack that sizes to the
@@ -833,6 +899,58 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     );
   }
 
+  /// The front of the card when 先显示译文 is on: the meaning is the question.
+  ///
+  /// Same shape as [_termFace] with the roles swapped — a quiet overline, the
+  /// hero line, and the tap hint. The overline says 释义 rather than the part
+  /// of speech: a Chinese definition has no part of speech to name, and the
+  /// point of the line here is to say what kind of text you are reading.
+  Widget _meaningFace(
+    String Function(String, [Map<String, Object>?]) t, {
+    required Word word,
+  }) {
+    final Palette p = Palette.of(context);
+    final String definition =
+        word.definition.trim().isEmpty ? t('words.noDefinition') : word.definition;
+    final double size =
+        (MediaQuery.sizeOf(context).width * 0.034).clamp(24.0, 36.0);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        Text(
+          t('flashcards.meaningOverline').toUpperCase(),
+          style: TextStyle(
+            fontFamily: Fonts.mono,
+            fontSize: Fs.xs,
+            height: Lh.tight,
+            letterSpacing: 1.6,
+            color: p.ink4,
+          ),
+        ),
+        const SizedBox(height: Sp.x3),
+        Text(
+          definition,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: Fonts.display,
+            fontSize: size,
+            height: Lh.title,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.01,
+            color: p.ink,
+          ),
+        ),
+        const SizedBox(height: Sp.x6),
+        Text(
+          t('flashcards.tapToReveal'),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink4),
+        ),
+      ],
+    );
+  }
+
   Widget _listenFace(
     String Function(String, [Map<String, Object>?]) t, {
     required Word word,
@@ -870,12 +988,17 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
   Widget _answerFace(
     String Function(String, [Map<String, Object>?]) t, {
     required Word word,
+    bool termEmphasis = false,
   }) {
     final Palette p = Palette.of(context);
     final String? pos = word.pos;
     final String? exampleZh = word.exampleZh;
     final String definition =
         word.definition.trim().isEmpty ? t('words.noDefinition') : word.definition;
+    // 先显示译文 asks the meaning first, so the term is the answer and has to
+    // read as one: hero size, not the quiet overline it is on the normal back.
+    final double termSize =
+        (MediaQuery.sizeOf(context).width * 0.04).clamp(28.0, 44.0);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -884,10 +1007,11 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
           word.term,
           style: TextStyle(
             fontFamily: Fonts.display,
-            fontSize: Fs.lg,
-            height: Lh.tight,
-            letterSpacing: -0.01,
-            color: p.ink2,
+            fontSize: termEmphasis ? termSize : Fs.lg,
+            height: termEmphasis ? Lh.title : Lh.tight,
+            fontWeight: termEmphasis ? FontWeight.w600 : null,
+            letterSpacing: termEmphasis ? -0.02 : -0.01,
+            color: termEmphasis ? p.ink : p.ink2,
           ),
         ),
         const SizedBox(height: Sp.x3),
