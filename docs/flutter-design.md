@@ -4,7 +4,7 @@
 **不是** 一次重新设计。视觉决策仍以 `docs/design.md` 为准；本文只说明那些决策在
 Flutter 里如何落地、哪些地方因为平台差异不得不换一种写法、以及哪些东西是已知缺口。
 
-工程规模：`lib/` 与 `test/` 共 49,766 行 Dart，887 个测试通过（另有 6 条需要真 Postgres
+工程规模：`lib/` 与 `test/` 共 49,871 行 Dart，891 个测试通过（另有 6 条需要真 Postgres
 桥接的 E2E 默认 skip，3 条 release 资产校验在没有 `dist/` 时也 skip），`flutter analyze` 零问题。
 
 ---
@@ -20,7 +20,7 @@ Flutter 换成自绘引擎：不再有 WebView，字体随包走，绘制结果�
 上是同一份代码。代价是包体（Windows release 约 20 MB 起步）和「所有控件都要自己写」——
 React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 
-这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，887 个测试覆盖纯逻辑与
+这次移植的结论：**值得**。两端都能跑，`flutter analyze` 零问题，891 个测试覆盖纯逻辑与
 共享控件，Android 上真机验证过完整流程。但工作量比预期大——页面层占了全部代码的 40%。
 
 ---
@@ -28,7 +28,7 @@ React 里靠 CSS 一行搞定的东西，在 Flutter 里是一个 Widget。
 ## 2. 目录结构与职责
 
 ```
-flutter/lib/                        73 个文件，31,670 行（test/ 另有 50 个文件 18,096 行）
+flutter/lib/                        73 个文件，31,679 行（test/ 另有 50 个文件 18,192 行）
   main.dart            入口：Store 初始化 → UpdateService → 作用域树 → MaterialApp
   app/                 组合根：谁在什么时候构造谁
     scope.dart         InheritedWidget 层：StoreNotifier / StoreScope / I18nScope / ToastScope / NavScope
@@ -101,7 +101,7 @@ flutter/lib/                        73 个文件，31,670 行（test/ 另有 50 
       words/
         view_models/words_view_model.dart          列表 + 筛选 + 批量操作 + 现成词库（503 行）
         view_models/word_editor_view_model.dart    新建/编辑词的草稿与查词（486 行）
-        views/words_page.dart                     只画，不含判断（2256 行）
+        views/words_page.dart                     只画，不含判断（2265 行）
         views/word_editor.dart                    只画（767 行）
       practice/
         views/practice_page.dart                   复习 / 测验二选一的外壳（97 行）
@@ -335,7 +335,7 @@ transform 与 opacity，不越界回弹。
 「今天还有 7 张卡片在等你」占 312dp，可用 363dp，不折行；320dp 下五个标签各占
 25×14dp，最大的一行也没挤到相邻项。
 
-### 词库页（`words_page.dart`，2256 行 + `words_view_model.dart` 503 行）
+### 词库页（`words_page.dart`，2265 行 + `words_view_model.dart` 503 行）
 最复杂的一页：搜索框、五个状态筛选（全部/新词/复习中/学习中/已掌握）、排序、
 收藏筛选、批量选择模式、行内收藏/朗读/删除、空状态。批量模式下底部浮出一条操作栏。
 
@@ -352,12 +352,20 @@ transform 与 opacity，不越界回弹。
   按钮裁掉一半。
 
 `test/words_layout_test.dart` 用几何断言锁住这三点（释义在词条下方、释义列宽占行宽
-一半以上、窄屏不溢出），因为截图只能证明「看起来对了」，不能证明「为什么对了」。
+一半以上、窄屏不溢出），因为截图只能证明「看起来对了」，不能证明「为什么对了」。同一
+个文件还锁住新建词库卡的三件事：空名创建要说原因而不是静默返回、语言对在窄屏上下堆叠
+而按钮等宽、键盘弹出时「创建」仍在可点范围内。
 
 ### 现成词库：五十音（`kana.dart` 191 行 + `deck_templates.dart` 108 行）
 
-新建词库对话框顶部多了一栏「快速开始」，两行各是一个现成词库：平假名 46 张、片假名
-46 张。点一下就建好整个词库，不用逐个录入。
+新建词库表单里、语言对下面多了一栏「快速开始」，两行各是一个现成词库：平假名 46
+张、片假名 46 张。点一下就建好整个词库，不用逐个录入。
+
+**它只在学习语言选了日语时出现。** 第一版放在表单外面、无条件显示，结果用户建英语
+词库时也被推荐五十音——推荐变成了常驻广告。现在推荐区在表单内部，跟着「学习语言」
+下拉过滤：选英语是空表单，选日语才冒出两行，切回去又消失。判断依据是
+`deckTemplates().where((d) => d.sourceLang == _sourceLang)`，`deckTemplates()` 本身
+不按语言收窄，将来加别的语言的模板不用改视图。
 
 **做成词库，而不是新的「假名模式」。** 闪卡、测验、统计、连续天数、同步全都照着
 list + word 写；第二种内容类型要挨个教一遍，第一个会被弄坏的是每日新卡上限——它按
@@ -394,6 +402,12 @@ word 计数。生成出来的词库就是普通内容，下游不需要知道它
 一一对应、模板字段映射（罗马字进 `phonetic`、`definition2` 为空、`listId` 为空）、
 `createListWithWords` 只通知一次且每个 id 都进 pending。变异测试：把 `definition`
 改成 `wordZh` 后 1 条挂。
+
+`test/words_layout_test.dart` 另有 4 条管可见性，因为它们要 pump 真页面和真下拉，不是
+纯逻辑：选英语时「快速开始」不出现、选日语后两行都出现且位于语言对下方、切回英语后
+又消失、点平假名那行会建出 `sourceLang == 'ja'` 的 46 词词库并关掉对话框。变异测试：
+去掉 `.where((d) => d.sourceLang == _sourceLang)` 后前两条挂——「英语时不出现」这条
+断言是唯一能区分「推荐」和「广告」的东西。
 
 ### 练习页（`practice_page.dart`，97 行）
 一个入口装两种练习。参考图里只有「练习」一个位置，而旧版把闪卡与测验做成两个并列
@@ -1038,7 +1052,7 @@ Flutter 版读的是 `%APPDATA%\Lexumo\lexumo.json`——两个完全不同的�
 ```bash
 cd flutter
 ../.flutter-sdk/flutterc analyze           # No issues found!
-../.flutter-sdk/flutterc test              # 887 passed, 9 skipped
+../.flutter-sdk/flutterc test              # 891 passed, 9 skipped
 ./tool/build_apk.sh                        # 出 release APK 到 dist/
 ./tool/build_windows.sh                    # 出 Windows release 包
 ./tool/release.sh                          # 出签名 APK + dist/update.json

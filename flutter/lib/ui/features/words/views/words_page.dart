@@ -1815,6 +1815,13 @@ class _ListManagerBodyState extends State<_ListManagerBody>
     final p = Palette.of(context);
     final String uiLang = context.i18n.lang.wire;
 
+    // Only the decks written for the language the user just picked. Offering
+    // 五十音 to somebody naming an English list is noise: the suggestion has to
+    // arrive as an answer to a choice they made, not as a standing banner.
+    final List<DeckTemplate> decks = deckTemplates()
+        .where((DeckTemplate d) => d.sourceLang == _sourceLang)
+        .toList();
+
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final bool compact = constraints.maxWidth < 420;
@@ -1908,6 +1915,10 @@ class _ListManagerBodyState extends State<_ListManagerBody>
                     Expanded(child: target),
                   ],
                 ),
+              if (decks.isNotEmpty) ...<Widget>[
+                const SizedBox(height: Sp.x4),
+                _buildDeckPicker(context, decks),
+              ],
               const SizedBox(height: Sp.x4),
               Row(
                 key: _formActions,
@@ -1931,15 +1942,15 @@ class _ListManagerBodyState extends State<_ListManagerBody>
     );
   }
 
-  /// The ready-made decks, as one hairline row each.
+  /// The ready-made decks for [decks], as one hairline row each.
   ///
-  /// They sit above the blank form on purpose: someone opening this dialog to
-  /// start Japanese should not have to name an empty list first. The row is the
-  /// same shape as a list row so it reads as "a list you can have" rather than
-  /// as an advertisement.
-  Widget _buildDeckPicker(BuildContext context) {
+  /// Shown inside the create form, right under the language pair, and only when
+  /// the chosen source language has decks. Someone naming a list in Japanese
+  /// gets the offer where they made the choice; everyone else gets a blank form
+  /// and nothing else. The row is the same shape as a list row so it reads as
+  /// "a list you can have" rather than as an advertisement.
+  Widget _buildDeckPicker(BuildContext context, List<DeckTemplate> decks) {
     final Palette p = Palette.of(context);
-    final List<DeckTemplate> decks = deckTemplates();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -2014,8 +2025,6 @@ class _ListManagerBodyState extends State<_ListManagerBody>
             onCancelRename: () => setState(() => _renamingId = null),
             onDelete: () => widget.vm.deleteList(l),
           ),
-        const SizedBox(height: Sp.x4),
-        _buildDeckPicker(context),
         const SizedBox(height: Sp.x4),
         if (_creating)
           _buildCreateForm(context)

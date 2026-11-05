@@ -86,6 +86,25 @@ Future<Store> pumpWordsAt(WidgetTester tester, double width) async {
 
 Rect rectOf(WidgetTester tester, String text) => tester.getRect(find.text(text).first);
 
+/// Opens the list manager and then its blank create card.
+///
+/// The manager hangs off the tab strip's trailing + button; the manual entry
+/// point inside it is the dashed 新建词库 row under the last list.
+Future<void> openCreateCardFor(WidgetTester tester) async {
+  const String kNewList = '新建词库';
+  final Finder addTab = find.byTooltip(kNewList);
+  await tester.ensureVisible(addTab);
+  await tester.pumpAndSettle();
+  await tester.tap(addTab);
+  await tester.pumpAndSettle();
+  final Finder row = find.text(kNewList);
+  expect(row, findsOneWidget);
+  await tester.ensureVisible(row);
+  await tester.pumpAndSettle();
+  await tester.tap(row);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   // `WordsPage`'s row renders a 发音 button, whose visibility comes from
   // `speechAvailable` → `appSpeech`, the process-wide singleton. Without a
@@ -171,7 +190,6 @@ void main() {
   // reason plus a layout that keeps the actions reachable; both are asserted
   // here rather than being left to a screenshot.
   group('create-list card', () {
-    const String kNewList = '新建词库';
     const String kNameLabel = '词库名称';
     const String kRequired = '请输入词库名称';
     const String kCreate = '创建';
@@ -179,21 +197,7 @@ void main() {
 
     Finder nameField() => find.byKey(const Key('create-list-name'));
 
-    Future<void> openCreateCard(WidgetTester tester) async {
-      // The list manager hangs off the tab strip's trailing + button…
-      final Finder addTab = find.byTooltip(kNewList);
-      await tester.ensureVisible(addTab);
-      await tester.pumpAndSettle();
-      await tester.tap(addTab);
-      await tester.pumpAndSettle();
-      // …and the manual entry point is the dashed row under the last list.
-      final Finder row = find.text(kNewList);
-      expect(row, findsOneWidget);
-      await tester.ensureVisible(row);
-      await tester.pumpAndSettle();
-      await tester.tap(row);
-      await tester.pumpAndSettle();
-    }
+    Future<void> openCreateCard(WidgetTester tester) => openCreateCardFor(tester);
 
     testWidgets('a blank 创建 says why and creates nothing', (WidgetTester tester) async {
       final Store store = await pumpWordsAt(tester, 1100);
@@ -300,6 +304,98 @@ void main() {
       final Rect target = rectOf(tester, '释义语言');
       expect((source.top - target.top).abs(), lessThan(0.5));
       expect(target.left, greaterThan(source.right));
+    });
+  });
+
+  // The ready-made decks used to sit outside the form, so the dialog offered
+  // 五十音 to somebody who was naming an English list. A suggestion is only a
+  // suggestion when it answers a choice the user just made, so the picker now
+  // lives inside the form and is filtered by the chosen source language.
+  group('ready-made decks follow the source language', () {
+    const String kDecks = '快速开始';
+    const String kHiragana = '五十音 · 平假名';
+    const String kKatakana = '五十音 · 片假名';
+
+    /// Opens the source-language dropdown and picks [label].
+    ///
+    /// The closed control only shows the current language, so the option has to
+    /// be reached through the menu the tap opens.
+    Future<void> pickSourceLanguage(WidgetTester tester, String label) async {
+      await tester.tap(find.byType(LexSelect<String>).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(label).last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('an English list is not offered 五十音', (
+      WidgetTester tester,
+    ) async {
+      await pumpWordsAt(tester, 1100);
+      await openCreateCardFor(tester);
+
+      expect(find.text(kDecks), findsNothing);
+      expect(find.text(kHiragana), findsNothing);
+      expect(find.text(kKatakana), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('choosing 日语 reveals both kana decks', (
+      WidgetTester tester,
+    ) async {
+      await pumpWordsAt(tester, 1100);
+      await openCreateCardFor(tester);
+
+      await pickSourceLanguage(tester, '日语');
+
+      expect(find.text(kDecks), findsOneWidget);
+      expect(find.text(kHiragana), findsOneWidget);
+      expect(find.text(kKatakana), findsOneWidget);
+      // The rows must not be above the choice that produced them.
+      expect(
+        tester.getRect(find.text(kDecks)).top,
+        greaterThan(tester.getRect(find.text('学习语言')).top),
+        reason: 'the offer sits under the language pair, not over the form',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('switching back to 英语 takes the offer away again', (
+      WidgetTester tester,
+    ) async {
+      await pumpWordsAt(tester, 1100);
+      await openCreateCardFor(tester);
+
+      await pickSourceLanguage(tester, '日语');
+      expect(find.text(kDecks), findsOneWidget);
+
+      await pickSourceLanguage(tester, '英语');
+      expect(find.text(kDecks), findsNothing);
+      expect(find.text(kHiragana), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('tapping a deck adds that list and closes the dialog', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpWordsAt(tester, 1100);
+      await openCreateCardFor(tester);
+      await pickSourceLanguage(tester, '日语');
+
+      final int before = store.data.lists.length;
+      await tester.tap(find.text(kHiragana));
+      await tester.pumpAndSettle();
+
+      expect(store.data.lists.length, before + 1);
+      final WordList created = store.data.lists.last;
+      expect(created.sourceLang, 'ja');
+      expect(created.targetLang, 'zh-CN');
+      expect(created.name, kHiragana);
+      expect(
+        store.data.words.where((w) => w.listId == created.id).length,
+        46,
+        reason: 'one _commit carries the whole deck',
+      );
+      expect(find.text('词库名称'), findsNothing, reason: 'the dialog closed');
     });
   });
 
