@@ -321,7 +321,8 @@ class _WordsPageState extends State<WordsPage> {
 /* List tabs                                                           */
 /* ------------------------------------------------------------------ */
 
-/// The wordbook strip: one fixed row, scrolled sideways when it overflows.
+/// The wordbook strip: one fixed row — the current wordbook on the left, every
+/// other one scrolling beside it.
 ///
 /// It used to be a `Wrap`, which was wrong in both directions. Three lists fit
 /// on a phone and five did not: the surplus wrapped onto a second and then a
@@ -333,6 +334,15 @@ class _WordsPageState extends State<WordsPage> {
 /// Now the strip is exactly one row high no matter how many wordbooks exist.
 /// The tabs scroll horizontally; the + does not scroll with them, because a +
 /// that can be pushed off the edge is the same bug as a + that wraps off it.
+///
+/// The current wordbook is not a tab any more. It sits pinned at the left as a
+/// dropdown listing the other wordbooks *in the same learning language*, so
+/// jumping between 日语 N2 and 五十音 stays one click even when the strip holds
+/// thirty books across six languages: the strip answers "everything I have",
+/// the dropdown answers "the ones this one is comparable to". The strip keeps
+/// every other wordbook whatever its language, because the cross-language
+/// switch has to stay one click as well — the dropdown is a shortcut, not the
+/// only door.
 ///
 /// Two things are needed to make that row usable with a mouse, and both are
 /// done here rather than left to the platform: Flutter's scrollables ignore the
@@ -362,46 +372,10 @@ class _ListTabs extends StatefulWidget {
 class _ListTabsState extends State<_ListTabs> {
   final ScrollController _scroll = ScrollController();
 
-  /// Marks the tab of [widget.activeId] so it can be scrolled into view.
-  final GlobalKey _activeTab = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    _revealActive();
-  }
-
-  @override
-  void didUpdateWidget(_ListTabs oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.activeId != widget.activeId) _revealActive();
-  }
-
   @override
   void dispose() {
     _scroll.dispose();
     super.dispose();
-  }
-
-  /// Scrolls the active tab into view after the frame that may have moved it.
-  ///
-  /// A list can be selected without touching the strip — from the manager
-  /// dialog, or restored from settings on launch — and a strip scrolled to some
-  /// other wordbook would then show no highlight at all, so the page would look
-  /// like it had failed to switch. Centring is right for both cases: when
-  /// everything already fits there is nothing to scroll, and when it does not,
-  /// the tab the user is reading is the one worth the middle of the strip.
-  void _revealActive() {
-    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
-      final BuildContext? tab = _activeTab.currentContext;
-      if (!mounted || tab == null) return;
-      Scrollable.ensureVisible(
-        tab,
-        alignment: 0.5,
-        duration: Motion.dur2,
-        curve: Motion.ease,
-      );
-    });
   }
 
   /// Turns a vertical wheel notch into horizontal travel.
@@ -424,8 +398,43 @@ class _ListTabsState extends State<_ListTabs> {
 
   @override
   Widget build(BuildContext context) {
+    WordList? active;
+    for (final WordList list in widget.lists) {
+      if (list.id == widget.activeId) {
+        active = list;
+        break;
+      }
+    }
+
+    // Two different cuts of the same collection, on purpose. `siblings` feeds
+    // the dropdown and is narrowed to the active book's learning language;
+    // `others` feeds the strip and is not narrowed at all.
+    final List<WordList> siblings = active == null
+        ? const <WordList>[]
+        : <WordList>[
+            for (final WordList list in widget.lists)
+              if (list.id != active.id && list.sourceLang == active.sourceLang)
+                list,
+          ];
+    final List<WordList> others = <WordList>[
+      for (final WordList list in widget.lists)
+        if (list.id != widget.activeId) list,
+    ];
+
     return Row(
       children: <Widget>[
+        Padding(
+          padding: const EdgeInsetsDirectional.only(start: Sp.x6),
+          child: active == null
+              ? const SizedBox.shrink()
+              : _ActiveListButton(
+                  active: active,
+                  siblings: siblings,
+                  counts: widget.counts,
+                  onSelect: widget.onSelect,
+                ),
+        ),
+        const SizedBox(width: Sp.x2),
         Expanded(
           child: ScrollConfiguration(
             // A mouse cannot drag a scrollable by default; on the desktop build
@@ -442,28 +451,21 @@ class _ListTabsState extends State<_ListTabs> {
               child: SingleChildScrollView(
                 controller: _scroll,
                 scrollDirection: Axis.horizontal,
-                // The strip runs edge to edge so tabs can disappear at the
-                // window's edge rather than at an inner margin; the gutter the
-                // rest of the page uses lives on the content instead.
-                padding: const EdgeInsetsDirectional.only(
-                  start: Sp.x6,
-                  end: Sp.x2,
-                ),
+                // No leading gutter here: the active wordbook already supplies
+                // it, and a second inset would leave a gap between the pill and
+                // the first tab that reads as a broken row.
+                padding: const EdgeInsetsDirectional.only(end: Sp.x2),
                 child: Row(
                   children: <Widget>[
-                    for (int i = 0; i < widget.lists.length; i++)
+                    for (int i = 0; i < others.length; i++)
                       Padding(
-                        key: widget.lists[i].id == widget.activeId
-                            ? _activeTab
-                            : null,
                         padding: EdgeInsetsDirectional.only(
-                          end: i == widget.lists.length - 1 ? 0 : Sp.x2,
+                          end: i == others.length - 1 ? 0 : Sp.x2,
                         ),
                         child: _ListTab(
-                          label: widget.lists[i].name,
-                          count: widget.counts[widget.lists[i].id]?.length ?? 0,
-                          active: widget.lists[i].id == widget.activeId,
-                          onTap: () => widget.onSelect(widget.lists[i].id),
+                          label: others[i].name,
+                          count: widget.counts[others[i].id]?.length ?? 0,
+                          onTap: () => widget.onSelect(others[i].id),
                         ),
                       ),
                   ],
@@ -485,17 +487,193 @@ class _ListTabsState extends State<_ListTabs> {
   }
 }
 
+/// The current wordbook, pinned at the left of the strip.
+///
+/// It is a menu only when there is something to switch to. A book that is the
+/// only one in its language gets a plain label: a chevron over an empty menu
+/// teaches the user that the control lies, and the strip beside it already
+/// offers every other book anyway.
+///
+/// The menu lists the same-language siblings and nothing else — that is the
+/// whole point of it. It deliberately has no "manage wordbooks" entry: the +
+/// at the right end of the same row opens that dialog, and a second door to one
+/// room is the page saying the same thing twice.
+class _ActiveListButton extends StatefulWidget {
+  const _ActiveListButton({
+    required this.active,
+    required this.siblings,
+    required this.counts,
+    required this.onSelect,
+  });
+
+  final WordList active;
+  final List<WordList> siblings;
+  final Map<String, List<Word>> counts;
+  final ValueChanged<String> onSelect;
+
+  @override
+  State<_ActiveListButton> createState() => _ActiveListButtonState();
+}
+
+class _ActiveListButtonState extends State<_ActiveListButton> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final bool canSwitch = widget.siblings.isNotEmpty;
+
+    // The pill is the same shape and tint the active tab used to wear, so the
+    // strip still reads as "this one, then the others" at a glance.
+    final Widget pill = MouseRegion(
+      cursor: canSwitch ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Container(
+        height: context.controlH,
+        // The pill sits in the same row as an `Expanded` strip, so it has to be
+        // bounded: a long wordbook name would otherwise take the width the tabs
+        // need and push the + off the right edge — the very bug this row was
+        // rebuilt to remove, arriving from the other side.
+        constraints: BoxConstraints(
+          minWidth: context.isTouch ? Layout.tap : 0,
+          maxWidth: 220,
+        ),
+        padding: EdgeInsets.symmetric(
+          horizontal: Sp.x3,
+          vertical: context.isTouch ? 0 : Sp.x2,
+        ),
+        decoration: BoxDecoration(
+          color: p.accentSoft,
+          borderRadius: R.borderPill,
+          // Hover is a ring, not a darker fill: there is no "one step past
+          // accentSoft" in the palette, and inventing one here would be the
+          // third tint of azurite in the app. A ring also says "this opens
+          // something" rather than "this is selected", which the fill already
+          // says.
+          border: Border.all(
+            color: _hover && canSwitch ? p.accent : fadeFrom(p.accent),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Flexible(
+              child: Text(
+                widget.active.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: Fs.sm,
+                  height: Lh.snug,
+                  fontWeight: FontWeight.w500,
+                  color: p.accentInk,
+                ),
+              ),
+            ),
+            const SizedBox(width: Sp.x2),
+            Text(
+              '${widget.counts[widget.active.id]?.length ?? 0}',
+              style: TextStyle(
+                fontFamily: Fonts.mono,
+                fontSize: Fs.xs,
+                height: Lh.none,
+                color: p.accentInk,
+              ),
+            ),
+            if (canSwitch) ...<Widget>[
+              const SizedBox(width: Sp.x1),
+              LexIcon(Ic.chevronDown, size: 13, color: p.accentInk),
+            ],
+          ],
+        ),
+      ),
+    );
+
+    if (!canSwitch) {
+      return KeyedSubtree(
+        key: const Key('active-list-button'),
+        child: pill,
+      );
+    }
+
+    return MenuAnchor(
+      builder: (BuildContext ctx, MenuController controller, Widget? _) =>
+          Tooltip(
+        message: context.t('words.switchList'),
+        waitDuration: const Duration(milliseconds: 500),
+        child: GestureDetector(
+          onTap: () =>
+              controller.isOpen ? controller.close() : controller.open(),
+          child: KeyedSubtree(
+            key: const Key('active-list-button'),
+            child: pill,
+          ),
+        ),
+      ),
+      menuChildren: <Widget>[
+        for (final WordList sibling in widget.siblings)
+          MenuItemButton(
+            // A stable key: the name alone is not unique enough for a test to
+            // say "this menu does not offer the Japanese books", because the
+            // same names are printed in the strip right next to the menu.
+            key: ValueKey<String>('switch-list-${sibling.id}'),
+            onPressed: () => widget.onSelect(sibling.id),
+            style: ButtonStyle(
+              backgroundColor: WidgetStatePropertyAll<Color>(p.surface),
+              shape: WidgetStatePropertyAll<OutlinedBorder>(
+                RoundedRectangleBorder(borderRadius: R.borderXs),
+              ),
+              minimumSize: const WidgetStatePropertyAll<Size>(Size(200, 40)),
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 200),
+                    child: Text(
+                      sibling.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: Fs.sm, color: p.ink),
+                    ),
+                  ),
+                  const SizedBox(width: Sp.x3),
+                  Text(
+                    '${widget.counts[sibling.id]?.length ?? 0}',
+                    style: TextStyle(
+                      fontFamily: Fonts.mono,
+                      fontSize: Fs.xs,
+                      color: p.ink4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// One wordbook in the strip, other than the active one.
+///
+/// No active state here any more: the current book lives in
+/// [_ActiveListButton], and a tab in this row can never be it. So a tab is
+/// always plain text that darkens under the pointer — it changes which rows are
+/// shown, it does not hold data, and a row of outlined boxes above the search
+/// field read like a form.
 class _ListTab extends StatefulWidget {
   const _ListTab({
     required this.label,
     required this.count,
-    required this.active,
     required this.onTap,
   });
 
   final String label;
   final int count;
-  final bool active;
   final VoidCallback onTap;
 
   @override
@@ -508,17 +686,8 @@ class _ListTabState extends State<_ListTab> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    // A list tab changes which rows are shown; it does not hold data. So it is
-    // not a box: the active tab carries the azurite tint the segmented control
-    // uses, and the rest are plain text that darkens under the pointer. Every
-    // tab used to draw a 1px outline, which put a row of five empty rectangles
-    // above the search field and made the strip look like a form.
-    final bg = widget.active
-        ? p.accentSoft
-        : _hover
-            ? p.surfaceHover
-            : fadeFrom(p.surfaceHover);
-    final fg = widget.active ? p.accentInk : (_hover ? p.ink : p.ink2);
+    final bg = _hover ? p.surfaceHover : fadeFrom(p.surfaceHover);
+    final fg = _hover ? p.ink : p.ink2;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -529,11 +698,8 @@ class _ListTabState extends State<_ListTab> {
         child: AnimatedContainer(
           duration: Motion.dur1,
           curve: Motion.ease,
-          // The list strip is the first thing on the page and the only way to
-          // switch lists, so each tab is a target, not a caption. It grows with
-          // the density like a button does. No `alignment:` here — setting one
-          // makes the box claim every pixel the Wrap offers, which turned one
-          // tab into a full-width bar.
+          // The list strip is the only way to switch lists, so each tab is a
+          // target, not a caption. It grows with the density like a button does.
           height: context.controlH,
           // A one-character list name would otherwise be a target narrower than
           // a finger; the floor is on the box, so the shape does not grow with
@@ -547,13 +713,12 @@ class _ListTabState extends State<_ListTab> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+            children: <Widget>[
               Text(
                 widget.label,
                 style: TextStyle(
                   fontSize: Fs.sm,
                   height: Lh.snug,
-                  fontWeight: widget.active ? FontWeight.w500 : FontWeight.w400,
                   color: fg,
                 ),
               ),
@@ -564,7 +729,7 @@ class _ListTabState extends State<_ListTab> {
                   fontFamily: Fonts.mono,
                   fontSize: Fs.xs,
                   height: Lh.none,
-                  color: widget.active ? p.accentInk : p.ink4,
+                  color: p.ink4,
                 ),
               ),
             ],

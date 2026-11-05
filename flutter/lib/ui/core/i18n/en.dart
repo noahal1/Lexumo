@@ -186,6 +186,9 @@ const Map<String, String> enRaw = {
   'words.enterNext': 'next field',
   'words.saveAnywhere': 'save',
   'words.listsSubtitle': '{n} lists',
+  // Names what the menu is for (another book in the same language), not
+  // the whole collection — the strip beside it switches across languages too.
+  'words.switchList': 'Switch to another list in this language',
   'words.deleteListConfirm':
       'Delete “{name}”? Its {n} words go with it, and this cannot be undone.',
   // practice

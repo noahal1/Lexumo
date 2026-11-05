@@ -18,7 +18,7 @@
 cd flutter
 
 ../.flutter-sdk/flutterc analyze     # No issues found!
-../.flutter-sdk/flutterc test        # 894 passed, 9 skipped
+../.flutter-sdk/flutterc test        # 897 passed, 9 skipped
 
 ./tool/build_apk.sh                  # release APK → dist/lexumo-android-release.apk
 ./tool/release.sh                    # 签名 APK + dist/update.json（发布用）
@@ -162,7 +162,7 @@ CI 读同一个文件。没有这个文件时清单里就没有 `notes`，应用
 ../.flutter-sdk/flutterc test test/app_mount_test.dart       # 真实 main.dart 的嵌套能挂载、能点
 ```
 
-894 个通过、9 个跳过（6 条要真 Postgres 桥接，见
+897 个通过、9 个跳过（6 条要真 Postgres 桥接，见
 `../docs/supabase-sync-plan.md`）。四层验证各自抓不到什么，记在
 `../docs/flutter-design.md` 末节：
 

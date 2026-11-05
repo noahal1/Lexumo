@@ -21,6 +21,7 @@ import 'package:lexumo/data/repositories/store.dart';
 import 'package:lexumo/ui/core/theme.dart';
 import 'package:lexumo/ui/core/tokens.dart';
 import 'package:lexumo/ui/core/widgets/controls.dart';
+import 'package:lexumo/ui/core/widgets/lex_icon.dart';
 import 'package:lexumo/domain/models/seed.dart';
 import 'package:lexumo/domain/models/types.dart';
 import 'package:lexumo/ui/core/i18n/i18n.dart';
@@ -490,42 +491,158 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('selecting a wordbook off-screen brings it into view', (
+    testWidgets('the current wordbook leaves the strip and becomes the pill', (
       WidgetTester tester,
     ) async {
       final Store store = await pumpWordsAt(tester, 411);
-      await addLists(store, 8);
+      await addLists(store, 3);
       await tester.pumpAndSettle();
 
-      final ScrollableState strip = stripScrollable(tester);
-      expect(strip.position.pixels, 0, reason: 'the strip starts at the front');
-
-      // Selecting through the manager is the case a `Wrap` never had to handle:
-      // the highlight moves to a tab that may be scrolled out of sight, and a
-      // strip showing no highlight reads as "the switch did nothing".
-      await tester.tap(find.byTooltip('新建词库'));
-      await tester.pumpAndSettle();
-      final Finder row = find.descendant(
-        of: find.byType(Dialog),
-        matching: find.text('词库 8 号'),
+      // The active book is pinned at the left, so it is not in the scrolling
+      // row any more; the two others are. This is what keeps the strip from
+      // showing the same name twice — once as "you are here", once as a
+      // destination you are already at.
+      final Finder pill = find.byKey(const Key('active-list-button'));
+      expect(pill, findsOneWidget);
+      expect(
+        find.descendant(of: pill, matching: find.text('示例词库 · 英语')),
+        findsOneWidget,
+        reason: 'the pill names the wordbook the table is showing',
       );
-      // The manager lists every wordbook, so the last one may itself be below
-      // the dialog's fold; tapping its recorded position would land on the
-      // barrier and dismiss the dialog instead of selecting.
-      await tester.ensureVisible(row);
-      await tester.pumpAndSettle();
-      await tester.tap(row);
+      expect(
+        find.text('示例词库 · 英语'),
+        findsOneWidget,
+        reason: 'and it appears exactly once on the page',
+      );
+      expect(find.text('词库 1 号'), findsOneWidget);
+      expect(find.text('词库 2 号'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the dropdown offers same-language siblings only', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpWordsAt(tester, 411);
+      await addLists(store, 2);
+      // A Japanese book: same page, different learning language.
+      final WordList japanese = store.createList(
+        name: '日语 N2',
+        sourceLang: 'ja',
+        targetLang: 'zh-CN',
+      );
+      store.addWord(
+        NewWordInput(term: 'ねこ', definition: '猫', listId: japanese.id),
+      );
+      await store.flush();
       await tester.pumpAndSettle();
 
       expect(
-        strip.position.pixels,
-        greaterThan(0),
-        reason: 'the newly active tab has to be revealed',
+        find.descendant(
+          of: find.byKey(const Key('active-list-button')),
+          matching: find.byWidgetPredicate(
+            (Widget w) => w is LexIcon && w.name == Ic.chevronDown,
+          ),
+        ),
+        findsOneWidget,
+        reason: 'a menu you cannot see is a menu nobody opens',
+      );
+
+      await tester.tap(find.byKey(const Key('active-list-button')));
+      await tester.pumpAndSettle();
+
+      // The menu is the shortcut for "another book in this language", so the
+      // English books are there and the Japanese one is not — a menu that
+      // listed everything would be the strip again, one click further away.
+      expect(find.byKey(ValueKey<String>('switch-list-${store.data.lists[1].id}')),
+          findsOneWidget);
+      expect(find.byKey(ValueKey<String>('switch-list-${store.data.lists[2].id}')),
+          findsOneWidget);
+      expect(
+        find.byKey(ValueKey<String>('switch-list-${japanese.id}')),
+        findsNothing,
+        reason: 'a different learning language is not a sibling',
       );
       expect(
-        find.text('词库 8 号').hitTestable(),
-        findsWidgets,
-        reason: 'and it has to actually be on screen, not merely scrolled to',
+        find.byKey(ValueKey<String>('switch-list-${store.data.lists[0].id}')),
+        findsNothing,
+        reason: 'the book you are already reading is not a destination',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a wordbook alone in its language has no dropdown', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpWordsAt(tester, 411);
+      final WordList japanese = store.createList(
+        name: '日语 N2',
+        sourceLang: 'ja',
+        targetLang: 'zh-CN',
+      );
+      store.addWord(
+        NewWordInput(term: 'ねこ', definition: '猫', listId: japanese.id),
+      );
+      await store.flush();
+      await tester.pumpAndSettle();
+
+      // Switch to the Japanese book, which has no sibling at all.
+      await tester.tap(find.text('日语 N2'));
+      await tester.pumpAndSettle();
+
+      final Finder pill = find.byKey(const Key('active-list-button'));
+      // The icons are hand-drawn SVGs, so this has to name `Ic.chevronDown`;
+      // `find.byIcon(Icons.expand_more)` would pass against any build at all,
+      // including one that shows the chevron over an empty menu.
+      expect(
+        find.descendant(
+          of: pill,
+          matching: find.byWidgetPredicate(
+            (Widget w) => w is LexIcon && w.name == Ic.chevronDown,
+          ),
+        ),
+        findsNothing,
+        reason: 'a chevron over an empty menu teaches that the control lies',
+      );
+      // Tapping it must do nothing rather than open an empty popup.
+      await tester.tap(pill);
+      await tester.pumpAndSettle();
+      expect(find.byKey(ValueKey<String>('switch-list-${japanese.id}')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('picking from the dropdown switches the table', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpWordsAt(tester, 411);
+      final WordList other = store.createList(
+        name: '雅思核心',
+        sourceLang: 'en',
+        targetLang: 'zh-CN',
+      );
+      // Not one of the seeded words: a term the sample wordbook already holds
+      // would be on screen before the switch and the assertion would prove
+      // nothing.
+      store.addWord(
+        NewWordInput(term: 'lacuna', definition: '空白', listId: other.id),
+      );
+      await store.flush();
+      await tester.pumpAndSettle();
+
+      expect(find.text('lacuna'), findsNothing, reason: 'wrong book on screen');
+
+      await tester.tap(find.byKey(const Key('active-list-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>('switch-list-${other.id}')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('lacuna'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('active-list-button')),
+          matching: find.text('雅思核心'),
+        ),
+        findsOneWidget,
+        reason: 'the pill has to name the book the table now shows',
       );
       expect(tester.takeException(), isNull);
     });

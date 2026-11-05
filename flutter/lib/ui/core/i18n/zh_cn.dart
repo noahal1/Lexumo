@@ -181,6 +181,9 @@ const Map<String, String> zhCnRaw = {
   'words.enterNext': '下一栏',
   'words.saveAnywhere': '保存',
   'words.listsSubtitle': '{n} 个词库',
+  // 当前词本的下拉：只说「切到同语言的另一本」，不要写成「选择词库」，
+  // 否则读者会以为这是唯一入口，而右边的标签条也能切（含跨语言）。
+  'words.switchList': '切换到同语言的词库',
   'words.deleteListConfirm': '删除词库「{name}」，其中的 {n} 个词语会一起删掉，不能恢复。',
   // practice
   'practice.review': '复习',
