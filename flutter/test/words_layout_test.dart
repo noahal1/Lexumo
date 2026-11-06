@@ -646,6 +646,98 @@ void main() {
       );
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('the strip leads with same-language siblings, not other-language books', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpWordsAt(tester, 411);
+      // The kana decks are offered when Japanese is chosen, so in a real
+      // library they are often created BEFORE the reader later adds more
+      // English books. Creation order alone used to put those Japanese books
+      // first in the strip. On a phone the strip's viewport is barely one tab
+      // wide, so the very books a reader wants to switch to sat off-screen and
+      // looked like they had vanished — with the dropdown the only place still
+      // showing them. That is the complaint this locks down.
+      for (int i = 0; i < 2; i++) {
+        final WordList ja = store.createList(
+          name: '五十音 ${i + 1}',
+          sourceLang: 'ja',
+          targetLang: 'zh-CN',
+        );
+        store.addWord(NewWordInput(
+          term: 'あ$i', definition: '假名 $i', listId: ja.id,
+        ));
+      }
+      final List<String> siblings = <String>[];
+      for (int i = 0; i < 2; i++) {
+        final WordList en = store.createList(
+          name: '英语词本 ${i + 1}',
+          sourceLang: 'en',
+          targetLang: 'zh-CN',
+        );
+        store.addWord(NewWordInput(
+          term: 'word$i', definition: '释义 $i', listId: en.id,
+        ));
+        siblings.add(en.name);
+      }
+      await store.flush();
+      await tester.pumpAndSettle();
+
+      // The + is the right edge of the strip; anything to its right is off the
+      // screen and needs a sideways scroll to be seen at all.
+      final Rect addRect = tester.getRect(find.byTooltip('新建词库'));
+      final Rect firstSibling = tester.getRect(find.text(siblings.first).first);
+      expect(
+        firstSibling.left,
+        lessThan(addRect.left),
+        reason: 'the first same-language sibling must be visible in the strip, '
+            'not pushed past the + button',
+      );
+      expect(
+        firstSibling.left,
+        lessThan(tester.getRect(find.text('五十音 1').first).left),
+        reason: 'siblings come before books in another learning language',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('switching wordbooks rewinds the strip to the new siblings', (
+      WidgetTester tester,
+    ) async {
+      final Store store = await pumpWordsAt(tester, 411);
+      for (int i = 0; i < 3; i++) {
+        final WordList list = store.createList(
+          name: '词库 ${i + 1} 号',
+          sourceLang: 'en',
+          targetLang: 'zh-CN',
+        );
+        store.addWord(NewWordInput(
+          term: 'term$i', definition: '释义 $i', listId: list.id,
+        ));
+      }
+      await store.flush();
+      await tester.pumpAndSettle();
+
+      final ScrollableState strip = tester
+          .stateList<ScrollableState>(find.byType(Scrollable))
+          .firstWhere((ScrollableState s) => s.position.axis == Axis.horizontal);
+      strip.position.jumpTo(strip.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(strip.position.pixels, greaterThan(0),
+          reason: 'the strip has to be scrolled away first, or nothing is proved');
+
+      // Switch through the pill's dropdown — the path a reader actually uses.
+      await tester.tap(find.byKey(const Key('active-list-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+          find.byKey(ValueKey<String>('switch-list-${store.data.lists[3].id}')));
+      await tester.pumpAndSettle();
+
+      expect(strip.position.pixels, 0,
+          reason: 'a strip left scrolled to the tail would hide the new '
+              "book's same-language siblings off its left edge");
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('pinned header', () {

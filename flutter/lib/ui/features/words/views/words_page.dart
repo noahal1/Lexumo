@@ -373,6 +373,21 @@ class _ListTabsState extends State<_ListTabs> {
   final ScrollController _scroll = ScrollController();
 
   @override
+  void didUpdateWidget(_ListTabs oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeId == widget.activeId) return;
+    // The strip leads with the active book's same-language siblings, so a
+    // strip left scrolled to some later book would hide exactly those siblings
+    // off its left edge after a switch. The reader would see only books in
+    // other languages and conclude the same-language ones had vanished —
+    // with the dropdown the only place still showing them. Rewind on switch.
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted || !_scroll.hasClients) return;
+      _scroll.jumpTo(0);
+    });
+  }
+
+  @override
   void dispose() {
     _scroll.dispose();
     super.dispose();
@@ -408,7 +423,14 @@ class _ListTabsState extends State<_ListTabs> {
 
     // Two different cuts of the same collection, on purpose. `siblings` feeds
     // the dropdown and is narrowed to the active book's learning language;
-    // `others` feeds the strip and is not narrowed at all.
+    // the strip is NOT narrowed — a book in another language is still one tap
+    // away. But it is ordered: the active book's siblings come first.
+    //
+    // Creation order used to put the cross-language books (the kana decks are
+    // often added later) in front of the same-language ones. On a phone the
+    // strip's viewport is barely one tab wide, so the books a reader most
+    // wants to switch to sat off-screen behind a scroll and looked like they
+    // had vanished — the dropdown was the only place still showing them.
     final List<WordList> siblings = active == null
         ? const <WordList>[]
         : <WordList>[
@@ -416,9 +438,12 @@ class _ListTabsState extends State<_ListTabs> {
               if (list.id != active.id && list.sourceLang == active.sourceLang)
                 list,
           ];
-    final List<WordList> others = <WordList>[
+    final List<WordList> strip = <WordList>[
+      ...siblings,
       for (final WordList list in widget.lists)
-        if (list.id != widget.activeId) list,
+        if (list.id != widget.activeId &&
+            (active == null || list.sourceLang != active.sourceLang))
+          list,
     ];
 
     return Row(
@@ -457,15 +482,15 @@ class _ListTabsState extends State<_ListTabs> {
                 padding: const EdgeInsetsDirectional.only(end: Sp.x2),
                 child: Row(
                   children: <Widget>[
-                    for (int i = 0; i < others.length; i++)
+                    for (int i = 0; i < strip.length; i++)
                       Padding(
                         padding: EdgeInsetsDirectional.only(
-                          end: i == others.length - 1 ? 0 : Sp.x2,
+                          end: i == strip.length - 1 ? 0 : Sp.x2,
                         ),
                         child: _ListTab(
-                          label: others[i].name,
-                          count: widget.counts[others[i].id]?.length ?? 0,
-                          onTap: () => widget.onSelect(others[i].id),
+                          label: strip[i].name,
+                          count: widget.counts[strip[i].id]?.length ?? 0,
+                          onTap: () => widget.onSelect(strip[i].id),
                         ),
                       ),
                   ],
