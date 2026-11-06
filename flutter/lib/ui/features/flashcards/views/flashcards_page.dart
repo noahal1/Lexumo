@@ -538,7 +538,12 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             onUndo: onUndo,
             onExit: onExit),
         const SizedBox(height: Sp.x4),
-        _flipCard(t, word: word, onGrade: onGrade, onReveal: onReveal, onSkip: onSkip),
+        _flipCard(t,
+            word: word,
+            preview: preview,
+            onGrade: onGrade,
+            onReveal: onReveal,
+            onSkip: onSkip),
         const SizedBox(height: Sp.x4),
         if (_vm.flipped)
           _gradeRow(t, preview: preview, newCard: newCard, onGrade: onGrade)
@@ -717,6 +722,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
   Widget _flipCard(
     String Function(String, [Map<String, Object>?]) t, {
     required Word word,
+    required Map<Grade, ({int intervalDays, WordStatus status})> preview,
     required void Function(Grade) onGrade,
     required VoidCallback onReveal,
     required VoidCallback onSkip,
@@ -781,6 +787,14 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       // decisive throw — sideways or down — discards the unseen card.
       onSwipeDown: onSkip,
       minHeight: minHeight,
+      // Where each sideways grade would send this word. The dragged border
+      // wears the destination's status colour so the pull previews the same
+      // four hues the word library paints down its left margin.
+      statusOf: preview.map(
+        (Grade g, ({int intervalDays, WordStatus status}) v) =>
+            MapEntry<Grade, WordStatus>(g, v.status),
+      ),
+      currentStatus: word.status,
       head: Row(
         children: <Widget>[
           Text(
@@ -1379,6 +1393,8 @@ class _FlipCard extends StatefulWidget {
     required this.minHeight,
     required this.head,
     required this.face,
+    required this.statusOf,
+    required this.currentStatus,
     this.onSwipe,
     this.onSwipeDown,
   });
@@ -1389,6 +1405,16 @@ class _FlipCard extends StatefulWidget {
   final double minHeight;
   final Widget head;
   final Widget face;
+
+  /// The study status each sideways grade would land on, from
+  /// [previewGrades]. A sideways drag is a decision about the word's future,
+  /// so the border previews that destination in the same status colour the
+  /// word library uses.
+  final Map<Grade, WordStatus> statusOf;
+
+  /// The word's status before the drag. A skip leaves the status alone, so
+  /// its border stays this colour rather than inventing a fifth hue.
+  final WordStatus currentStatus;
 
   /// Called with a grade when the revealed card is dragged sideways past the
   /// swipe threshold — left for a hard, right for a good. Null disables the
@@ -1589,14 +1615,21 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
   @override
   Widget build(BuildContext context) {
     final Palette p = Palette.of(context);
-    // The pull reads as a decision before the release: left tints toward the
-    // danger pair, right toward the ok pair, down toward the warn pair.
-    final Grade? preview = _swipeGrade();
-    final Color border = switch (preview) {
-      Grade.hard => p.danger,
-      Grade.good => p.ok,
-      _ => _skipReady ? p.warn : (_hover ? p.lineStrong : p.line),
-    };
+    // The pull previews a decision, so it wears the same four status colours
+    // the word library paints on its left stripe. A sideways drag on the back
+    // shows where that grade would send the word; a skip leaves the status
+    // alone, so it keeps the word's current colour. No fifth "danger" or
+    // "warn" accent: that would teach a legend the library does not have.
+    final Grade? grade = _swipeGrade();
+    final bool grades = !widget.tappable && grade != null && !_skipReady;
+    final Color border;
+    if (grades) {
+      border = p.statusColor(widget.statusOf[grade]!);
+    } else if (_throwReady) {
+      border = p.statusColor(widget.currentStatus);
+    } else {
+      border = _hover ? p.lineStrong : p.line;
+    }
     return MouseRegion(
       cursor: widget.tappable
           ? SystemMouseCursors.click

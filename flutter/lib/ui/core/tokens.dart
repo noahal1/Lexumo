@@ -17,6 +17,8 @@ library;
 // is declared there; `widgets` alone leaves it undefined.
 import 'package:flutter/material.dart';
 
+import '../../domain/models/types.dart' show WordStatus;
+
 /// ---------------------------------------------------------------------------
 /// Palette — the light ("paper") theme.
 /// ---------------------------------------------------------------------------
@@ -388,6 +390,21 @@ class Palette extends ThemeExtension<Palette> {
       isDark: t < 0.5 ? isDark : other.isDark,
     );
   }
+
+  /// The four study statuses share one colour language. Four hues, not four
+  /// shades: a 2dp word stripe — or a dragged card's border — carries no
+  /// lightness information, so the stats page's single-accent ramp is unusable
+  /// here. Every hue is a semantic colour defined in both themes, so none
+  /// disappears in the dark. Consumers: the word library's per-row stripe and
+  /// its filter swatches, and the flashcard border while a grade is being
+  /// pulled. Keeping the mapping on the palette means those two screens cannot
+  /// drift apart.
+  Color statusColor(WordStatus status) => switch (status) {
+        WordStatus.new_ => ink4, // grey: never studied
+        WordStatus.reviewing => info, // blue: in the review queue
+        WordStatus.learning => warn, // amber: being learned
+        WordStatus.mastered => ok, // green: mastered
+      };
 
   /// Read the palette without threading a BuildContext through every helper.
   static Palette of(BuildContext context) =>

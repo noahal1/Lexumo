@@ -64,19 +64,6 @@ const List<(SortKey, String)> _kSortOptions = <(SortKey, String)>[
 /// Statuses offered by the filter, in ladder order after "all".
 const List<WordStatus> _kStatusFilters = STATUS_ORDER;
 
-/// The colour of a word's left stripe. Four hues, not four shades: a 2dp
-/// stripe carries no lightness information, so the stats page's single-accent
-/// ramp is unusable here. Grey is "never studied", blue "in the review queue",
-/// amber "being learned", green "mastered" — all semantic colours the palette
-/// already defines in both themes, so no stripe disappears in the dark. The
-/// filter menu repeats the same four swatches, so the stripe is readable.
-Color _statusStripeColor(Palette p, WordStatus status) => switch (status) {
-      WordStatus.new_ => p.ink4,
-      WordStatus.reviewing => p.info,
-      WordStatus.learning => p.warn,
-      WordStatus.mastered => p.ok,
-    };
-
 class WordsPage extends StatefulWidget {
   const WordsPage({super.key, this.controller});
 
@@ -1217,7 +1204,7 @@ class _MenuRow extends StatelessWidget {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              color: _statusStripeColor(p, status!),
+              color: p.statusColor(status!),
               shape: BoxShape.circle,
             ),
           ),
@@ -1571,7 +1558,7 @@ class _WordRowState extends State<_WordRow> {
               child: Container(
                 key: ValueKey<String>('status-stripe-${w.status.wire}'),
                 width: Layout.listRuleW,
-                color: _statusStripeColor(p, w.status),
+                color: p.statusColor(w.status),
               ),
             ),
           ],
