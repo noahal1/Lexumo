@@ -990,8 +990,9 @@ class Card extends StatelessWidget {
 /// with a single accent rule down the left edge, and the effect is that the
 /// page reads as a page rather than as a dashboard of widgets.
 ///
-/// So a list is [HairlineList] holding [HairlineRow]s. The row paints the rule
-/// and the divider itself; the list only decides which row is last.
+/// So a list is [HairlineList] holding [HairlineRow]s. The row paints its own
+/// divider; the list decides which row is last and, by default, draws the left
+/// rule down the whole column.
 /// ---------------------------------------------------------------------------
 
 /// A column of [HairlineRow]s: full-width, separated by hairlines, with the
@@ -999,7 +1000,9 @@ class Card extends StatelessWidget {
 ///
 /// The rule is painted once for the list rather than per row: the reference's
 /// rule is a single unbroken line from the first entry to the last, and a
-/// per-row segment would show a 1dp gap at every hairline.
+/// per-row segment would show a 1dp gap at every hairline. A caller with a
+/// per-row meaning for the stripe (the word library uses one colour per study
+/// status) can pass `rule: false` and paint its own segments instead.
 class HairlineList extends StatelessWidget {
   const HairlineList({
     super.key,

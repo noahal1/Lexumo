@@ -588,13 +588,13 @@ abstract final class Layout {
   /// between entries more than it wants density.
   static const listRowMin = 76.0;
 
-  /// The vertical accent rule that runs down the left edge of a list.
+  /// The vertical rule that runs down the left edge of a list.
   ///
   /// Two pixels: any wider and it reads as a border, which would put a box
-  /// around content the whole point of which is to have no box. Length is the
-  /// row's own height, and it is drawn per row so a twelve-word list paints
-  /// twelve short segments rather than one long line that the rows then have
-  /// to be re-measured to fit.
+  /// around content the whole point of which is to have no box. A list paints
+  /// it once for the whole column; the word library opts out and paints one
+  /// short segment per row instead, so each word can carry its own status
+  /// colour. Either way the width is this ink line, not a border.
   static const listRuleW = 2.0;
 
   /// Gap between that rule and the row's text.

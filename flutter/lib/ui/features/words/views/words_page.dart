@@ -64,6 +64,19 @@ const List<(SortKey, String)> _kSortOptions = <(SortKey, String)>[
 /// Statuses offered by the filter, in ladder order after "all".
 const List<WordStatus> _kStatusFilters = STATUS_ORDER;
 
+/// The colour of a word's left stripe. Four hues, not four shades: a 2dp
+/// stripe carries no lightness information, so the stats page's single-accent
+/// ramp is unusable here. Grey is "never studied", blue "in the review queue",
+/// amber "being learned", green "mastered" — all semantic colours the palette
+/// already defines in both themes, so no stripe disappears in the dark. The
+/// filter menu repeats the same four swatches, so the stripe is readable.
+Color _statusStripeColor(Palette p, WordStatus status) => switch (status) {
+      WordStatus.new_ => p.ink4,
+      WordStatus.reviewing => p.info,
+      WordStatus.learning => p.warn,
+      WordStatus.mastered => p.ok,
+    };
+
 class WordsPage extends StatefulWidget {
   const WordsPage({super.key, this.controller});
 
@@ -181,11 +194,11 @@ class _WordsPageState extends State<WordsPage> {
             autofocus: true,
             child: PageShell(
               controller: widget.controller,
-              // The list runs edge to edge and wears the accent rule on the
-              // page's own left margin, so the shell stops padding the body and
-              // every other block here adds its own gutter. That is what makes
-              // the rule read as the list's spine rather than as a border on a
-              // floating box, which is what it was before.
+              // The list runs edge to edge and wears each word's status stripe
+              // on the page's own left margin, so the shell stops padding the
+              // body and every other block here adds its own gutter. That is
+              // what makes the stripes read as the list's spine rather than as
+              // a border on a floating box, which is what it was before.
               bleed: true,
               // Adding a word is the page's one action, so it gets the corner
               // where a thumb already is instead of a button in the header that
@@ -1103,6 +1116,10 @@ class _FilterMenu extends StatelessWidget {
               label: context.t(labelKey),
               count: counts[s?.wire ?? 'all'],
               selected: status == s,
+              // The four status rows carry the same swatch as the word rows'
+              // left stripe, so the stripe can be read without a legend. The
+              // "all" row has no single status, hence no dot.
+              status: s,
             ),
           ),
         const PopupMenuDivider(),
@@ -1177,17 +1194,35 @@ class _FilterMenu extends StatelessWidget {
 
 /// One pickable row: label, an optional count, a check when it is the choice.
 class _MenuRow extends StatelessWidget {
-  const _MenuRow({required this.label, this.count, this.selected = false});
+  const _MenuRow({
+    required this.label,
+    this.count,
+    this.selected = false,
+    this.status,
+  });
 
   final String label;
   final int? count;
   final bool selected;
+  final WordStatus? status;
 
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return Row(
       children: [
+        if (status != null) ...[
+          Container(
+            key: ValueKey<String>('status-dot-${status!.wire}'),
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: _statusStripeColor(p, status!),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: Sp.x2),
+        ],
         Expanded(
           child: Text(
             label,
@@ -1338,9 +1373,15 @@ class _WordTable extends StatelessWidget {
         // No card. A library is a list, and a list is hairlines on the page —
         // the card wrapper put 400 rows inside a rounded rectangle that said
         // nothing except "a component lives here", and its inset edges fought
-        // the accent rule that now runs down the page's own margin.
+        // the left stripe that now runs down the page's own margin.
+        //
+        // The list's own accent rule is switched off: each row paints a stripe
+        // in its study-status colour instead, so the left edge reports where
+        // every word is in the review cycle rather than drawing one unbroken
+        // line for the whole list.
         return HairlineList(
           padded: false,
+          rule: false,
           children: [
             // A phone row already reads as two stacked lines, so a header
             // would just eat vertical space and repeat itself.
@@ -1405,8 +1446,8 @@ const double _kCompactBreakpoint = 640;
 
 /// The page's horizontal gutter.
 ///
-/// The shell runs `bleed: true` so that the list's accent rule can sit on the
-/// page's own left margin; every block that is *not* the list re-adds the
+/// The shell runs `bleed: true` so that each word's status stripe can sit on
+/// the page's own left margin; every block that is *not* the list re-adds the
 /// gutter here rather than each one inventing its own padding.
 Widget _gutter(Widget child) => Padding(
       padding: const EdgeInsets.symmetric(horizontal: Sp.x6),
@@ -1495,28 +1536,45 @@ class _WordRowState extends State<_WordRow> {
       child: GestureDetector(
         onTap: widget.onTap,
         behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: Motion.dur1,
-          curve: Motion.ease,
-          constraints: const BoxConstraints(minHeight: Layout.listRowMin),
-          decoration: BoxDecoration(
-            color: bg,
-            border: widget.last
-                ? null
-                : Border(bottom: BorderSide(color: p.line)),
-          ),
-          // The left inset is the rule's lane plus air. The rule is drawn by
-          // [HairlineList] on the page margin, so a row that started at x=0
-          // would print its own text on top of it.
-          padding: const EdgeInsets.only(
-            left: Sp.x4 + Layout.listRuleGap,
-            right: Sp.x4,
-            top: Sp.x4,
-            bottom: Sp.x4,
-          ),
-          child: widget.compact
-              ? _buildCompact(context, p, w)
-              : _buildWide(context, p, w),
+        child: Stack(
+          children: [
+            AnimatedContainer(
+              duration: Motion.dur1,
+              curve: Motion.ease,
+              constraints: const BoxConstraints(minHeight: Layout.listRowMin),
+              decoration: BoxDecoration(
+                color: bg,
+                border: widget.last
+                    ? null
+                    : Border(bottom: BorderSide(color: p.line)),
+              ),
+              // The left inset is the stripe's lane plus air. The row paints
+              // its own stripe (see below), so text starting at x=0 would sit
+              // on top of that colour instead of beside it.
+              padding: const EdgeInsets.only(
+                left: Sp.x4 + Layout.listRuleGap,
+                right: Sp.x4,
+                top: Sp.x4,
+                bottom: Sp.x4,
+              ),
+              child: widget.compact
+                  ? _buildCompact(context, p, w)
+                  : _buildWide(context, p, w),
+            ),
+            // Painted last so a row's hover fill cannot wash it out: the
+            // stripe is the row's state, not part of whatever the pointer is
+            // over. Its colour is the word's place in the review ladder.
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Container(
+                key: ValueKey<String>('status-stripe-${w.status.wire}'),
+                width: Layout.listRuleW,
+                color: _statusStripeColor(p, w.status),
+              ),
+            ),
+          ],
         ),
       ),
     );
