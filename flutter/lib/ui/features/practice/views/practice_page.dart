@@ -211,12 +211,13 @@ class _PracticePageState extends State<PracticePage> {
             color: p.ink,
           ),
         ),
-        const SizedBox(height: Sp.x6),
+        const SizedBox(height: Sp.x7),
         Center(
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Segmented<PracticeMode>(
               value: _vm.mode,
+              scale: SegScale.page,
               options: <SegOption<PracticeMode>>[
                 SegOption<PracticeMode>(
                   value: PracticeMode.cards,
@@ -243,6 +244,7 @@ class _PracticePageState extends State<PracticePage> {
               scrollDirection: Axis.horizontal,
               child: Segmented<PracticeScope>(
                 value: _vm.scope,
+                scale: SegScale.page,
                 options: <SegOption<PracticeScope>>[
                   SegOption<PracticeScope>(
                     value: PracticeScope.due,
@@ -373,6 +375,15 @@ class _RoundFigure extends StatelessWidget {
 /// built for rows you click to go somewhere. These are settings you operate in
 /// place, so they get a hairline between them and no hover — the hover belongs
 /// to the control, not to the row.
+///
+/// The row is one line at every width. It used to drop the control under its
+/// label below 420dp, on the theory that a 132dp control and a long label could
+/// not share a phone's measure; what that produced was a form whose three row
+/// shapes each stood a different height, so the option list read as three
+/// unrelated blocks rather than one list of four settings. A phone in fact has
+/// the 215dp a label wants beside a 132dp control, and where it does not — a
+/// 320dp screen at double text size — the label wraps inside its own column
+/// while the control keeps its edge. That is a taller row, not a different row.
 class _OptionRow extends StatelessWidget {
   const _OptionRow({required this.label, required this.control});
 
@@ -388,30 +399,16 @@ class _OptionRow extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: p.line)),
       ),
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          // Below 420dp the control drops under its label: a 132dp select plus a
-          // 20-character label does not fit a phone's measure, and shrinking
-          // either one is worse than using the second line.
-          if (constraints.maxWidth < 420) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(label, style: _labelStyle(p)),
-                const SizedBox(height: Sp.x2),
-                Align(alignment: AlignmentDirectional.centerEnd, child: control),
-              ],
-            );
-          }
-          return Row(
-            children: <Widget>[
-              Expanded(child: Text(label, style: _labelStyle(p))),
-              const SizedBox(width: Sp.x4),
-              control,
-            ],
-          );
-        },
+      child: Row(
+        // Centred rather than stretched: the controls are 44dp tall whatever the
+        // label does, and centring keeps a control level with a label that has
+        // wrapped onto a second line instead of pinning it to the first.
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Expanded(child: Text(label, style: _labelStyle(p))),
+          const SizedBox(width: Sp.x4),
+          control,
+        ],
       ),
     );
   }

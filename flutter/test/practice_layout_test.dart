@@ -29,6 +29,7 @@ import 'package:lexumo/data/repositories/store.dart';
 import 'package:lexumo/data/services/snapshot_store.dart';
 import 'package:lexumo/data/services/tts.dart';
 import 'package:lexumo/domain/models/seed.dart';
+import 'package:lexumo/domain/models/quiz.dart' show QuizDirection;
 import 'package:lexumo/domain/models/srs.dart' show DAY_MS;
 import 'package:lexumo/domain/models/types.dart';
 import 'package:lexumo/domain/use_cases/deck_plan.dart';
@@ -393,5 +394,88 @@ void main() {
       expect(find.byType(LexStepper), findsOneWidget);
       expect(find.byType(LexSwitch), findsNWidgets(2));
     });
+  });
+
+  // The two strips at the top of the page are not toolbar filters: they are the
+  // question the screen asks, and each holds exactly two labels. Drawn at the
+  // inline scale they measured 88dp across in total, with 4dp of padding a
+  // side, so 卡片 and 测验 stood shoulder to shoulder inside a lozenge barely
+  // wider than the two characters. A page-scale chip is at least 88dp wide.
+  group('the two strips are page decisions, not filters', () {
+    testWidgets('each chip is wide enough to hold its label', (
+      WidgetTester tester,
+    ) async {
+      await pumpPractice(tester, window: 411, body: 411, height: 860);
+
+      for (final Finder strip in <Finder>[
+        find.byType(Segmented<PracticeMode>),
+        find.byType(Segmented<PracticeScope>),
+      ]) {
+        final Finder chips = find.descendant(
+          of: strip,
+          matching: find.byType(GestureDetector),
+        );
+        expect(chips, findsNWidgets(2));
+        for (final Element chip in chips.evaluate()) {
+          expect(
+            tester.getSize(find.byWidget(chip.widget)).width,
+            greaterThanOrEqualTo(88),
+            reason: 'a page chip holds its own label with air around it',
+          );
+        }
+      }
+    });
+
+    testWidgets('a toolbar strip stays inline', (WidgetTester tester) async {
+      // The direction picker on the quiz side lives inside an option row and
+      // must keep the tight geometry: 词语 → 释义 is far longer than 卡片.
+      await pumpPractice(tester, window: 411, body: 411, height: 860);
+      await tester.tap(find.text(_i18n.t('practice.quiz')));
+      await tester.pumpAndSettle();
+
+      final Finder strip = find.byType(Segmented<QuizDirection>);
+      expect(strip, findsOneWidget);
+      expect(
+        tester.widget<Segmented<QuizDirection>>(strip).scale,
+        SegScale.inline,
+      );
+    });
+  });
+
+  // One shape per row, at every width. The row used to drop its control under
+  // its label below 420dp, which on a 411dp phone folded all four rows into two
+  // lines and stood them 98dp apart: the list read as three unrelated blocks
+  // instead of one list of four settings.
+  group('an option row is one line at every width', () {
+    for (final double width in <double>[320, 360, 411, 1208]) {
+      testWidgets('label and control share a line at ${width.toInt()}dp', (
+        WidgetTester tester,
+      ) async {
+        await pumpPractice(tester, window: width, body: width, height: 900);
+
+        final Map<String, Finder> rows = <String, Finder>{
+          'practice.roundSizeCards': find.byType(LexStepper),
+          'practice.autoPlay': find.byType(LexSelect<AutoPlayWhen>),
+        };
+        rows.forEach((String key, Finder control) {
+          expect(control, findsOneWidget, reason: 'no $key control to measure');
+          final Rect label = tester.getRect(find.text(_i18n.t(key)));
+          final Rect c = tester.getRect(control);
+          // Sharing a line means sharing a vertical band. Comparing vertical
+          // centres rather than rect overlap: label and control are side by
+          // side, so their rectangles never intersect even on one line.
+          expect(
+            (label.center.dy - c.center.dy).abs(),
+            lessThan(c.height / 2),
+            reason: '${_i18n.t(key)} and its control sat on different lines',
+          );
+          expect(
+            label.right,
+            lessThanOrEqualTo(c.left),
+            reason: 'the label ran into its control instead of ending before it',
+          );
+        });
+      });
+    }
   });
 }

@@ -269,6 +269,20 @@ class SegOption<T> {
   final int? count;
 }
 
+/// How much air a chip gets, and therefore how large the whole strip reads.
+///
+/// [inline] is the default and the only safe choice inside a toolbar: those
+/// strips share their row with a search field or a card edge, and the 4dp a
+/// phone can spare is exactly what keeps five labels from running past it.
+///
+/// [page] is for a strip that *is* the page's decision — cards or quiz, this
+/// pool or that one. Such a strip has the measure to itself, and a 44dp chip
+/// with 4dp of margin reads there as unfinished rather than as compact: the
+/// two labels sit shoulder to shoulder in a lozenge barely wider than the text
+/// they hold. A page chip is 88dp at its narrowest, padded, and set a step
+/// larger, so the strip reads as the thing the screen is asking about.
+enum SegScale { inline, page }
+
 /// The segmented control: a row of tab-like buttons where one is selected.
 class Segmented<T> extends StatelessWidget {
   const Segmented({
@@ -276,11 +290,15 @@ class Segmented<T> extends StatelessWidget {
     required this.value,
     required this.options,
     required this.onChanged,
+    this.scale = SegScale.inline,
   });
 
   final T value;
   final List<SegOption<T>> options;
   final ValueChanged<T> onChanged;
+
+  /// How big a chip is drawn. See [SegScale].
+  final SegScale scale;
 
   @override
   Widget build(BuildContext context) {
@@ -289,7 +307,10 @@ class Segmented<T> extends StatelessWidget {
       // The 2dp inset keeps the selected pill's tint off the track's outline.
       // On touch the buttons grow to the 44dp floor and the inset has to give
       // way, or the strip would stand 4dp taller than the row that holds it.
-      padding: EdgeInsets.all(context.isTouch ? 0 : 2),
+      // A page-scale strip keeps its inset even on touch: it stands alone
+      // rather than inside a toolbar row, so nothing is waiting on its height,
+      // and a tinted pill flush against the outline reads as a filled track.
+      padding: EdgeInsets.all(context.isTouch && scale != SegScale.page ? 0 : 2),
       decoration: BoxDecoration(color: p.surfaceSunken, borderRadius: R.borderPill),
       // The track outline is painted *over* the children rather than as part of
       // the box decoration, because a border consumes layout space: with a real
@@ -306,6 +327,7 @@ class Segmented<T> extends StatelessWidget {
             _SegButton<T>(
               option: o,
               selected: o.value == value,
+              scale: scale,
               onTap: () => onChanged(o.value),
             ),
         ],
@@ -315,10 +337,16 @@ class Segmented<T> extends StatelessWidget {
 }
 
 class _SegButton<T> extends StatefulWidget {
-  const _SegButton({required this.option, required this.selected, required this.onTap});
+  const _SegButton({
+    required this.option,
+    required this.selected,
+    required this.scale,
+    required this.onTap,
+  });
 
   final SegOption<T> option;
   final bool selected;
+  final SegScale scale;
   final VoidCallback onTap;
 
   @override
@@ -332,6 +360,12 @@ class _SegButtonState<T> extends State<_SegButton<T>> {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final selected = widget.selected;
+    // A page chip carries the screen's main decision, so it is drawn at the
+    // weight of a control rather than of a filter: taller than the 44dp floor,
+    // padded on both sides, and set one step up in type. An inline chip is a
+    // filter sharing a row with a search field, and keeps the tight geometry
+    // that lets five of them fit at once.
+    final page = widget.scale == SegScale.page;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -345,7 +379,9 @@ class _SegButtonState<T> extends State<_SegButton<T>> {
           // is a real target rather than a label: it grows with the density the
           // same way a button does, but only in height — the sideways padding
           // is where the chips earn their fit on a phone.
-          height: context.controlH,
+          height: page
+              ? (context.isTouch ? Layout.tap + Sp.x3 : Layout.controlH + Sp.x1)
+              : context.controlH,
           alignment: Alignment.center,
           // Sideways air is where a phone pays for its chips. The five status
           // labels measure 172dp; at 12dp a side the row is 292dp against the
@@ -355,13 +391,21 @@ class _SegButtonState<T> extends State<_SegButton<T>> {
           // the floor is enforced as a width too, not just a height. Both ends
           // of the trade are real: a chip narrower than a fingertip is not a
           // target, and a chip wider than the row is not a control.
-          padding: EdgeInsets.symmetric(
-            horizontal: context.isTouch ? Sp.x1 : Sp.x3,
-            vertical: context.isTouch ? 0 : Sp.x2 - 2,
-          ),
-          constraints: context.isTouch
-              ? const BoxConstraints(minWidth: Layout.tap)
-              : null,
+          //
+          // A page chip is not in that trade: it shares its row with nothing,
+          // so it takes the padding a label wants (12dp) and a floor wide
+          // enough that two Chinese characters do not touch the pill's edge.
+          padding: page
+              ? const EdgeInsets.symmetric(horizontal: Sp.x4)
+              : EdgeInsets.symmetric(
+                  horizontal: context.isTouch ? Sp.x1 : Sp.x3,
+                  vertical: context.isTouch ? 0 : Sp.x2 - 2,
+                ),
+          constraints: page
+              ? const BoxConstraints(minWidth: 92)
+              : context.isTouch
+                  ? const BoxConstraints(minWidth: Layout.tap)
+                  : null,
           decoration: BoxDecoration(
             // The selected chip is a *tinted* chip, not a white one. A white
             // chip on a near-white track is a 1.04:1 difference and a hairline
@@ -388,7 +432,7 @@ class _SegButtonState<T> extends State<_SegButton<T>> {
               Text(
                 widget.option.label,
                 style: TextStyle(
-                  fontSize: Fs.sm,
+                  fontSize: page ? Fs.base : Fs.sm,
                   height: Lh.tight,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                   color: selected ? p.accentInk : p.ink2,
