@@ -1401,8 +1401,58 @@ verdict : ALIVE after 15.1s (window=True)
 通道缺失 → 任何平台都不可用。
 
 **顺带说明桌面语音的最终行为**：这台机器上 Windows 版会把 发音 按钮藏起来（WinRT
-零语音），这是如实反映而不是故障。Android 端的语音正常——那边的引擎是
-`TextToSpeech`，与 WinRT 无关。
+零语音），这是如实反映而不是故障。
+
+#### Android 上「点了发音没反应」——三段失败，全都不出声
+
+手机（PLK110）上反馈的症状是：点发音完全没声音，也没有任何提示。查下来是**三处
+各自独立的问题**叠在一起，每一处单独都足以让一次发音变成静默。
+
+**一、清单缺 `TTS_SERVICE` 声明。** 从 API 30 起平台按包可见性过滤，`TextToSpeech`
+仍能构造、仍能朗读，但 `getVoices()` 返回空——因为它要列举的引擎属于我们无权查询的
+包。这个失败是**静默且单侧的**：设置页「语音」一个可选音色都没有，而发音本身也许
+还能响，读起来像「这台设备没装音色」而不是「少了一条声明」。`<queries>` 里补：
+
+```xml
+<intent>
+    <action android:name="android.intent.action.TTS_SERVICE"/>
+</intent>
+```
+
+`flutter_tts` 的 `third_party/flutter_tts/README.md` 有同样要求。`<queries>` 不是权限，
+不弹窗、不授权，只声明可解析哪些 intent。
+
+**二、`setLanguage` 在 `setVoice` 之后跑，把选好的音色盖掉。** `setLanguage` 会让引擎
+挑**它自己**该 locale 的默认音色，所以在 `setVoice` 之后调用等于把上一行的选择扔掉。
+表现就是「设置里选了音色却不生效」「两个英文音色听起来一样」。`Speech.speak` 里的
+顺序改成先 `setLanguage(voice.lang)`、再 `setVoice(voice)`；语言先设，存量音色已卸载
+时引擎至少还在正确 locale 上。`test/tts_test.dart` 用 `FakeEngine.calls` 把顺序钉住。
+
+**三、插件把挂起的 `speak` 永远挂着（真凶）。** `initInstance` 用的是
+`onInitListenerWithoutCallback`，而它的失败分支只 `Log.e`；`onMethodCall` 的
+`ttsStatus == null` 分支又把调用塞进 `pendingMethodCalls` 并 return。于是**引擎启动
+失败时，这次 speak 的 Result 永远不会被应答**——Dart 侧 `await speak(...)` 挂着，
+用户看到的就是「点了没反应」，日志里也只有一行没人看的 `Log.e`。而 Dart 侧
+`FlutterTtsEngine.init()` 在非 Windows 上一律 `return true`（这是对的：Android 引擎
+异步启动，冷启动空列表不代表没有），所以按钮照画、点了没声。
+
+修法：`pendingMethodCalls` 从 `ArrayList<Runnable>` 换成 `ArrayList<PendingCall>`
+（`Result` 必须跟着调用走，只留 `Runnable` 就答不了它）；两个 init listener 的
+synchronized 块先取走队列再清空，**SUCCESS 就重放、失败就逐个
+`result.error(ERROR_NO_ENGINE, ...)`**；`speak` 分支在引擎重建失败后把调用重新入队，
+并用 `rebuildAttempts` / `MAX_REBUILD_ATTEMPTS = 2` 封顶——没有可用引擎的设备否则会
+每次点击重建一个引擎并挂一个新 Result。计数只在**真的重建了**之后才加，健康设备
+永远碰不到上限。
+
+Dart 侧接住这个错误码：`FlutterTtsEngine.speak` 把 `PlatformException.code ==
+'TtsError'` 重新抛出（其它拒绝照旧吞掉），`Speech.speak` 捕获后调
+`_markUnusable()` —— `supported` 变 false，**所有发音控件消失**，设置页显示
+「这个设备没有可用的朗读音色」，而不是继续承诺永远不来的声音。`onEnd` 也会照常
+触发一次，调用方不必等不存在的音频。
+
+教训：**一个只在失败路径上才分叉的 Result，必须有人负责在失败路径上应答它。**
+`Runnable` 队列看上去够用，直到 init 失败——那时队列里的每一个都成了永远不返回的
+`Future`。
 
 #### 沙箱对运行的限制
 

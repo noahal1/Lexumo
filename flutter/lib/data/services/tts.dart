@@ -32,6 +32,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_tts/flutter_tts.dart';
 
 /// One selectable voice, shaped like the web build's `VoiceInfo` so the
@@ -219,6 +220,14 @@ class FlutterTtsEngine implements TtsEngine {
   Future<void> speak(String text) async {
     try {
       await _tts.speak(text);
+    } on PlatformException catch (e) {
+      // `TtsError` is the plugin telling us the platform has no working
+      // engine — it answered a queued speak() with an error instead of
+      // parking it forever. That is a fact about the device, not a one-off
+      // failure, so it travels up to [Speech], which stops offering speech.
+      // Every other refusal stays swallowed below.
+      if (e.code == 'TtsError') rethrow;
+      _onDone?.call();
     } catch (_) {
       // No engine, or the request was refused. There is nothing actionable to
       // surface mid-card, so speech simply does not happen — same decision the
@@ -435,9 +444,16 @@ class Speech {
         ? null
         : voicesForLang(lang).firstOrNull;
 
+    // Order matters, and it is not the obvious one. `setLanguage` makes the
+    // engine pick *its* default voice for that locale, so calling it after
+    // `setVoice` silently replaced the voice chosen one line above — which is
+    // why a voice selected in 设置 appeared to be ignored, and why two English
+    // voices on the same phone always sounded like the same one. The language
+    // goes first (so a stored voice that has since been uninstalled still
+    // leaves the engine on the right locale), then the voice overrides it.
     if (voice != null) {
-      await _engine.setVoice(voice);
       await _engine.setLanguage(voice.lang);
+      await _engine.setVoice(voice);
     } else if (lang != null && lang.isNotEmpty) {
       await _engine.setLanguage(lang);
     }
@@ -449,7 +465,28 @@ class Speech {
     final completer = onEnd == null ? null : _DoneOnce(onEnd);
     _engine.onDone = completer?.call;
 
-    await _engine.speak(trimmed);
+    try {
+      await _engine.speak(trimmed);
+    } on PlatformException {
+      // The platform answered "I have no engine". The warm-up said otherwise
+      // because Android reports a working channel as an available engine, so
+      // this is the first moment the truth is knowable — record it, then let
+      // the caller finish as if the utterance had ended.
+      _markUnusable();
+      onEnd?.call();
+    }
+  }
+
+  /// Records that the platform cannot speak after all.
+  ///
+  /// [supported] flips to `false`, so every 发音 control disappears instead of
+  /// promising sound that never comes, and the settings page shows its "no
+  /// voice on this device" note.
+  void _markUnusable() {
+    if (_initialised && !_usable) return;
+    _initialised = true;
+    _usable = false;
+    _notify();
   }
 
   /// Cuts off whatever is playing. Safe to call when nothing is.

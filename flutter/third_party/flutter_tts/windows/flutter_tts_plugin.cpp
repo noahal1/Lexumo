@@ -224,10 +224,16 @@ namespace {
 		VoiceInformation newVoice = synth.Voice();
 		std::for_each(begin(voices), end(voices), [&voiceLanguage, &newVoice, &found](const VoiceInformation& voice)
 			{
-				if (to_string(voice.Language()) == voiceLanguage) newVoice = voice;
-				found = true;
+				// Lexumo patch: `found = true` used to sit outside this `if`, so
+				// the loop set it on its first pass no matter whether the
+				// language matched - every call reported success while possibly
+				// leaving the previous voice in place.
+				if (to_string(voice.Language()) == voiceLanguage) {
+					newVoice = voice;
+					found = true;
+				}
 			});
-		synth.Voice(newVoice);
+		if (found) synth.Voice(newVoice);
 		if (found) result->Success(1);
 		else result->Success(0);
 	}

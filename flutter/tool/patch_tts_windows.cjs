@@ -181,6 +181,33 @@ for (const [name, arg] of [
   sub(m[0], `\tvoid FlutterTtsPlugin::${name}(const double ${arg}) { if (!ready) return; ${m[1]} }\n`, name);
 }
 
+// 8. setLanguage claimed success for every language.
+//
+// `found = true` sat on its own line inside the loop body, outside the `if`, so
+// the first voice set it whether or not anything matched -- and `synth.Voice()`
+// then got whatever the previous call left behind. Every `setLanguage` returned
+// 1, so the app could not tell "I speak French" from "I speak nothing you asked
+// for". That is what made a read in the wrong language look like a wrong-voice
+// bug, and it is why a voice picked by name appeared to be overridden: the
+// language set underneath it silently failed while reporting success.
+sub(
+  '\t\t\t\tif (to_string(voice.Language()) == voiceLanguage) newVoice = voice;\n' +
+  '\t\t\t\tfound = true;\n' +
+  '\t\t\t});\n' +
+  '\t\tsynth.Voice(newVoice);\n',
+  '\t\t\t\t// Lexumo patch: `found = true` used to sit outside this `if`, so\n' +
+  '\t\t\t\t// the loop set it on its first pass no matter whether the\n' +
+  '\t\t\t\t// language matched - every call reported success while possibly\n' +
+  '\t\t\t\t// leaving the previous voice in place.\n' +
+  '\t\t\t\tif (to_string(voice.Language()) == voiceLanguage) {\n' +
+  '\t\t\t\t\tnewVoice = voice;\n' +
+  '\t\t\t\t\tfound = true;\n' +
+  '\t\t\t\t}\n' +
+  '\t\t\t});\n' +
+  '\t\tif (found) synth.Voice(newVoice);\n',
+  'setLanguage found',
+);
+
 fs.writeFileSync(SRC, src + tail);
 console.log('patched   ' + SRC);
 console.log('ready guard sites: ' + (head === src ? 0 : (src.match(/!ready/g) || []).length));

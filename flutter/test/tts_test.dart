@@ -25,12 +25,22 @@ class FakeEngine implements TtsEngine {
   bool initOk;
   List<VoiceInfo> _voices;
 
+  /// Makes [speak] fail the way a phone with no working engine does.
+  bool speakFails = false;
+
   int initCalls = 0;
   final List<String> spoken = <String>[];
   final List<String> languages = <String>[];
   final List<double> rates = <double>[];
   final List<VoiceInfo?> voicesSet = <VoiceInfo?>[];
   int stopCalls = 0;
+
+  /// Every configuration call in the order it arrived, as `lang:…` / `voice:…`.
+  ///
+  /// Needed because one of these has to happen before the other, and a list of
+  /// each on its own cannot tell the difference.
+  final List<String> calls = <String>[];
+
   VoidCallback? _onDone;
 
   @override
@@ -51,16 +61,32 @@ class FakeEngine implements TtsEngine {
   void setVoices(List<VoiceInfo> list) => _voices = list;
 
   @override
-  Future<void> setLanguage(String lang) async => languages.add(lang);
+  Future<void> setLanguage(String lang) async {
+    languages.add(lang);
+    calls.add('lang:$lang');
+  }
 
   @override
   Future<void> setRate(double rate) async => rates.add(rate);
 
   @override
-  Future<void> setVoice(VoiceInfo? voice) async => voicesSet.add(voice);
+  Future<void> setVoice(VoiceInfo? voice) async {
+    voicesSet.add(voice);
+    calls.add('voice:${voice?.name}');
+  }
 
   @override
-  Future<void> speak(String text) async => spoken.add(text);
+  Future<void> speak(String text) async {
+    // Stands in for the plugin's `TtsError`: the platform answered "I have no
+    // engine" instead of accepting the utterance.
+    if (speakFails) {
+      throw PlatformException(
+        code: 'TtsError',
+        message: 'TextToSpeech is not running on this device.',
+      );
+    }
+    spoken.add(text);
+  }
 
   @override
   Future<void> stop() async => stopCalls++;
@@ -201,6 +227,19 @@ void main() {
       expect(engine.voicesSet.single?.name, 'American');
     });
 
+    test('sets the language before the voice, not after', () async {
+      // The order is load-bearing: `setLanguage` makes the engine pick its own
+      // default voice for that locale, so running it after `setVoice` threw the
+      // choice away. A picked voice then sounded like the default one.
+      final engine = FakeEngine(voices: [
+        voice('en-GB', 'British'),
+        voice('en-US', 'American'),
+      ]);
+      final speech = buildSpeech(engine);
+      await speech.speak('hello', lang: 'en-US');
+      expect(engine.calls, <String>['lang:en-US', 'voice:American']);
+    });
+
     test('sets the language even when no voice matches', () async {
       final engine = FakeEngine(voices: const []);
       final speech = buildSpeech(engine);
@@ -244,6 +283,26 @@ void main() {
       final speech = buildSpeech(engine);
       await speech.speak('  soliloquy  ', lang: 'en-US');
       expect(engine.spoken.single, 'soliloquy');
+    });
+
+    test('a platform that answers "no engine" stops offering speech',
+        () async {
+      // Android's warm-up cannot tell a live engine from a dead one: the
+      // channel answers either way, so `init()` returns true and the 发音
+      // button is drawn. The refusal only arrives when an utterance is
+      // attempted — and before this, it was swallowed, so tapping the button
+      // produced silence and no explanation anywhere.
+      final engine = FakeEngine(voices: [voice('en-US', 'A')])
+        ..speakFails = true;
+      final speech = buildSpeech(engine);
+      expect(await speech.warmUp(), isTrue);
+      expect(speech.supported, isTrue);
+
+      var ended = 0;
+      await speech.speak('hello', lang: 'en-US', onEnd: () => ended++);
+
+      expect(ended, 1, reason: 'the caller must not wait for sound that is not coming');
+      expect(speech.supported, isFalse, reason: 'no more 发音 controls');
     });
   });
 

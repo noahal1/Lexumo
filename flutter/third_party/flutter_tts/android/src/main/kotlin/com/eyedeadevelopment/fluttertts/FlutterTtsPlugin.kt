@@ -44,7 +44,11 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
     private var context: Context? = null
     private var tts: TextToSpeech? = null
     private val tag = "TTS"
-    private val pendingMethodCalls = ArrayList<Runnable>()
+    private val pendingMethodCalls = ArrayList<PendingCall>()
+    // How many times a single call has asked for a fresh engine. Rebuilding
+    // is legitimate after a dropped service connection, but a device with no
+    // usable engine would rebuild on every attempt, so the count is capped.
+    private var rebuildAttempts = 0
     private val utterances = HashMap<String, String>()
     private var bundle: Bundle? = null
     private var silencems = 0
@@ -63,7 +67,27 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
     companion object {
         private const val SILENCE_PREFIX = "SIL_"
         private const val SYNTHESIZE_TO_FILE_PREFIX = "STF_"
+
+        // Raised to Dart when the platform never produces a working engine, so
+        // a speak() can fail instead of being parked forever. Dart turns this
+        // into the same "no voice on this device" line the settings page shows.
+        const val ERROR_NO_ENGINE = "TtsError"
+
+        // Two rebuilds are enough for a service connection that dropped and
+        // came back; a device without a usable engine gets one more try and
+        // then an error, rather than an endless rebuild loop.
+        private const val MAX_REBUILD_ATTEMPTS = 2
     }
+
+    /**
+     * A method call parked until the engine reports back.
+     *
+     * The Result travels with the call: an init that fails has to answer the
+     * parked calls with an error, otherwise every one of them hangs and Dart
+     * never learns that speech is unavailable. Holding only a Runnable (as
+     * this list used to) made that impossible.
+     */
+    private class PendingCall(val call: MethodCall, val result: Result)
 
     private fun initInstance(messenger: BinaryMessenger, context: Context) {
         this.context = context
@@ -223,12 +247,25 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
             // synchronous StackOverflowError on devices with no TTS engine.
             synchronized(this@FlutterTtsPlugin) {
                 ttsStatus = status
+                val queued = ArrayList(pendingMethodCalls)
+                pendingMethodCalls.clear()
                 if (status == TextToSpeech.SUCCESS) {
-                    for (call in pendingMethodCalls) {
-                        call.run()
+                    rebuildAttempts = 0
+                    for (call in queued) {
+                        onMethodCall(call.call, call.result)
+                    }
+                } else {
+                    // A failed init will never replay these, and leaving them
+                    // parked is how a tap on "speak" turns into silence with
+                    // no error anywhere. Answer them so Dart can say so.
+                    for (call in queued) {
+                        call.result.error(
+                            ERROR_NO_ENGINE,
+                            "TextToSpeech could not start (init status $status).",
+                            null,
+                        )
                     }
                 }
-                pendingMethodCalls.clear()
             }
 
             if (status == TextToSpeech.SUCCESS) {
@@ -244,11 +281,15 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
                     Log.e(tag, "getDefaultLocale: " + e.message)
                 }
 
-                engineResult!!.success(1)
+                engineResult?.success(1)
             } else {
-                engineResult!!.error("TtsError","Failed to initialize TextToSpeech with status: $status", null)
+                engineResult?.error(
+                    ERROR_NO_ENGINE,
+                    "Failed to initialize TextToSpeech with status: $status",
+                    null,
+                )
             }
-            //engineResult = null
+            engineResult = null
         }
 
     private val onInitListenerWithoutCallback: TextToSpeech.OnInitListener =
@@ -260,12 +301,25 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
             // synchronous StackOverflowError on devices with no TTS engine.
             synchronized(this@FlutterTtsPlugin) {
                 ttsStatus = status
+                val queued = ArrayList(pendingMethodCalls)
+                pendingMethodCalls.clear()
                 if (status == TextToSpeech.SUCCESS) {
-                    for (call in pendingMethodCalls) {
-                        call.run()
+                    rebuildAttempts = 0
+                    for (call in queued) {
+                        onMethodCall(call.call, call.result)
+                    }
+                } else {
+                    // Same reasoning as the callback listener above: a failed
+                    // init must answer the parked calls, or the tap that
+                    // started speech hangs forever with nothing to show.
+                    for (call in queued) {
+                        call.result.error(
+                            ERROR_NO_ENGINE,
+                            "TextToSpeech could not start (init status $status).",
+                            null,
+                        )
                     }
                 }
-                pendingMethodCalls.clear()
             }
 
             if (status == TextToSpeech.SUCCESS) {
@@ -290,8 +344,7 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
         synchronized(this@FlutterTtsPlugin) {
             if (ttsStatus == null) {
                 // Suspend method call until the TTS engine is ready
-                val suspendedCall = Runnable { onMethodCall(call, result) }
-                pendingMethodCalls.add(suspendedCall)
+                pendingMethodCalls.add(PendingCall(call, result))
                 return
             }
         }
@@ -320,11 +373,32 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
                         return
                     }
                 }
+                // A device whose engine never binds would rebuild on every
+                // attempt, so the number of rebuilds is capped: past that the
+                // call is answered with an error instead of spending another
+                // engine and parking a Result nothing will ever resolve.
+                // The count only moves when a rebuild actually happens — a
+                // working engine must never creep towards the cap.
+                val exhausted: Boolean = synchronized(this@FlutterTtsPlugin) {
+                    rebuildAttempts >= MAX_REBUILD_ATTEMPTS
+                }
+                if (exhausted) {
+                    result.error(
+                        ERROR_NO_ENGINE,
+                        "TextToSpeech is not running on this device.",
+                        null,
+                    )
+                    return
+                }
                 val b = speak(text, focus)
                 if (!b) {
+                    // speak() rebuilt the engine and this call now waits for
+                    // it. The new engine's init answers every parked call —
+                    // with silence on success, with an error on failure — so
+                    // the tap can no longer disappear without a trace.
                     synchronized(this@FlutterTtsPlugin) {
-                        val suspendedCall = Runnable { onMethodCall(call, result) }
-                        pendingMethodCalls.add(suspendedCall)
+                        rebuildAttempts += 1
+                        pendingMethodCalls.add(PendingCall(call, result))
                     }
                     return
                 }

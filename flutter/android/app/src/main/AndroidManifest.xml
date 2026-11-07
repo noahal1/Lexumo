@@ -121,5 +121,22 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:mimeType="application/vnd.android.package-archive"/>
         </intent>
+        <!-- Declares that this app talks to a text-to-speech engine.
+
+             From API 30 the platform filters what an app can *see*: without
+             this entry `TextToSpeech` can still be constructed and can still
+             speak, but `getVoices()` comes back empty, because the engines it
+             would list belong to packages we are not allowed to query. That
+             failure is silent and one-sided — the 语音 row in Settings shows
+             no choices at all, while pronunciation itself keeps working — so
+             it reads as "this app has no voices" rather than as a missing
+             declaration. `flutter_tts` documents the same requirement
+             (`third_party/flutter_tts/README.md`).
+
+             A `<queries>` entry is not a permission: nothing is prompted and
+             nothing is granted. It only says which intents we may resolve. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
     </queries>
 </manifest>
