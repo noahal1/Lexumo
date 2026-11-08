@@ -29,10 +29,12 @@ import 'package:flutter/services.dart';
 
 import '../../../../app/scope.dart';
 import '../../../../data/services/speech.dart';
+import '../../../../domain/models/kana.dart';
 import '../../../../domain/models/languages.dart';
 import '../../../../domain/models/srs.dart';
 import '../../../../domain/models/types.dart';
 import '../../../../domain/use_cases/deck_templates.dart';
+import '../../../../domain/use_cases/kana_chart.dart';
 import '../../../../domain/use_cases/word_query.dart';
 import '../../../core/context_feedback.dart';
 import '../../../core/tokens.dart';
@@ -151,6 +153,31 @@ class _WordsPageState extends State<WordsPage> {
       builder: (BuildContext context, Widget? _) {
         final List<Word> filtered = _vm.filtered;
         final String trimmed = _vm.trimmedQuery;
+        final WordQuery query = _vm.filters;
+        // A kana deck is a chart, not a list: the gojūon is the shape a learner
+        // memorises, so showing 46 words as 46 rows throws away the one thing a
+        // kana book has that a vocabulary book does not. Recognition is by
+        // contents (see chartScriptOf), so older decks and restored backups get
+        // the chart too. A search or status filter narrows the 46 to a subset
+        // that no longer reads as a chart — fall back to the table there, where
+        // the matching rows are what the reader asked to see.
+        WordList? active;
+        for (final WordList list in _vm.data.lists) {
+          if (list.id == _vm.listId) {
+            active = list;
+            break;
+          }
+        }
+        final KanaScript? script = active == null
+            ? null
+            : chartScriptOf(
+                active,
+                _vm.index.byList[_vm.listId] ?? const <Word>[],
+              );
+        final bool chartMode = script != null &&
+            query.status == null &&
+            !query.favoriteOnly &&
+            trimmed.isEmpty;
 
         return CallbackShortcuts(
           bindings: <ShortcutActivator, VoidCallback>{
@@ -267,6 +294,15 @@ class _WordsPageState extends State<WordsPage> {
                         },
                       ),
                     ),
+                  )
+                else if (chartMode)
+                  _KanaChart(
+                    script: script,
+                    words: filtered,
+                    selectMode: _vm.selectMode,
+                    selected: _vm.selected,
+                    onToggleSelected: _vm.toggleSelected,
+                    onOpen: (Word w) => _openEditor(word: w),
                   )
                 else
                   _WordTable(
@@ -1424,6 +1460,174 @@ class _WordTable extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Kana chart                                                          */
+/* ------------------------------------------------------------------ */
+
+/// A kana deck's own shape: the gojūon, five vowel columns by eleven rows.
+///
+/// Every other wordbook is a [_WordTable]. A kana book is a chart a learner
+/// memorises spatially, so 46 stacked rows would throw away the one thing it
+/// has that a vocabulary book does not. Rows come from [buildKanaChart] (the
+/// static table, not the deck's words): a deleted 假名 keeps a dimmed place on
+/// the chart rather than silently closing the gap. Each present word carries
+/// the same status stripe as a table row, so progress reads the same in both
+/// shapes.
+class _KanaChart extends StatelessWidget {
+  const _KanaChart({
+    required this.script,
+    required this.words,
+    required this.selectMode,
+    required this.selected,
+    required this.onToggleSelected,
+    required this.onOpen,
+  });
+
+  final KanaScript script;
+  final List<Word> words;
+  final bool selectMode;
+  final Set<String> selected;
+  final ValueChanged<String> onToggleSelected;
+  final ValueChanged<Word> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = Palette.of(context);
+    final Map<String, Word> byGlyph = <String, Word>{
+      for (final Word word in words) word.term.trim(): word,
+    };
+    final List<KanaChartRow> rows = buildKanaChart(script);
+
+    return Container(
+      key: const ValueKey('kana-chart'),
+      padding: const EdgeInsets.symmetric(horizontal: Sp.x6, vertical: Sp.x2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          for (int r = 0; r < rows.length; r++) ...<Widget>[
+            if (r > 0) const SizedBox(height: Sp.x2),
+            Row(
+              children: <Widget>[
+                for (int c = 0; c < kanaChartColumns; c++) ...<Widget>[
+                  if (c > 0) const SizedBox(width: Sp.x2),
+                  Expanded(
+                    child: _cell(
+                      p,
+                      kana: rows[r].cells[c],
+                      word: rows[r].cells[c] == null
+                          ? null
+                          : byGlyph[rows[r].cells[c]!.kana],
+                      blank: rows[r].cells[c] == null,
+                      r: r,
+                      c: c,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _cell(
+    Palette p, {
+    required Kana? kana,
+    required Word? word,
+    required bool blank,
+    required int r,
+    required int c,
+  }) {
+    if (blank) {
+      return SizedBox(
+        key: ValueKey<String>('kana-blank-$r-$c'),
+        height: 68,
+      );
+    }
+    // The chart is a reference a learner copies: a deleted 假名 keeps a dimmed
+    // place rather than closing the gap, so the grid never lies about where a
+    // sound belongs.
+    if (word == null) {
+      return Container(
+        key: ValueKey<String>('kana-ghost-${kana!.kana}'),
+        height: 68,
+        decoration: BoxDecoration(
+          color: p.surface2,
+          borderRadius: R.borderSm,
+          border: Border.all(color: p.line),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          kana.kana,
+          style: TextStyle(
+            fontFamily: Fonts.ui,
+            fontFamilyFallback: Fonts.cjkFallback,
+            fontSize: Fs.xl,
+            height: Lh.none,
+            color: p.ink4,
+          ),
+        ),
+      );
+    }
+    final bool picked = selected.contains(word.id);
+    return GestureDetector(
+      onTap: selectMode ? () => onToggleSelected(word.id) : () => onOpen(word),
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        children: <Widget>[
+          Container(
+            key: ValueKey<String>('kana-cell-${kana!.kana}'),
+            height: 68,
+            decoration: BoxDecoration(
+              color: picked ? p.accentSoft : p.surface,
+              borderRadius: R.borderSm,
+              border: Border.all(color: picked ? p.accent : p.line),
+            ),
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  kana.kana,
+                  style: TextStyle(
+                    fontFamily: Fonts.ui,
+                    fontFamilyFallback: Fonts.cjkFallback,
+                    fontSize: Fs.xl,
+                    height: Lh.none,
+                    fontWeight: FontWeight.w600,
+                    color: p.ink,
+                  ),
+                ),
+                const SizedBox(height: Sp.x1),
+                Text(
+                  kana.romaji,
+                  style: TextStyle(
+                    fontFamily: Fonts.mono,
+                    fontSize: Fs.xs,
+                    color: p.ink3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Same 2dp ink line as a table row, last so hover cannot cover it.
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Container(
+              key: ValueKey<String>('kana-stripe-${kana.kana}'),
+              width: Layout.listRuleW,
+              color: p.statusColor(word.status),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
