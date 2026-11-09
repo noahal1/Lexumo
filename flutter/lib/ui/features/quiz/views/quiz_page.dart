@@ -494,6 +494,20 @@ class _QuizPageState extends State<QuizPage> {
                   color: p.ink,
                 ),
               ),
+              // The second gloss, when the word has one: a prompt that only
+              // shows the first meaning is not the whole question for a word
+              // whose second meaning is the one being remembered.
+              if (current.promptSecondary != null) ...<Widget>[
+                const SizedBox(height: Sp.x2),
+                Text(
+                  current.promptSecondary!,
+                  style: TextStyle(
+                    fontSize: Fs.base,
+                    height: Lh.snug,
+                    color: p.ink2,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -978,6 +992,15 @@ class _MistakeRow extends StatelessWidget {
               color: p.ink,
             ),
           ),
+          // Same second gloss as the question carried, so a review row names
+          // the question the user actually saw.
+          if (question.promptSecondary != null) ...<Widget>[
+            const SizedBox(height: Sp.x1),
+            Text(
+              question.promptSecondary!,
+              style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink2),
+            ),
+          ],
           const SizedBox(height: Sp.x1),
           Wrap(
             spacing: Sp.x2,

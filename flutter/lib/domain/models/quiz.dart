@@ -46,6 +46,7 @@ class QuizQuestion {
   const QuizQuestion({
     required this.wordId,
     required this.prompt,
+    this.promptSecondary,
     required this.answer,
     required this.options,
     required this.answerIndex,
@@ -55,6 +56,12 @@ class QuizQuestion {
 
   /// 题干：看词选义时为词形，看义选词时为释义。
   final String prompt;
+
+  /// 题干下方的一行补充释义，只有看义选词、且这个词记了第二层含义时才有。
+  ///
+  /// 题干只放主释义是为了让它保持一句话那么短；但用户记住的可能是第二层
+  /// 含义，只显示主释义会让他认不出这道题在问哪个词。
+  final String? promptSecondary;
 
   /// 正确答案文本。
   final String answer;
@@ -78,6 +85,34 @@ String _answerOf(Word word, QuizDirection direction) =>
         ? word.definition.trim()
         : word.term.trim();
 
+/// 释义里用来分隔各层义项的符号。
+///
+/// 「开始；着手」「开始，着手」「开始/着手」都是同一种写法，判断两个词是否
+/// 撞义项时必须先切开再比，否则整串比较只会漏掉所有真实重叠。
+final RegExp _senseSeparator = RegExp(r'[;；,，、/|｜]');
+
+/// 一层义项的比较形式：去空白、压小写、去掉收尾标点。
+String _senseKey(String raw) => raw
+    .trim()
+    .toLowerCase()
+    .replaceAll(RegExp(r'[.。!！?？…\s]+$'), '')
+    .trim();
+
+/// 一个词条记下的全部义项：主释义与补充释义，各自再按分隔符切开。
+///
+/// 这是判断「另一个词的释义是不是也说得通」的依据。[definition2] 参与比较
+/// 而不是只参与显示：用户记的第二层含义同样会让别人的选项看起来是对的。
+Set<String> _sensesOf(Word word) {
+  final senses = <String>{};
+  for (final String field in <String>[word.definition, word.definition2]) {
+    for (final String part in field.split(_senseSeparator)) {
+      final key = _senseKey(part);
+      if (key.isNotEmpty) senses.add(key);
+    }
+  }
+  return senses;
+}
+
 /// 只有词形与释义都齐全的词才能参与出题。
 List<Word> quizEligibleWords(List<Word> words) => words
     .where((word) => word.term.trim() != '' && word.definition.trim() != '')
@@ -88,6 +123,12 @@ List<Word> quizEligibleWords(List<Word> words) => words
 ///
 /// 单个词凑不齐干扰项时跳过它（一轮可能因此不满），整轮一题都出不了时
 /// 用 [QuizShortfall] 说明原因，而不是让调用方对着空数组猜。
+///
+/// 干扰项还要过一道「义项」检查：与本题词共享任何一层含义的词不选，
+/// 与已选中的其它干扰项共享含义的也不选。文本去重只能挡住一字不差的重复，
+/// 挡不住「开始」与「开始；着手」这种——同框时用户面对的是两个都对（撞答案）
+/// 或两个一样（撞彼此）的选项。这条规则两个方向共用：看词选义时挡的是释义
+/// 重叠，看义选词时挡的是同一个意思有两个词形。
 ///
 /// [random] is an optional seed hook so a caller (or a test) can pin the
 /// order; production passes nothing and gets the shared unpredictable source.
@@ -111,26 +152,40 @@ _QuizPlan _planQuiz(
     final answer = _answerOf(word, direction);
     if (answer.isEmpty) continue;
 
+    final ownSenses = _sensesOf(word);
+    // Senses already spoken for on this question — the right answer's first,
+    // then every distractor picked so far. A candidate that overlaps any of
+    // them is out: as a distractor it would be a second right answer (when it
+    // overlaps the answer) or a duplicate of another distractor (when it
+    // overlaps a neighbour), and both read as a broken question.
+    final takenSenses = <String>{...ownSenses};
     final seen = <String>{answer.toLowerCase()};
     final distractors = <String>[];
     for (final other in shuffle(pool, random)) {
       if (other.id == word.id) continue;
+      final otherSenses = _sensesOf(other);
+      if (otherSenses.any(takenSenses.contains)) continue;
       final text = _answerOf(other, direction);
       if (text.isEmpty) continue;
       final key = text.toLowerCase();
       if (seen.contains(key)) continue;
       seen.add(key);
+      takenSenses.addAll(otherSenses);
       distractors.add(text);
       if (distractors.length >= QUIZ_CHOICES - 1) break;
     }
     if (distractors.length < QUIZ_CHOICES - 1) continue;
 
     final options = shuffle([answer, ...distractors], random);
+    final secondary = direction == QuizDirection.defToTerm
+        ? word.definition2.trim()
+        : '';
     questions.add(QuizQuestion(
       wordId: word.id,
       prompt: direction == QuizDirection.termToDef
           ? word.term
           : word.definition,
+      promptSecondary: secondary.isEmpty ? null : secondary,
       answer: answer,
       options: options,
       answerIndex: options.indexOf(answer),

@@ -961,6 +961,75 @@ void main() {
       }
     });
 
+    test('释义部分重叠的词也不会互相成为干扰项', () {
+      // 「开始；着手」与「开始」不是同一串文本，却是同一层意思：真让它们
+      // 同框，这道题就有两个正确答案。
+      final words = [
+        word('w0', {'term': 'begin', 'definition': '开始；着手'}),
+        word('w1', {'term': 'start', 'definition': '开始'}),
+        word('w2', {'term': 'c', 'definition': '苹果'}),
+        word('w3', {'term': 'd', 'definition': '香蕉'}),
+        word('w4', {'term': 'e', 'definition': '橘子'}),
+        word('w5', {'term': 'f', 'definition': '葡萄'}),
+      ];
+
+      for (final q in buildQuiz(words, QuizDirection.termToDef)) {
+        final sharing = q.options.where((o) => o.contains('开始')).toList();
+        expect(sharing.length, lessThanOrEqualTo(1), reason: q.options.join(' / '));
+        expect(q.options.toSet().length, q.options.length);
+      }
+    });
+
+    test('补充释义参与去重，不只是主释义', () {
+      // w0 的第二层含义与 w1 的主释义撞了：w1 不能当 w0 的干扰项。
+      final words = [
+        word('w0', {'term': 'a', 'definition': '机缘', 'definition2': '巧合'}),
+        word('w1', {'term': 'b', 'definition': '巧合'}),
+        word('w2', {'term': 'c', 'definition': '苹果'}),
+        word('w3', {'term': 'd', 'definition': '香蕉'}),
+        word('w4', {'term': 'e', 'definition': '橘子'}),
+      ];
+
+      for (final q in buildQuiz(words, QuizDirection.termToDef)) {
+        expect(q.options.where((o) => o.contains('巧合')).length, lessThanOrEqualTo(1));
+      }
+    });
+
+    test('看义选词同样不会给出两个都说得通的词形', () {
+      final words = [
+        word('w0', {'term': 'big', 'definition': '大的'}),
+        word('w1', {'term': 'large', 'definition': '大的；宽大的'}),
+        word('w2', {'term': 'c', 'definition': '苹果'}),
+        word('w3', {'term': 'd', 'definition': '香蕉'}),
+        word('w4', {'term': 'e', 'definition': '橘子'}),
+        word('w5', {'term': 'f', 'definition': '葡萄'}),
+      ];
+
+      for (final q in buildQuiz(words, QuizDirection.defToTerm)) {
+        expect(q.options.where((o) => o == 'big' || o == 'large').length,
+            lessThanOrEqualTo(1));
+      }
+    });
+
+    test('看义选词的题干带上第二层释义，看词选义不带', () {
+      final words = [
+        word('w0', {'term': 'a', 'definition': '机缘', 'definition2': '巧合'}),
+        word('w1', {'term': 'b', 'definition': '苹果'}),
+        word('w2', {'term': 'c', 'definition': '香蕉'}),
+        word('w3', {'term': 'd', 'definition': '橘子'}),
+      ];
+
+      for (final q in buildQuiz(words, QuizDirection.defToTerm)) {
+        if (q.wordId == 'w0') {
+          expect(q.prompt, '机缘');
+          expect(q.promptSecondary, '巧合');
+        }
+      }
+      for (final q in buildQuiz(words, QuizDirection.termToDef)) {
+        expect(q.promptSecondary, isNull);
+      }
+    });
+
     test('可用词不足 4 个时返回空数组', () {
       expect(buildQuiz(deck(3), QuizDirection.termToDef), isEmpty);
     });
