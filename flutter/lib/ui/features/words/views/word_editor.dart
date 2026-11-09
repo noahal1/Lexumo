@@ -1,4 +1,4 @@
-/// Add / edit one word — the dialog behind "Add word" and a row click.
+/// Add / edit one word — the page behind "Add word" and a row click.
 ///
 /// Ports the web build's `WordEditor.tsx`. The behaviour is deliberately the
 /// same: the draft owns every keystroke, nothing is written to the store until
@@ -15,9 +15,8 @@
 ///     IME composition — editing surface, not screen state. [_EditorBuffers]
 ///     pushes keystrokes into the view model and mirrors lookup results back
 ///     out, so the two stay in step without either owning the other.
-///   * **the modal itself.** `showLexModal` renders the body and the footer as
-///     two separate trees, so both are handed the same view model and buffer
-///     set rather than reaching through a parent.
+///   * **the route.** [_WordEditorPage] owns the bar, the scrolling form and
+///     the pinned footer, and disposes both of the above when it unmounts.
 ///
 /// The lookup and save logic — including the two guards that drop a late answer
 /// — lives in the view model. Read that file for why they exist.
@@ -42,8 +41,14 @@ import '../view_models/word_editor_view_model.dart';
 ///
 /// [word] null means create mode. The future carries the word the user asked to
 /// delete (via the footer's Delete button), or null — the page owns the
-/// confirmation, exactly as the TS parent did, so this dialog never stacks a
+/// confirmation, exactly as the TS parent did, so this page never stacks a
 /// second one on top of itself.
+///
+/// It is a **pushed page**, not a dialog. The editor asks for seven text
+/// fields, two lookups and five actions; at a phone's width that is more than a
+/// centered card can hold without either a cramped scroll area or a footer
+/// whose buttons run off the edge. A page owns the whole viewport, which is
+/// what the form actually needs.
 Future<Word?> showWordEditor(
   BuildContext context, {
   required Word? word,
@@ -56,20 +61,18 @@ Future<Word?> showWordEditor(
     defaultListId: defaultListId,
   );
   final buffers = _EditorBuffers(vm);
-  return showLexModal<Word>(
-    context: context,
-    width: 620,
-    title: context.t(word == null ? 'words.addWord' : 'words.editWord'),
-    subtitle: word?.term ?? context.t('words.subtitle'),
-    body: _EditorBody(vm: vm, buffers: buffers),
-    footer: _EditorFooter(vm: vm, buffers: buffers),
-    // Disposal belongs to the modal's own unmount, not to this future: the
-    // future resolves when the route pops, while the closing frame still builds
-    // the body and reads these controllers.
-    onDispose: () {
-      buffers.dispose();
-      vm.dispose();
-    },
+  // The strings are read here, off the caller's context, rather than inside the
+  // route builder: by the time the page is disposed the caller's element may
+  // be gone, and a deactivated context throws on an inherited lookup.
+  return Navigator.of(context).push<Word>(
+    MaterialPageRoute<Word>(
+      builder: (_) => _WordEditorPage(
+        vm: vm,
+        buffers: buffers,
+        title: context.t(word == null ? 'words.addWord' : 'words.editWord'),
+        subtitle: word?.term ?? context.t('words.subtitle'),
+      ),
+    ),
   );
 }
 
@@ -208,6 +211,149 @@ void _save(BuildContext context, WordEditorViewModel vm) {
 }
 
 /* ------------------------------------------------------------------ */
+/* The page                                                            */
+/* ------------------------------------------------------------------ */
+
+/// The editor's own route: a bar, a scrolling form, and a footer that never
+/// runs off the edge.
+///
+/// The three parts are laid out here rather than inside `showLexModal` because
+/// the dialog version put the footer in a single `Row` pinned to the card's
+/// width. On a phone that row (favorite + delete + cancel + save, or the
+/// discard line's three buttons) is wider than the card, so it overflowed —
+/// and the discard line, which is the one the user meets when they try to back
+/// out, was the worst of them. A page follows the platform instead: the form
+/// scrolls, the actions stay pinned, and each action row wraps when it has to.
+class _WordEditorPage extends StatefulWidget {
+  const _WordEditorPage({
+    required this.vm,
+    required this.buffers,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final WordEditorViewModel vm;
+  final _EditorBuffers buffers;
+  final String title;
+  final String subtitle;
+
+  @override
+  State<_WordEditorPage> createState() => _WordEditorPageState();
+}
+
+class _WordEditorPageState extends State<_WordEditorPage> {
+  @override
+  void dispose() {
+    // Disposal belongs to the route's own unmount, not to the future the
+    // caller awaits: that future resolves when the route pops, while the
+    // closing frame still builds the form and reads these controllers.
+    widget.buffers.dispose();
+    widget.vm.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette p = Palette.of(context);
+    return Scaffold(
+      backgroundColor: p.bg,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            _EditorBar(title: widget.title, subtitle: widget.subtitle),
+            Expanded(
+              child: _EditorBody(vm: widget.vm, buffers: widget.buffers),
+            ),
+            _EditorFooter(vm: widget.vm, buffers: widget.buffers),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The page's own top bar: a way back, the action's name, and the word when
+/// there is one.
+class _EditorBar extends StatelessWidget {
+  const _EditorBar({required this.title, required this.subtitle});
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette p = Palette.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border(bottom: BorderSide(color: p.line)),
+      ),
+      padding: const EdgeInsetsDirectional.only(
+        start: Sp.x2,
+        end: Sp.x6,
+        top: Sp.x2,
+        bottom: Sp.x2,
+      ),
+      child: Row(
+        children: <Widget>[
+          // The bar's own back control, with a 44dp target on every platform:
+          // this is the primary way out of a page that fills the screen.
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              key: const ValueKey<String>('editor-back'),
+              onTap: () => Navigator.of(context).maybePop(),
+              behavior: HitTestBehavior.opaque,
+              child: SizedBox(
+                width: Layout.tap,
+                height: Layout.tap,
+                child: Center(
+                  child: LexIcon(Ic.chevronLeft, size: 20, color: p.ink2),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: Sp.x1),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: Fonts.display,
+                    fontSize: Fs.md,
+                    height: Lh.tight,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.005,
+                    color: p.ink,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: Fs.xs,
+                    height: Lh.snug,
+                    color: p.ink3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Body                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -230,43 +376,65 @@ class _EditorBody extends StatelessWidget {
         final bool showDuplicate = vm.showDuplicate;
 
         return CallbackShortcuts(
-          // Cmd/Ctrl+Enter saves from anywhere in the dialog.
+          // Cmd/Ctrl+Enter saves from anywhere in the page; Esc is the
+          // keyboard's way back. The dialog got Esc for free from
+          // `showLexModal`'s own binding, so the page has to carry it.
           bindings: <ShortcutActivator, VoidCallback>{
             const SingleActivator(LogicalKeyboardKey.enter, control: true): () =>
                 _save(context, vm),
             const SingleActivator(LogicalKeyboardKey.enter, meta: true): () =>
                 _save(context, vm),
+            const SingleActivator(LogicalKeyboardKey.escape): () =>
+                _requestClose(context, vm),
           },
           child: Focus(
             autofocus: true,
             child: PopScope(
-              // ×, Esc and the backdrop are all `maybePop`; refusing the pop
-              // while dirty routes them into the footer's discard line.
+              // The bar's back arrow, a system back gesture and Esc are all
+              // `maybePop`; refusing the pop while dirty routes them into the
+              // footer's discard line instead of losing the draft.
               canPop: !vm.dirty,
               onPopInvokedWithResult: (bool didPop, Object? _) {
                 if (!didPop) _requestClose(context, vm);
               },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  _termField(context, t),
-                  const SizedBox(height: Sp.x4),
-                  _definitionsRow(context, t, pairLabel),
-                  if (showDuplicate) ...<Widget>[
-                    const SizedBox(height: Sp.x4),
-                    _duplicateNotice(context, t),
-                  ],
-                  const SizedBox(height: Sp.x4),
-                  _exampleField(context, t),
-                  const SizedBox(height: Sp.x4),
-                  _notesField(context, t),
-                  const SizedBox(height: Sp.x4),
-                  _classifiers(context, t, data),
-                  if (context.showsKeyHints) ...<Widget>[
-                    const SizedBox(height: Sp.x4),
-                    _keyboardLegend(context, t),
-                  ],
-                ],
+              child: SingleChildScrollView(
+                key: const ValueKey<String>('word-editor-body'),
+                // The form scrolls, the bar and the footer do not. On a phone
+                // this is the difference between a keyboard that hides the
+                // footer's buttons and one that never can.
+                padding: const EdgeInsets.fromLTRB(Sp.x4, Sp.x5, Sp.x4, Sp.x6),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    // One reading width on every screen. Left unconstrained, a
+                    // 1920-wide window draws a two-field row a metre across;
+                    // this is the same column the dialog used to be.
+                    constraints: const BoxConstraints(maxWidth: 640),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        _termField(context, t),
+                        const SizedBox(height: Sp.x4),
+                        _definitionsRow(context, t, pairLabel),
+                        if (showDuplicate) ...<Widget>[
+                          const SizedBox(height: Sp.x4),
+                          _duplicateNotice(context, t),
+                        ],
+                        const SizedBox(height: Sp.x4),
+                        _exampleField(context, t),
+                        const SizedBox(height: Sp.x4),
+                        _notesField(context, t),
+                        const SizedBox(height: Sp.x4),
+                        _classifiers(context, t, data),
+                        if (context.showsKeyHints) ...<Widget>[
+                          const SizedBox(height: Sp.x4),
+                          _keyboardLegend(context, t),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -680,6 +848,21 @@ class _EditorBody extends StatelessWidget {
 /* Footer                                                              */
 /* ------------------------------------------------------------------ */
 
+/// The page's pinned action bar.
+///
+/// It used to be one `Row` of four buttons inside a centered dialog. On a phone
+/// that row is wider than the card, so it overflowed — and the discard line was
+/// the worst case, because it carries a whole sentence *and* two buttons and
+/// only appears at the moment the user is trying to get out. Everything here
+/// wraps or stacks instead of overflowing:
+///
+///   * wide windows keep the one-line row, with the destructive actions pushed
+///     to the left edge and the two that close the page on the right;
+///   * narrow ones stack: the secondary actions on their own row, then cancel
+///     and save sharing the width below them, which is where a thumb expects
+///     them and what every phone form does;
+///   * the discard question sits above its own two buttons on any width, so the
+///     sentence never gets squeezed into the middle of a row of controls.
 class _EditorFooter extends StatelessWidget {
   const _EditorFooter({required this.vm, required this.buffers});
 
@@ -688,39 +871,151 @@ class _EditorFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Palette p = Palette.of(context);
     return ListenableBuilder(
       listenable: vm,
       builder: (BuildContext context, Widget? _) {
-        final t = context.t;
-        final Word? word = vm.word;
-
-        if (vm.dismissOpen) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(
-                t('words.discardConfirm'),
-                style: TextStyle(
-                  fontSize: Fs.xs,
-                  height: Lh.snug,
-                  color: Palette.of(context).ink3,
-                ),
+        return Container(
+          decoration: BoxDecoration(
+            color: p.surface,
+            border: Border(top: BorderSide(color: p.line)),
+          ),
+          padding: const EdgeInsets.fromLTRB(Sp.x4, Sp.x3, Sp.x4, Sp.x3),
+          child: SafeArea(
+            // A phone's gesture bar sits under exactly this strip.
+            top: false,
+            child: Align(
+              alignment: Alignment.center,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 640),
+                child: vm.dismissOpen
+                    ? _discardConfirm(context)
+                    : _actions(context),
               ),
-              const SizedBox(width: Sp.x2),
-              LexButton(
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// "Discard this draft?" — the question on its own line, the answer below it.
+  Widget _discardConfirm(BuildContext context) {
+    final Palette p = Palette.of(context);
+    final t = context.t;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          t('words.discardConfirm'),
+          style: TextStyle(fontSize: Fs.sm, height: Lh.snug, color: p.ink2),
+        ),
+        const SizedBox(height: Sp.x2),
+        Row(
+          children: <Widget>[
+            // Keep editing is the safe half and gets the width; discarding is a
+            // single deliberate tap that should not be the easiest target here.
+            Expanded(
+              flex: 2,
+              child: LexButton(
                 label: t('words.keepEditing'),
-                size: BtnSize.sm,
+                block: true,
                 onPressed: () => vm.setDismissOpen(false),
               ),
-              const SizedBox(width: Sp.x2),
-              LexButton(
+            ),
+            const SizedBox(width: Sp.x2),
+            Expanded(
+              child: LexButton(
                 label: t('words.discardChanges'),
                 kind: BtnKind.danger,
-                size: BtnSize.sm,
+                block: true,
                 onPressed: () {
                   vm.setDismissOpen(false);
                   Navigator.of(context).pop();
                 },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Favorite, delete, cancel, save — laid out for the width on offer.
+  Widget _actions(BuildContext context) {
+    final t = context.t;
+    final Word? word = vm.word;
+
+    final List<Widget> secondary = <Widget>[
+      if (word != null) ...<Widget>[
+        LexButton(
+          label: t('common.favorite'),
+          icon: vm.favorite ? Ic.starFilled : Ic.star,
+          kind: vm.favorite ? BtnKind.normal : BtnKind.quiet,
+          size: BtnSize.sm,
+          onPressed: vm.toggleFavorite,
+        ),
+        const SizedBox(width: Sp.x2),
+        LexButton(
+          label: t('common.delete'),
+          icon: Ic.trash,
+          kind: BtnKind.danger,
+          size: BtnSize.sm,
+          // The page owns the confirmation, so this only reports intent.
+          onPressed: () => Navigator.of(context).pop(word),
+        ),
+      ],
+    ];
+
+    final Widget cancel = LexButton(
+      label: t('common.cancel'),
+      onPressed: () => _requestClose(context, vm),
+    );
+    final Widget save = LexButton(
+      label: t('common.save'),
+      icon: Ic.check,
+      kind: BtnKind.primary,
+      onPressed: () => _save(context, vm),
+    );
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        // 640 is the form column; below 440 the four controls cannot share one
+        // row with their labels at any sane size, so they split into two.
+        if (constraints.maxWidth < 440) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (secondary.isNotEmpty) ...<Widget>[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: secondary,
+                ),
+                const SizedBox(height: Sp.x2),
+              ],
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: LexButton(
+                      label: t('common.cancel'),
+                      block: true,
+                      onPressed: () => _requestClose(context, vm),
+                    ),
+                  ),
+                  const SizedBox(width: Sp.x2),
+                  Expanded(
+                    flex: 2,
+                    child: LexButton(
+                      label: t('common.save'),
+                      icon: Ic.check,
+                      kind: BtnKind.primary,
+                      block: true,
+                      onPressed: () => _save(context, vm),
+                    ),
+                  ),
+                ],
               ),
             ],
           );
@@ -729,36 +1024,11 @@ class _EditorFooter extends StatelessWidget {
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            if (word != null) ...<Widget>[
-              LexButton(
-                label: t('common.favorite'),
-                icon: vm.favorite ? Ic.starFilled : Ic.star,
-                kind: vm.favorite ? BtnKind.normal : BtnKind.quiet,
-                size: BtnSize.sm,
-                onPressed: vm.toggleFavorite,
-              ),
-              const SizedBox(width: Sp.x2),
-              LexButton(
-                label: t('common.delete'),
-                icon: Ic.trash,
-                kind: BtnKind.danger,
-                size: BtnSize.sm,
-                // The page owns the confirmation, so this only reports intent.
-                onPressed: () => Navigator.of(context).pop(word),
-              ),
-              const SizedBox(width: Sp.x4),
-            ],
-            LexButton(
-              label: t('common.cancel'),
-              onPressed: () => _requestClose(context, vm),
-            ),
+            ...secondary,
+            if (secondary.isNotEmpty) const SizedBox(width: Sp.x4),
+            cancel,
             const SizedBox(width: Sp.x2),
-            LexButton(
-              label: t('common.save'),
-              icon: Ic.check,
-              kind: BtnKind.primary,
-              onPressed: () => _save(context, vm),
-            ),
+            save,
           ],
         );
       },

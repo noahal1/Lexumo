@@ -280,7 +280,10 @@ void main() {
         expect(tester.takeException(), isNull);
 
         final Finder label = find.descendant(
-          of: find.byType(Dialog),
+          // The editor is a pushed page now, not a dialog: the label is looked
+          // up inside the editor's own body so a look-alike elsewhere on the
+          // host screen cannot satisfy this.
+          of: find.byKey(const ValueKey<String>('word-editor-body')),
           matching: find.text('释义'),
         );
         expect(label, findsOneWidget);
