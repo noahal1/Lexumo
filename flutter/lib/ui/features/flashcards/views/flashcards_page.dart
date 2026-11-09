@@ -591,12 +591,19 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             onReveal: onReveal,
             onSkip: onSkip,
             onPreview: (p) => _dragPreview.value = p),
-        // The pill's lane. Reserved whether or not a drag is live — a slot that
-        // appeared mid-gesture would push the card, the thing the hand is
+        // The pill's lane. Reserved whether or not a drag is live — a slot
+        // that appeared mid-gesture would push the card, the thing the hand is
         // holding, away from the finger.
+        //
+        // 52 dp with the pill on the lane's floor: the two deck edges hang 15
+        // dp past the card's bottom edge (they are Positioned with negative
+        // bottoms and the Stack does not reserve for them), so a pill centred
+        // in a shorter lane sits on top of the paper and reads as if it were
+        // part of the stack.
         SizedBox(
-          height: 32,
-          child: Center(
+          height: 52,
+          child: Align(
+            alignment: Alignment.bottomCenter,
             child: _DragPill(
               preview: _dragPreview,
               labelOf: (kind) => switch (kind) {
