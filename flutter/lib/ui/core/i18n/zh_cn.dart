@@ -248,7 +248,6 @@ const Map<String, String> zhCnRaw = {
   'flashcards.exit': '先到这里',
   'flashcards.remaining': '剩余',
   'flashcards.keyboardHint': '空格翻面，1 困难，2 记得，3 简单，Ctrl+Z 撤销',
-  'flashcards.swipeHint': '滑动评分：左滑困难，右滑记得，下滑跳过',
   'flashcards.tapToReveal': '点按查看',
   'flashcards.termLang': '英文',
   'flashcards.emptyDeck': '这一组没有卡片',

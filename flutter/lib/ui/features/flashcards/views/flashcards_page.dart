@@ -69,6 +69,35 @@ const Map<Grade, String> _kGradeLabelKey = <Grade, String>{
   Grade.easy: 'flashcards.gradeEasy',
 };
 
+/// The decision a live drag is pointing at.
+///
+/// One per grade, plus the skip: left is 困难, right is 记得, up is 简单, and
+/// down is 跳过. Four gestures, four meanings — the pill under the card names
+/// whichever one the hand is currently holding.
+enum _IntentKind { hard, good, easy, skip }
+
+/// The pill under the card while the hand is on it: what the release would do,
+/// and how far the pull still has to go.
+///
+/// It is the reference design's single pill —「一般 · 2 天后」— with one
+/// difference that matters: that pill is a *button* in the reference, while
+/// here the same shape is a *readout*. Tapping a grade you have not decided on
+/// is a mis-tap away from silently rescheduling a word; dragging toward one and
+/// letting go is a decision made with the hand, and the pill is what tells the
+/// hand which decision the drag currently means.
+class _DragPreview {
+  const _DragPreview({required this.kind, required this.armed, required this.travel});
+
+  final _IntentKind kind;
+
+  /// Whether the release would commit at this distance. Before it, the pill is
+  /// a hint; after it, the pill is a promise — and it says so in colour.
+  final bool armed;
+
+  /// How far the pull has gone, 0..1 of the commit distance, for the fill.
+  final double travel;
+}
+
 const Map<DeckSource, String> _kDeckLabelKey = <DeckSource, String>{
   DeckSource.due: 'flashcards.deckDue',
   DeckSource.fresh: 'flashcards.deckNew',
@@ -108,6 +137,16 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
   late final FlashcardsViewModel _vm;
 
   final FocusNode _focus = FocusNode(debugLabel: 'flashcards-page');
+
+  /// What the hand is about to do, published by the card while a drag is live
+  /// and read by the pill under it.
+  ///
+  /// It is a notifier rather than a callback into `setState` for a reason: a
+  /// drag repaints every frame, and rebuilding the page — card, deck edges,
+  /// action row, grade row — to move a 36 dp label would put the whole session
+  /// on the wrong side of the frame budget. Only the pill listens.
+  final ValueNotifier<_DragPreview?> _dragPreview =
+      ValueNotifier<_DragPreview?>(null);
 
   @override
   void initState() {
@@ -156,6 +195,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     // store.
     _vm.dispose();
     _focus.dispose();
+    _dragPreview.dispose();
     super.dispose();
   }
 
@@ -177,13 +217,19 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
           _reveal();
         }
       },
+      // The keyboard twins of the four swipe directions, in the same order the
+      // card uses: left 困难, right 记得, up 简单, down 跳过. They grade on both
+      // faces, exactly like the gesture — gating them on the answer being
+      // revealed would teach a second, contradictory rule.
       const SingleActivator(LogicalKeyboardKey.arrowLeft): () {
-        if (_vm.inProgress) _vm.skip();
+        if (_vm.inProgress) _vm.grade(Grade.hard);
       },
       const SingleActivator(LogicalKeyboardKey.arrowRight): () {
-        if (_vm.inProgress) _vm.skip();
+        if (_vm.inProgress) _vm.grade(Grade.good);
       },
-      // The keyboard twin of the downward flick: skip without grading.
+      const SingleActivator(LogicalKeyboardKey.arrowUp): () {
+        if (_vm.inProgress) _vm.grade(Grade.easy);
+      },
       const SingleActivator(LogicalKeyboardKey.arrowDown): () {
         if (_vm.inProgress) _vm.skip();
       },
@@ -543,8 +589,38 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             preview: preview,
             onGrade: onGrade,
             onReveal: onReveal,
-            onSkip: onSkip),
-        const SizedBox(height: Sp.x4),
+            onSkip: onSkip,
+            onPreview: (p) => _dragPreview.value = p),
+        // The pill's lane. Reserved whether or not a drag is live — a slot that
+        // appeared mid-gesture would push the card, the thing the hand is
+        // holding, away from the finger.
+        SizedBox(
+          height: 32,
+          child: Center(
+            child: _DragPill(
+              preview: _dragPreview,
+              labelOf: (kind) => switch (kind) {
+                _IntentKind.hard => t('flashcards.gradeHard'),
+                _IntentKind.good => t('flashcards.gradeGood'),
+                _IntentKind.easy => t('flashcards.gradeEasy'),
+                _IntentKind.skip => t('quiz.skip'),
+              },
+              intervalOf: (kind) => switch (kind) {
+                _IntentKind.skip => '',
+                _IntentKind.hard => newCard
+                    ? t('flashcards.firstTime')
+                    : formatInterval(preview[Grade.hard]!.intervalDays),
+                _IntentKind.good => newCard
+                    ? t('flashcards.firstTime')
+                    : formatInterval(preview[Grade.good]!.intervalDays),
+                _IntentKind.easy => newCard
+                    ? t('flashcards.firstTime')
+                    : formatInterval(preview[Grade.easy]!.intervalDays),
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: Sp.x3),
         if (_vm.flipped)
           _gradeRow(t, preview: preview, newCard: newCard, onGrade: onGrade)
         else ...<Widget>[
@@ -726,6 +802,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     required void Function(Grade) onGrade,
     required VoidCallback onReveal,
     required VoidCallback onSkip,
+    required ValueChanged<_DragPreview?> onPreview,
   }) {
     final Palette p = Palette.of(context);
     final Size size = MediaQuery.sizeOf(context);
@@ -775,63 +852,71 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
         Positioned(left: 18, right: 18, top: 14, bottom: -8, child: _deckEdge(p, far: false)),
         Positioned(left: 34, right: 34, top: 26, bottom: -15, child: _deckEdge(p, far: true)),
         _FlipCard(
-      key: const ValueKey('flip-card'),
-      turn: _vm.turn,
-      tappable: !_vm.flipped,
-      onTap: onReveal,
-      // The swipe grades only once the answer is showing — the same gate the
-      // grade row uses — so a drag on the front can never grade sight unseen.
-      onSwipe: _vm.flipped ? onGrade : null,
-      // The down skip is always live. On the back it is the down-dominant
-      // throw; on the front there is no grade to compete with, so any
-      // decisive throw — sideways or down — discards the unseen card.
-      onSwipeDown: onSkip,
-      minHeight: minHeight,
-      // Where each sideways grade would send this word. The dragged border
-      // wears the destination's status colour so the pull previews the same
-      // four hues the word library paints down its left margin.
-      statusOf: preview.map(
-        (Grade g, ({int intervalDays, WordStatus status}) v) =>
-            MapEntry<Grade, WordStatus>(g, v.status),
-      ),
-      currentStatus: word.status,
-      head: Row(
-        children: <Widget>[
-          Text(
-            _vm.flipped ? t('flashcards.back') : t('flashcards.front'),
-            style: TextStyle(fontSize: Fs.xs, height: Lh.tight, color: p.ink3),
+          key: const ValueKey('flip-card'),
+          turn: _vm.turn,
+          tappable: !_vm.flipped,
+          onTap: onReveal,
+          // Swiping grades on both faces, one direction per grade: left 困难,
+          // right 记得, up 简单, down 跳过. The gate used to be "only after the
+          // answer is showing", on the grounds that grading blind is a mistake
+          // — but that left the front with a single meaning for every
+          // direction, which read as "everything skips". The reference design
+          // puts its grade pill on the unrevealed card too: you look, you
+          // decide, you throw.
+          onSwipe: onGrade,
+          // A down-dominant throw skips. Sideways on the front means nothing —
+          // there is no grade to give an unrevealed card — so it springs back
+          // rather than discarding the card on a gesture that taught nothing.
+          onSwipeDown: onSkip,
+          onPreview: onPreview,
+          minHeight: minHeight,
+          // Where each sideways grade would send this word. The dragged border
+          // wears the destination's status colour so the pull previews the same
+          // four hues the word library paints down its left margin.
+          statusOf: preview.map(
+            (Grade g, ({int intervalDays, WordStatus status}) v) =>
+                MapEntry<Grade, WordStatus>(g, v.status),
           ),
-          const Spacer(),
-          // The speaker stays on the back only: on the front the round
-          // action row under the card owns play, favorite and skip.
-          if (_vm.flipped && speechAvailable)
-            Tooltip(
-              message: t('flashcards.autoPlay'),
-              child: LexButton(
-                label: '',
-                icon: Ic.volume,
-                kind: BtnKind.quiet,
-                size: BtnSize.sm,
-                onPressed: () => _vm.playWord(word),
+          currentStatus: word.status,
+          head: Row(
+            children: <Widget>[
+              Text(
+                _vm.flipped ? t('flashcards.back') : t('flashcards.front'),
+                style:
+                    TextStyle(fontSize: Fs.xs, height: Lh.tight, color: p.ink3),
               ),
+              const Spacer(),
+              // The speaker stays on the back only: on the front the round
+              // action row under the card owns play, favorite and skip.
+              if (_vm.flipped && speechAvailable)
+                Tooltip(
+                  message: t('flashcards.autoPlay'),
+                  child: LexButton(
+                    label: '',
+                    icon: Ic.volume,
+                    kind: BtnKind.quiet,
+                    size: BtnSize.sm,
+                    onPressed: () => _vm.playWord(word),
+                  ),
+                ),
+            ],
+          ),
+          face: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: faceMax),
+              // Only the revealed answer on a wide window can overflow its cap,
+              // so only that one combination keeps a scroll view. Everywhere
+              // else the scroll view would be dead weight that still wins the
+              // arena for vertical drags — and the card is meant to follow the
+              // hand in both axes now, not to fight an invisible scroller for
+              // them.
+              child: (_vm.flipped && !compact)
+                  ? SingleChildScrollView(child: face)
+                  : face,
             ),
-        ],
-      ),
-      face: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: faceMax),
-          // Only the revealed answer on a wide window can overflow its cap, so
-          // only that one combination keeps a scroll view. Everywhere else the
-          // scroll view would be dead weight that still wins the arena for
-          // vertical drags — and the card is meant to follow the hand in both
-          // axes now, not to fight an invisible scroller for them.
-          child: (_vm.flipped && !compact)
-              ? SingleChildScrollView(child: face)
-              : face,
+          ),
         ),
-      ),
-      ),
-    ],
+      ],
     );
   }
 
@@ -846,7 +931,14 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
       );
 
   /// A round icon button under the card — the reference design's star, play
-  /// and skip. 56 px keeps the tap target well past the 44 px floor.
+  /// and skip.
+  ///
+  /// One size smaller and one shade lighter than the buttons around it: these
+  /// are secondary actions on a card whose real verbs are the drag and the big
+  /// reveal button below. At 56 px with a full-strength border they read as a
+  /// toolbar competing with the card; at 44 px on `surface2` with a hairline
+  /// they read as a quiet row under it. 44 px is also the tap-target floor, so
+  /// nothing below is a smaller target than the platform allows.
   Widget _circleAction({
     required String icon,
     required String tooltip,
@@ -857,16 +949,18 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: active ? p.warnSoft : p.surface,
-        shape: CircleBorder(side: BorderSide(color: active ? p.warn : p.line)),
+        color: active ? p.warnSoft : p.surface2,
+        shape: CircleBorder(
+          side: BorderSide(color: active ? p.warn : p.line),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           child: SizedBox(
-            width: 56,
-            height: 56,
+            width: 44,
+            height: 44,
             child: Center(
-              child: LexIcon(icon, size: 20, color: active ? p.warn : p.ink2),
+              child: LexIcon(icon, size: 18, color: active ? p.warn : p.ink3),
             ),
           ),
         ),
@@ -1311,11 +1405,10 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               ShortcutRow(keys: const <String>['空格'], label: t('settings.shortcutFlip')),
-              ShortcutRow(keys: const <String>['←'], label: t('flashcards.swipeHint')),
-              ShortcutRow(keys: const <String>['1'], label: t('flashcards.gradeHard')),
-              ShortcutRow(keys: const <String>['2'], label: t('flashcards.gradeGood')),
-              ShortcutRow(keys: const <String>['3'], label: t('flashcards.gradeEasy')),
-              ShortcutRow(keys: const <String>['←', '→', '↓'], label: t('quiz.skip')),
+              ShortcutRow(keys: const <String>['←'], label: t('flashcards.gradeHard')),
+              ShortcutRow(keys: const <String>['→'], label: t('flashcards.gradeGood')),
+              ShortcutRow(keys: const <String>['↑'], label: t('flashcards.gradeEasy')),
+              ShortcutRow(keys: const <String>['↓'], label: t('quiz.skip')),
               ShortcutRow(keys: const <String>['Ctrl', 'Z'], label: t('flashcards.undo')),
             ],
           ),
@@ -1397,6 +1490,7 @@ class _FlipCard extends StatefulWidget {
     required this.currentStatus,
     this.onSwipe,
     this.onSwipeDown,
+    this.onPreview,
   });
 
   final String? turn;
@@ -1424,12 +1518,19 @@ class _FlipCard extends StatefulWidget {
   /// commit one.
   final void Function(Grade)? onSwipe;
 
-  /// Called when the revealed card is dragged downwards past the skip
-  /// threshold, down more than sideways — the gesture layout for the skip
-  /// button, which advances the session without a grade. Never null-checked
-  /// by callers on the front: the unrevealed card throws in any direction,
-  /// so the action is passed unconditionally.
+  /// Called when the card is dragged downwards past the skip threshold, down
+  /// more than sideways — the gesture layout for the skip button, which
+  /// advances the session without a grade. Passed unconditionally: the front
+  /// skips the same way the back does, so there is no face where the action
+  /// is missing.
   final VoidCallback? onSwipeDown;
+
+  /// Reports what the current pull would do, for the pill under the card.
+  ///
+  /// Called with null when the hand leaves, so the pill can fade out on the
+  /// same release that resolves the drag. It does not use `setState`: the card
+  /// repaints every frame of a drag, and the page does not need to.
+  final ValueChanged<_DragPreview?>? onPreview;
 
   @override
   State<_FlipCard> createState() => _FlipCardState();
@@ -1455,13 +1556,16 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
   bool _flying = false;
   VoidCallback? _pending;
 
-  // Sideways distance a release needs before it commits a grade, downward
-  // distance for the skip, how much more down than sideways the skip needs to
-  // be, and the cage the follow clamps to so a hard pull cannot park the card
-  // under the grade row.
+  // Up is a grade too, and it needs more travel than sideways to fire: the
+  // easy interval is the longest a release can hand out, so it gets the
+  // longest pull. Down stays a skip and is measured on its own axis. The
+  // dominance factors decide a diagonal: a pull has to be more down than
+  // sideways to skip, more up than sideways to take Easy.
   static const double _swipeThreshold = 72;
+  static const double _easyThreshold = 96;
   static const double _skipThreshold = 96;
   static const double _skipDominance = 1.2;
+  static const double _easyDominance = 1.2;
   static const double _dragClamp = 280;
 
   Grade? _swipeGrade() {
@@ -1475,16 +1579,25 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
       _dragOffset.dy > _skipThreshold &&
       _dragOffset.dy > _dragOffset.dx.abs() * _skipDominance;
 
-  /// The front cannot grade — the answer is still hidden — so any decisive
-  /// throw in any direction discards the card instead. Down dominance only
-  /// matters once grading is on the table (the back); there a sideways pull
-  /// is a grade, not a skip.
-  bool get _throwReady {
-    if (widget.onSwipeDown == null) return false;
-    if (!widget.tappable) return _skipReady;
-    return _dragOffset.dx.abs() > _swipeThreshold ||
-        _dragOffset.dy > _skipThreshold;
-  }
+  /// An upward pull past [_easyThreshold], more up than sideways.
+  ///
+  /// 简单 is the grade with the longest interval — the one a release commits
+  /// furthest ahead — so it asks for the longest pull. It is also the only
+  /// grade left once the three other directions are taken, and up reads as
+  /// "this one is going away for a while" in the same vocabulary as the rest.
+  bool get _easyReady =>
+      widget.onSwipe != null &&
+      _dragOffset.dy < -_easyThreshold &&
+      -_dragOffset.dy > _dragOffset.dx.abs() * _easyDominance;
+
+  /// The throw that skips: down, and decisively down.
+  ///
+  /// It used to fire on the front for a pull in *any* direction, on the
+  /// reasoning that nothing else was on offer there. That read badly in the
+  /// hand: a card that vanishes however you pull it makes the whole screen feel
+  /// like a skip button, and the gesture stops teaching anything. Down is the
+  /// skip on both faces, and the other three directions are the three grades.
+  bool get _throwReady => _skipReady;
 
   void _panStart(DragStartDetails d) {
     if (_flying) return;
@@ -1493,6 +1606,7 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
       _dragOffset = Offset.zero;
       _target = Offset.zero;
     });
+    _publishPreview();
   }
 
   void _panUpdate(DragUpdateDetails d) {
@@ -1504,6 +1618,58 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
       );
       _target = _dragOffset;
     });
+    _publishPreview();
+  }
+
+  /// Tells the pill what the hand is currently pointing at.
+  ///
+  /// The card already knows: [_swipeGrade] answers which sideways grade a pull
+  /// means, [_easyReady] and [_skipReady] whether it has become a vertical one.
+  /// What the pill adds is the *distance still owed*, so the answer is one
+  /// number — `travel` — that reaches 1 exactly where the release would commit.
+  ///
+  /// The precedence here is the release's, case for case, so the pill never
+  /// names a decision the release would not take.
+  void _publishPreview() {
+    final ValueChanged<_DragPreview?>? report = widget.onPreview;
+    if (report == null) return;
+    final double dx = _dragOffset.dx;
+    final double dy = _dragOffset.dy;
+    // Below a couple of pixels this is a tap that wobbled, not a decision.
+    if (dx.abs() < 2 && dy.abs() < 2) {
+      report(null);
+      return;
+    }
+    // Same precedence as the release, so the pill never names a decision the
+    // release would not take.
+    if (_skipReady) {
+      report(_DragPreview(
+        kind: _IntentKind.skip,
+        armed: true,
+        travel: dy / _skipThreshold,
+      ));
+      return;
+    }
+    if (_easyReady) {
+      report(_DragPreview(
+        kind: _IntentKind.easy,
+        armed: true,
+        travel: -dy / _easyThreshold,
+      ));
+      return;
+    }
+    if (dx.abs() < dy.abs()) {
+      // Vertical but not yet dominant in either direction: no decision is
+      // committed, so the pill stays away rather than flickering between two
+      // answers.
+      report(null);
+      return;
+    }
+    report(_DragPreview(
+      kind: dx < 0 ? _IntentKind.hard : _IntentKind.good,
+      armed: dx.abs() > _swipeThreshold,
+      travel: dx.abs() / _swipeThreshold,
+    ));
   }
 
   void _panCancel() {
@@ -1513,22 +1679,35 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
 
   void _panEnd(DragEndDetails d) {
     if (_flying) return;
+    // The pill retires on the release, not on the landing: the flight below
+    // takes 180 ms and the answer to "what am I about to do" is settled the
+    // moment the hand leaves.
+    widget.onPreview?.call(null);
     // The release reads the hold, not the fling: a throw past the cage still
     // commits by where the hand stopped, which keeps the decision reviewable —
     // the tint previewed during the drag is the grade that lands.
-    final Grade? grade = _swipeGrade();
-    if (widget.onSwipe != null && grade != null && !_skipReady) {
-      _flyAway(() => widget.onSwipe!(grade));
+    //
+    // Order matters. A down-dominant pull is a skip even if it also cleared a
+    // sideways threshold; an up-dominant pull is 简单; only then do the
+    // sideways grades get a look.
+    if (_skipReady) {
+      _flyAway(widget.onSwipeDown!);
       return;
     }
-    if (_throwReady) {
-      _flyAway(widget.onSwipeDown!);
+    if (_easyReady) {
+      _flyAway(() => widget.onSwipe!(Grade.easy));
+      return;
+    }
+    final Grade? grade = _swipeGrade();
+    if (widget.onSwipe != null && grade != null) {
+      _flyAway(() => widget.onSwipe!(grade));
       return;
     }
     _springBack();
   }
 
   void _springBack() {
+    widget.onPreview?.call(null);
     setState(() {
       _dragging = false;
       _dragOffset = Offset.zero;
@@ -1689,6 +1868,133 @@ class _FlipCardState extends State<_FlipCard> with SingleTickerProviderStateMixi
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The pill that appears under the card while a hand is dragging it.
+///
+/// It reads the preview off a [ValueNotifier], so the page itself never
+/// rebuilds during a drag; only this ~190×30 strip does.
+///
+/// The fill is the honest part. A pill that only appeared once the threshold
+/// was crossed would answer the wrong question — the hand needs to know how
+/// much further to pull *while* it pulls, not after it is too late to matter.
+/// The colour wells up from the left as the pull approaches the commit point,
+/// and once the release would commit the whole pill goes solid.
+class _DragPill extends StatelessWidget {
+  const _DragPill({
+    required this.preview,
+    required this.labelOf,
+    required this.intervalOf,
+  });
+
+  final ValueNotifier<_DragPreview?> preview;
+  final String Function(_IntentKind) labelOf;
+  final String Function(_IntentKind) intervalOf;
+
+  @override
+  Widget build(BuildContext context) {
+    final Palette p = Palette.of(context);
+    return ValueListenableBuilder<_DragPreview?>(
+      valueListenable: preview,
+      builder: (BuildContext context, _DragPreview? live, Widget? _) {
+        final bool shown = live != null;
+        final _DragPreview current = live ??
+            const _DragPreview(
+              kind: _IntentKind.good,
+              armed: false,
+              travel: 0,
+            );
+        final Color tint = switch (current.kind) {
+          _IntentKind.hard => p.ink,
+          _IntentKind.good => p.accent,
+          _IntentKind.easy => p.ok,
+          _IntentKind.skip => p.ink3,
+        };
+        final String interval = intervalOf(current.kind);
+        final double fill = current.travel.clamp(0.0, 1.0);
+        return IgnorePointer(
+          child: AnimatedOpacity(
+            opacity: shown ? 1 : 0,
+            duration: Motion.dur1,
+            curve: Motion.ease,
+            child: ClipRRect(
+              key: const ValueKey('drag-pill'),
+              borderRadius: R.borderPill,
+              child: Stack(
+                children: <Widget>[
+                  // The well: the pill's unfilled body, always the page's
+                  // raised surface so it reads as a chip rather than as a
+                  // floating word.
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: current.armed ? tint : p.surface,
+                        borderRadius: R.borderPill,
+                        border: Border.all(
+                          color: current.armed ? tint : p.lineStrong,
+                        ),
+                      ),
+                    ),
+                  ),
+                  // The fill: the same hue at a strength that grows with the
+                  // pull, so "keep pulling" is legible without a number.
+                  if (!current.armed && fill > 0)
+                    Positioned.fill(
+                      child: FractionallySizedBox(
+                        alignment: AlignmentDirectional.centerStart,
+                        widthFactor: fill,
+                        child: ColoredBox(color: tint.withValues(alpha: 0.18)),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Sp.x4,
+                      vertical: Sp.x2,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          labelOf(current.kind),
+                          style: TextStyle(
+                            fontSize: Fs.sm,
+                            height: Lh.tight,
+                            fontWeight: FontWeight.w500,
+                            color: current.armed ? p.surface : tint,
+                          ),
+                        ),
+                        if (interval.isNotEmpty) ...<Widget>[
+                          Text(
+                            ' · ',
+                            style: TextStyle(
+                              fontSize: Fs.sm,
+                              height: Lh.tight,
+                              color: current.armed ? p.surface : p.ink3,
+                            ),
+                          ),
+                          Text(
+                            interval,
+                            style: TextStyle(
+                              fontSize: Fs.sm,
+                              height: Lh.tight,
+                              color: current.armed ? p.surface : p.ink3,
+                              fontFeatures: const <FontFeature>[
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
