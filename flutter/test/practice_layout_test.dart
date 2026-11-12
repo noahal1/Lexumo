@@ -219,6 +219,65 @@ void main() {
     });
   });
 
+  // Wave 3.2: the start button used to sit below four option rows inside a
+  // 560dp column, so on a 1600x1000 desktop it took ~600dp of scrolling to
+  // reach the one control the screen exists for. It now shares a lane with the
+  // round figure, beside (desktop) or just above (phone) the options.
+  group('the start action is in the first screen', () {
+    testWidgets('a desktop keeps the button above the fold', (
+      WidgetTester tester,
+    ) async {
+      await pumpPractice(tester, window: 1440, body: 1208, height: 900);
+
+      final Finder start = find.widgetWithText(
+        LexButton,
+        _i18n.t('flashcards.start'),
+      );
+      expect(start, findsOneWidget);
+      expect(
+        tester.getRect(start).bottom,
+        lessThanOrEqualTo(900),
+        reason: 'the round is startable without scrolling a 900dp-tall window',
+      );
+    });
+
+    testWidgets('a phone keeps the button above the fold', (
+      WidgetTester tester,
+    ) async {
+      await pumpPractice(tester, window: 411, body: 411, height: 860);
+
+      final Finder start = find.widgetWithText(
+        LexButton,
+        _i18n.t('flashcards.start'),
+      );
+      expect(start, findsOneWidget);
+      expect(
+        tester.getRect(start).bottom,
+        lessThanOrEqualTo(860),
+        reason: 'the round is startable without scrolling an 860dp-tall phone',
+      );
+    });
+
+    testWidgets('a desktop sets the launch lane beside the options', (
+      WidgetTester tester,
+    ) async {
+      await pumpPractice(tester, window: 1440, body: 1208);
+
+      final Rect figure = tester.getRect(
+        find.text(_i18n.t('practice.thisRound')),
+      );
+      final Rect options = tester.getRect(
+        find.text(_i18n.t('practice.options')),
+      );
+      expect(
+        figure.right,
+        lessThanOrEqualTo(options.left),
+        reason: 'the launch block is a column to the left of the options, '
+            'not a full-width row above them',
+      );
+    });
+  });
+
   group('the round figure states what will happen', () {
     testWidgets('it prints the pool size when the pool is smaller', (
       WidgetTester tester,

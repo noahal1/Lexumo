@@ -35,10 +35,20 @@ import '../../quiz/views/quiz_page.dart';
 import '../view_models/practice_view_model.dart';
 
 class PracticePage extends StatefulWidget {
-  const PracticePage({super.key, this.controller});
+  const PracticePage({super.key, this.controller, this.plan, this.onPlanChanged});
 
   /// Owned by the shell, so the page scroll position survives a page switch.
   final ScrollController? controller;
+
+  /// The round in progress, owned by the shell so a destination change does
+  /// not end it. Null on the front page. Null on a bare `PracticePage` (a
+  /// widget test pumping the front page), where [_start]/[_leaveSession] fall
+  /// back to local state.
+  final PracticePlan? plan;
+
+  /// Reports a round starting or ending. The shell keeps the value across
+  /// page switches; null when this page is mounted on its own.
+  final ValueChanged<PracticePlan?>? onPlanChanged;
 
   @override
   State<PracticePage> createState() => _PracticePageState();
@@ -51,11 +61,13 @@ class _PracticePageState extends State<PracticePage> {
 
   /// The round on screen, or null while the front page is showing.
   ///
-  /// The plan is captured when 开始复习 is pressed rather than read from the
-  /// view model on every frame: once a round is running, the front page's
-  /// controls are gone, so nothing can change the number under the session's
-  /// feet — and a session that re-read the round size mid-round would grow or
-  /// shrink under the card in hand.
+  /// The shell owns it when a [PracticePage.plan] / [onPlanChanged] pair is
+  /// supplied; this field is the fallback for a page pumped on its own. The
+  /// plan is captured when 开始复习 is pressed rather than read from the view
+  /// model on every frame: once a round is running, the front page's controls
+  /// are gone, so nothing can change the number under the session's feet —
+  /// and a session that re-read the round size mid-round would grow or shrink
+  /// under the card in hand.
   PracticePlan? _running;
 
   @override
@@ -75,19 +87,28 @@ class _PracticePageState extends State<PracticePage> {
 
   void _start() {
     if (!_vm.canStart) return;
-    setState(() => _running = _vm.plan);
+    final PracticePlan plan = _vm.plan;
+    if (widget.onPlanChanged != null) {
+      widget.onPlanChanged!(plan);
+    } else {
+      setState(() => _running = plan);
+    }
   }
 
   /// Called by the sub-page when the session is over — by 退出, or by the
   /// done screen's 返回.
   void _leaveSession() {
     if (!mounted) return;
-    setState(() => _running = null);
+    if (widget.onPlanChanged != null) {
+      widget.onPlanChanged!(null);
+    } else {
+      setState(() => _running = null);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final PracticePlan? running = _running;
+    final PracticePlan? running = widget.onPlanChanged != null ? widget.plan : _running;
     if (running != null) {
       // Only the active sub-page is built, never both: each carries its own
       // scroll target (the shell's one controller per destination) and its own
@@ -191,55 +212,54 @@ class _PracticePageState extends State<PracticePage> {
         ),
     ];
 
-    final Widget column = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        // The page names itself. Every other screen in the app lets the sidebar
-        // or the tab bar name it, and this one did too until the round controls
-        // moved in: a screen that asks you to decide something before you can
-        // leave it needs a title, or the first thing you see is a segmented
-        // control with no context.
-        Text(
-          t('practice.title'),
-          style: TextStyle(
-            fontFamily: Fonts.display,
-            fontSize: Fs.xl,
-            height: Lh.title,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.01,
-            color: p.ink,
-          ),
-        ),
-        const SizedBox(height: Sp.x7),
-        Center(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Segmented<PracticeMode>(
-              value: _vm.mode,
-              scale: SegScale.page,
-              options: <SegOption<PracticeMode>>[
-                SegOption<PracticeMode>(
-                  value: PracticeMode.cards,
-                  label: t('practice.cards'),
-                ),
-                SegOption<PracticeMode>(
-                  value: PracticeMode.quiz,
-                  label: t('practice.quiz'),
-                ),
-              ],
-              onChanged: _vm.setMode,
+    // Built once and shared by both compositions, so the two layouts cannot
+    // drift into describing the same round differently.
+    //
+    // The page names itself. Every other screen in the app lets the sidebar
+    // or the tab bar name it, and this one did too until the round controls
+    // moved in: a screen that asks you to decide something before you can
+    // leave it needs a title, or the first thing you see is a segmented
+    // control with no context.
+    final Widget heading = Text(
+      t('practice.title'),
+      style: TextStyle(
+        fontFamily: Fonts.display,
+        fontSize: Fs.xl,
+        height: Lh.title,
+        fontWeight: FontWeight.w600,
+        letterSpacing: -0.01,
+        color: p.ink,
+      ),
+    );
+    final Widget modeSwitch = Center(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Segmented<PracticeMode>(
+          value: _vm.mode,
+          scale: SegScale.page,
+          options: <SegOption<PracticeMode>>[
+            SegOption<PracticeMode>(
+              value: PracticeMode.cards,
+              label: t('practice.cards'),
             ),
-          ),
+            SegOption<PracticeMode>(
+              value: PracticeMode.quiz,
+              label: t('practice.quiz'),
+            ),
+          ],
+          onChanged: _vm.setMode,
         ),
-        const SizedBox(height: Sp.x6),
-        _RoundFigure(size: size, label: t('practice.thisRound')),
-        const SizedBox(height: Sp.x5),
-        // The scope only exists for cards: a quiz is drawn from every word that
-        // can be asked, so a 待复习/自定义 switch above a quiz round would be a
-        // control that does nothing.
-        if (cards)
-          Center(
+      ),
+    );
+    final Widget figure = _RoundFigure(
+      size: size,
+      label: t('practice.thisRound'),
+    );
+    // The scope only exists for cards: a quiz is drawn from every word that
+    // can be asked, so a 待复习/自定义 switch above a quiz round would be a
+    // control that does nothing.
+    final Widget? scopeSwitch = cards
+        ? Center(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Segmented<PracticeScope>(
@@ -258,41 +278,97 @@ class _PracticePageState extends State<PracticePage> {
                 onChanged: _vm.setScope,
               ),
             ),
-          ),
+          )
+        : null;
+    final Widget startButton = LexButton(
+      label: cards ? t('flashcards.start') : t('quiz.start'),
+      kind: BtnKind.primary,
+      size: BtnSize.lg,
+      block: true,
+      icon: Ic.play,
+      onPressed: _vm.canStart ? _start : null,
+    );
+    final List<Widget> startNotes = <Widget>[
+      if (!_vm.canStart) ...<Widget>[
+        const SizedBox(height: Sp.x3),
+        Text(
+          cards ? t('practice.emptyPool') : t('practice.needWords'),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: Fs.xs, height: Lh.body, color: p.ink3),
+        ),
+      ],
+      if (context.showsKeyHints) ...<Widget>[
+        const SizedBox(height: Sp.x3),
+        Text(
+          cards ? t('flashcards.keyboardHint') : t('quiz.keyboardHint'),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: Fs.xs, height: Lh.body, color: p.ink3),
+        ),
+      ],
+    ];
+    // The one decision this screen exists for: how much, from where, and go.
+    // Keeping the figure, the scope and the action together means the start
+    // button never sits a screenful below the number it acts on.
+    final Widget launchBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        figure,
+        if (scopeSwitch != null) ...<Widget>[
+          const SizedBox(height: Sp.x5),
+          scopeSwitch,
+        ],
         const SizedBox(height: Sp.x7),
+        startButton,
+        ...startNotes,
+      ],
+    );
+    final Widget optionsBlock = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
         SectionTitle(label: t('practice.options'), padded: false),
+        // No rule after the list: the last option row already closes it with
+        // its own bottom border. A second hairline below reads as an empty row
+        // — a setting with nothing in it — rather than as a section break.
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: options,
         ),
-        // No rule here: the last option row already closes the list with its own
-        // bottom border. A second hairline 28dp below it reads as an empty row
-        // — a setting with nothing in it — rather than as a section break.
+      ],
+    );
+
+    // The start button used to sit under four option rows inside a 560dp
+    // column, so on a 1600x1000 desktop it took ~600dp of scrolling to reach
+    // the one control the screen exists for. Once there is room, the launch
+    // block takes a fixed lane on the left and the options take the rest; on a
+    // phone the same block moves directly under the mode switch, above the
+    // options, so the action is in the first screen at both widths.
+    final bool twoColumns =
+        MediaQuery.sizeOf(context).width >= _kTwoColumnBreakpoint;
+    final Widget column = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        heading,
         const SizedBox(height: Sp.x7),
-        LexButton(
-          label: cards ? t('flashcards.start') : t('quiz.start'),
-          kind: BtnKind.primary,
-          size: BtnSize.lg,
-          block: true,
-          icon: Ic.play,
-          onPressed: _vm.canStart ? _start : null,
-        ),
-        if (!_vm.canStart) ...<Widget>[
-          const SizedBox(height: Sp.x3),
-          Text(
-            cards ? t('practice.emptyPool') : t('practice.needWords'),
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: Fs.xs, height: Lh.body, color: p.ink3),
+        modeSwitch,
+        if (twoColumns) ...<Widget>[
+          const SizedBox(height: Sp.x7),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SizedBox(width: _kLaunchColumnWidth, child: launchBlock),
+              const SizedBox(width: _kColumnGap),
+              Expanded(child: optionsBlock),
+            ],
           ),
-        ],
-        if (context.showsKeyHints) ...<Widget>[
-          const SizedBox(height: Sp.x3),
-          Text(
-            cards ? t('flashcards.keyboardHint') : t('quiz.keyboardHint'),
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: Fs.xs, height: Lh.body, color: p.ink3),
-          ),
+        ] else ...<Widget>[
+          const SizedBox(height: Sp.x6),
+          launchBlock,
+          const SizedBox(height: Sp.x7),
+          optionsBlock,
         ],
       ],
     );
@@ -302,11 +378,15 @@ class _PracticePageState extends State<PracticePage> {
       children: <Widget>[
         Align(
           alignment: AlignmentDirectional.topCenter,
-          // Capped and centred: the form is one column of decisions, and past
+          // Capped and centred on a phone: one column of decisions, and past
           // ~560dp a label and its control drift so far apart that the row
-          // stops reading as one row.
+          // stops reading as one row. On a two-column desktop the cap would
+          // squeeze both lanes into 560dp, so it opens out to the page's own
+          // content width instead.
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
+            constraints: BoxConstraints(
+              maxWidth: twoColumns ? Layout.contentMax : 560,
+            ),
             child: column,
           ),
         ),
@@ -314,6 +394,14 @@ class _PracticePageState extends State<PracticePage> {
     );
   }
 }
+
+/// Above this width the launch block and the options sit side by side. Both
+/// lanes need room: the launch lane holds the big figure and the start button,
+/// and the options lane holds four labeled rows whose controls must stay on the
+/// same line as their labels. Below it everything is one column.
+const double _kTwoColumnBreakpoint = 1000;
+const double _kLaunchColumnWidth = 340;
+const double _kColumnGap = Sp.x10;
 
 /// The four 自动朗读 states, by i18n key.
 const Map<AutoPlayWhen, String> _kAutoPlayLabelKey = <AutoPlayWhen, String>{

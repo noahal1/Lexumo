@@ -25,6 +25,50 @@ import 'lex_icon.dart';
 ///
 /// What survives is the body, which still expands rather than scrolls the whole
 /// page, so the phone tab bar can sit underneath without anyone measuring.
+///
+/// The chrome the shell draws around a page, published to [PageShell] so the
+/// page's own bottom padding matches the bar that is actually on screen.
+///
+/// The layout mode (sidebar / rail / phone tab bar) is decided by window
+/// *width* (`Layout.mobileBreakpoint`), but the old padding used
+/// `context.isTouch`, which is decided by *platform*. On a Windows window
+/// narrowed to 620dp those two disagree: the shell draws a phone tab bar, the
+/// page reserves nothing for it, and the last row sits under the bar. The
+/// shell is the only widget that knows which mode it chose, so it publishes
+/// that fact here instead of every page guessing from the OS.
+///
+/// A page pumped on its own in a widget test has no [ShellChrome] above it and
+/// falls back to the old platform rule, which is what those tests were written
+/// against.
+class ShellChrome extends InheritedWidget {
+  const ShellChrome({
+    super.key,
+    required this.hasBottomBar,
+    this.bottomBarHeight = Layout.tap + Sp.x8,
+    required super.child,
+  });
+
+  /// Whether a phone tab bar is currently drawn over the page's bottom edge.
+  final bool hasBottomBar;
+
+  /// How much of the page's tail that bar can cover. 76dp: the tab item's
+  /// 52dp minimum, its 8dp vertical margin, the slot's 8dp padding and the
+  /// 1dp hairline, plus a little air. Over-reserving costs one scroll's worth
+  /// of blank paper; under-reserving hides the last row.
+  final double bottomBarHeight;
+
+  static ShellChrome? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ShellChrome>();
+
+  /// The extra bottom padding a page must add.
+  double get bottomInset => hasBottomBar ? bottomBarHeight : 0;
+
+  @override
+  bool updateShouldNotify(ShellChrome old) =>
+      old.hasBottomBar != hasBottomBar ||
+      old.bottomBarHeight != bottomBarHeight;
+}
+
 class PageShell extends StatelessWidget {
   const PageShell({
     super.key,
@@ -68,6 +112,11 @@ class PageShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final maxWidth = wide ? 1360.0 : Layout.contentMax;
     final bool hasPinned = pinned.isNotEmpty;
+    // See [ShellChrome]: the shell knows whether a bottom bar is on screen.
+    // Without one above this page (a bare widget test) keep the old rule.
+    final ShellChrome? chrome = ShellChrome.maybeOf(context);
+    final double bottomChrome =
+        chrome?.bottomInset ?? (context.isTouch ? Layout.tap : 0);
 
     final Widget scroller = Scrollbar(
       controller: controller,
@@ -87,9 +136,10 @@ class PageShell extends StatelessWidget {
                 top: hasPinned ? Sp.x2 : Sp.x6,
                 // Room for the phone tab bar so the last card can scroll
                 // clear of it. With a FAB the tail has to clear the
-                // button too, or the last row hides under it.
+                // button too, or the last row hides under it. The inset is
+                // the shell's, not the platform's — see [ShellChrome].
                 bottom: (fab != null ? Layout.fab + Layout.fabInset : Sp.x6) +
-                    (context.isTouch ? Layout.tap : 0),
+                    bottomChrome,
               ),
               // Every page fades in on navigation. Opacity only — no
               // travel — for the same reason the web build restricted
@@ -132,8 +182,12 @@ class PageShell extends StatelessWidget {
         Positioned(
           right: Layout.fabInset,
           // Clear the phone tab bar. The shell reserves its own strip there and
-          // a button sitting on it would be under the user's thumb.
-          bottom: Layout.fabInset + (context.isTouch ? Layout.tap + Sp.x2 : 0),
+          // a button sitting on it would be under the user's thumb. The inset
+          // is the shell's, not the platform's — see [ShellChrome].
+          bottom: Layout.fabInset +
+              (chrome != null
+                  ? chrome.bottomInset + Sp.x2
+                  : (context.isTouch ? Layout.tap + Sp.x2 : 0)),
           child: fab!,
         ),
       ],

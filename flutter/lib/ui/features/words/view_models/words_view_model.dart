@@ -492,7 +492,14 @@ class WordsViewModel extends ViewModel {
     );
     if (!confirmed || isDisposed) return;
     _store.deleteList(list.id);
-    _feedback.toast(_feedback.t('words.wordDeleted'), kind: ToastKind.ok);
+    // Name what was removed. "已删除" on its own could equally describe a
+    // word, a selection or a list; the confirm dialog named the list but the
+    // only feedback left after it closed did not. No new key: the noun is the
+    // list's own name, which is already on screen.
+    _feedback.toast(
+      '${_feedback.t('words.wordDeleted')} · ${list.name}',
+      kind: ToastKind.ok,
+    );
   }
 
   /// The wire ids of every page a cross-page call to action can reach, so the

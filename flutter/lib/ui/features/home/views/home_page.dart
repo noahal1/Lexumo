@@ -624,9 +624,10 @@ class _Actions extends StatelessWidget {
     final bool reviewReady = vm.dueCount > 0 && vm.canNavigate;
 
     final Widget review = LexButton(
-      label: vm.dueCount > 0
-          ? '${context.t('home.startReview')} · ${vm.dueCount}'
-          : context.t('home.startReview'),
+      // The count is the headline's subject and the practice badge's job. A
+      // third copy on the action itself only restates them; the verb is what a
+      // button needs, not a number it can do nothing with.
+      label: context.t('home.startReview'),
       // The one filled button on the screen. The fill *is* the signal — a second
       // primary would make neither of them primary.
       kind: BtnKind.primary,
@@ -1006,7 +1007,12 @@ class _ListRow extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Text(
-            context.t('home.listMeta', {'words': words, 'due': due}),
+            // The library's size is quiet, static context. How much of it is
+            // due is already the headline's number and the practice badge's
+            // number — printing it a third time on every row put the same 7 in
+            // four places on one screen. The accent tint still says "this list
+            // has cards waiting" without restating the figure.
+            '$words ${context.t('common.words')}',
             style: TextStyle(
               fontFamily: Fonts.mono,
               fontSize: Fs.xs,

@@ -111,9 +111,11 @@ class _StatsPageState extends State<StatsPage> {
             StatTile(
               label: context.t('stats.reviewsToday'),
               value: '${summary.today}',
-              sub: summary.reached
-                  ? context.t('stats.goalReached')
-                  : context.t('stats.remainingToGoal', {'n': summary.remaining}),
+              // One figure, one place. The daily-goal card below owns the
+              // goal's own numbers (progress, reached, remaining); repeating
+              // them here said the same thing three times on one screen. The
+              // tile keeps the count and marks a non-zero day with the accent.
+              sub: summary.reached ? context.t('home.goalDone') : null,
               accent: summary.today > 0 ? Palette.of(context).accent : null,
             ),
             StatTile(
@@ -125,12 +127,15 @@ class _StatsPageState extends State<StatsPage> {
           _Split(children: [
             _HeadCard(
               title: context.t('stats.dailyGoal'),
-              sub: context.t('stats.todayProgress', {'n': summary.today, 'goal': summary.goal}),
+              // The ring inside _GoalRow already prints `today / goal` and the
+              // reached/remaining line. A second copy in the subtitle was the
+              // third restatement of the same progress.
               child: _GoalRow(summary: summary),
             ),
             _HeadCard(
               title: context.t('stats.statusDistribution'),
-              sub: context.t('stats.wordsInTotal', {'n': total}),
+              // `total` is the first StatTile on this page; its card does not
+              // need a second copy of the same number as a subtitle.
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

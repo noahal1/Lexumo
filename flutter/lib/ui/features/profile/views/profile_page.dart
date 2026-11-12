@@ -19,12 +19,17 @@
 /// labels and lays out widgets.
 library;
 
+import 'dart:async';
+import 'dart:io';
+
 // `Card` is ours (ui/widgets.dart), not Material's.
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter/services.dart';
 
 import '../../../../app/scope.dart';
 import '../../../../app/update_scope.dart';
+import '../../../../data/repositories/onboarding_store.dart';
+import '../../../../data/services/app_dir.dart';
 import '../../../../data/services/transfer.dart';
 import '../../../core/context_feedback.dart';
 import '../../../core/tokens.dart';
@@ -32,6 +37,7 @@ import '../../../core/widgets/controls.dart';
 import '../../../core/widgets/entrance.dart';
 import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../onboarding/views/onboarding_page.dart';
 import '../../settings/views/settings_page.dart';
 import '../view_models/profile_view_model.dart';
 
@@ -139,6 +145,31 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  /// Opens the first-run gate again, so a device set up as local can change
+  /// its mind without the reader having to know the button lives in settings.
+  ///
+  /// Same route [SettingsPage._openSignIn] uses: the sidecar store is rebuilt
+  /// here (one small file read), and [OnboardingPage.onConfigured] only pops —
+  /// the shell is already underneath and the identity row rebuilds through the
+  /// sync scope's subscription.
+  Future<void> _openSignIn() async {
+    final engine = SyncScope.engineWithoutDeps(context);
+    if (engine == null) return;
+    final store = FileOnboardingStore(
+      '${AppDir.dataDir}${Platform.pathSeparator}onboarding.json',
+    );
+    unawaited(store.load());
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OnboardingPage(
+          engine: engine,
+          onboarding: store,
+          onConfigured: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -151,6 +182,7 @@ class _ProfilePageState extends State<ProfilePage> {
             _Identity(
               email: context.syncStatus?.email ?? '',
               listCount: vm.listCount,
+              onSignIn: _openSignIn,
             ),
             _FigureRow(
               today: vm.today,
@@ -160,12 +192,17 @@ class _ProfilePageState extends State<ProfilePage> {
             _ActionList(
               onImport: _import,
               onSettings: _openSettings,
+              importBusy: _busy,
             ),
-            _DesktopCard(onTap: () => _showReleases()),
+            // "About" is a flat row like the two above it — keeping the three
+            // together lets them read as one run of destinations. The desktop
+            // notice is an aside in a box, not a destination; last, so it
+            // cannot split that run the way it did between the rows and here.
             _AboutRow(
               version: context.updateState?.current?.name.toString() ?? '—',
               onTap: _showAbout,
             ),
+            _DesktopCard(onTap: () => _showReleases()),
           ]),
         );
       },
@@ -303,10 +340,15 @@ List<Widget> _stacked(List<Widget> blocks) {
 /// derived from the address's local part, and a signed-out build says so
 /// rather than inventing a person.
 class _Identity extends StatelessWidget {
-  const _Identity({required this.email, required this.listCount});
+  const _Identity({
+    required this.email,
+    required this.listCount,
+    required this.onSignIn,
+  });
 
   final String email;
   final int listCount;
+  final VoidCallback onSignIn;
 
   @override
   Widget build(BuildContext context) {
@@ -356,6 +398,19 @@ class _Identity extends StatelessWidget {
                   color: p.ink3,
                 ),
               ),
+              // Signed out used to say only "未登录" and leave the way back in
+              // a settings section two taps away. The first-run gate already
+              // owns that flow; a small primary button here puts it where the
+              // identity itself is, which is where a reader looks for it.
+              if (!signedIn) ...<Widget>[
+                const SizedBox(height: Sp.x3),
+                LexButton(
+                  label: context.t('settings.syncSignIn'),
+                  kind: BtnKind.primary,
+                  size: BtnSize.sm,
+                  onPressed: onSignIn,
+                ),
+              ],
             ],
           ),
         ),
@@ -503,14 +558,18 @@ class _ActionRow extends StatefulWidget {
     required this.title,
     required this.subtitle,
     required this.onTap,
-    this.trailing,
+    this.busy = false,
   });
 
   final String icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
-  final Widget? trailing;
+
+  /// An import is a file picker plus a parse, with no visible progress today.
+  /// While it runs the row stays named but shows a spinner and stops answering
+  /// taps, so a second tap cannot open a second picker over the first.
+  final bool busy;
 
   @override
   State<_ActionRow> createState() => _ActionRowState();
@@ -522,20 +581,31 @@ class _ActionRowState extends State<_ActionRow> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          constraints: const BoxConstraints(minHeight: Layout.tap),
-          padding: const EdgeInsets.symmetric(horizontal: Sp.x2, vertical: Sp.x3),
-          decoration: BoxDecoration(
-            color: _hover ? p.surfaceHover : fadeFrom(p.surfaceHover),
-            borderRadius: R.borderMd,
-          ),
+    return KeyFocus(
+      label: widget.title,
+      enabled: !widget.busy,
+      onActivate: widget.onTap,
+      builder: (bool focused) => MouseRegion(
+        cursor: widget.busy ? SystemMouseCursors.basic : SystemMouseCursors.click,
+        onEnter: widget.busy ? null : (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          onTap: widget.busy ? null : widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: Layout.tap),
+            padding: const EdgeInsets.symmetric(horizontal: Sp.x2, vertical: Sp.x3),
+            decoration: BoxDecoration(
+              color: _hover && !widget.busy ? p.surfaceHover : fadeFrom(p.surfaceHover),
+              borderRadius: R.borderMd,
+              // At rest these rows are flat: the design forbids any box edge
+              // around them. A focus ring is drawn only while the row actually
+              // holds keyboard focus, and `Border.all` strokes inside so the
+              // row's height does not change when the ring appears.
+              border: focused
+                  ? Border.all(color: p.accent, width: 2)
+                  : null,
+            ),
           child: Row(
             children: <Widget>[
               LexIcon(widget.icon, size: 21, color: p.ink),
@@ -572,15 +642,19 @@ class _ActionRowState extends State<_ActionRow> {
                   ],
                 ),
               ),
-              if (widget.trailing != null) ...<Widget>[
-                const SizedBox(width: Sp.x3),
-                widget.trailing!,
-              ],
               const SizedBox(width: Sp.x1),
-              LexIcon(Ic.chevronRight, size: 16, color: p.ink4),
+              if (widget.busy)
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: p.accent),
+                )
+              else
+                LexIcon(Ic.chevronRight, size: 16, color: p.ink4),
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -588,10 +662,15 @@ class _ActionRowState extends State<_ActionRow> {
 
 /// The two bulk actions, and the way into settings.
 class _ActionList extends StatelessWidget {
-  const _ActionList({required this.onImport, required this.onSettings});
+  const _ActionList({
+    required this.onImport,
+    required this.onSettings,
+    this.importBusy = false,
+  });
 
   final VoidCallback onImport;
   final VoidCallback onSettings;
+  final bool importBusy;
 
   @override
   Widget build(BuildContext context) {
@@ -604,6 +683,7 @@ class _ActionList extends StatelessWidget {
           title: context.t('profile.importTitle'),
           subtitle: context.t('profile.importHint'),
           onTap: onImport,
+          busy: importBusy,
         ),
         _ActionRow(
           icon: Ic.settings,
@@ -719,21 +799,15 @@ class _AboutRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = Palette.of(context);
     return _ActionRow(
       icon: Ic.info,
       title: context.t('profile.about', {'app': context.t('common.appName')}),
+      // The subtitle *is* the version number. The trailing "版本" label used to
+      // print the word a second time next to the very number it names — one
+      // figure, one place. The about sheet still spells out the label/value
+      // pair for anyone who wants it.
       subtitle: version,
       onTap: onTap,
-      trailing: Text(
-        context.t('settings.version'),
-        style: TextStyle(
-          fontFamily: Fonts.mono,
-          fontSize: Fs.xs,
-          height: Lh.tight,
-          color: p.ink4,
-        ),
-      ),
     );
   }
 }

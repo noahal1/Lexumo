@@ -116,36 +116,67 @@ void main() {
   tearDown(() => debugSetSpeech(null));
 
   group('word row layout', () {
-    testWidgets('the gloss sits below the term, not beside it', (WidgetTester tester) async {
+    testWidgets('a wide library puts the gloss beside the term', (WidgetTester tester) async {
       await pumpWordsAt(tester, 1100);
 
       final term = rectOf(tester, kLongTerm);
       final def = rectOf(tester, kLongGloss);
 
-      // Stacked means the gloss's top is at or past the term's bottom. A
-      // side-by-side layout would put them at (nearly) the same top and give
-      // the gloss an x offset instead.
+      // At >=960dp the dead horizontal space is spent on a real grid: the
+      // headword gets its own 320dp lane and the gloss sits to its RIGHT on
+      // the same line, instead of always being stacked underneath. Stacking
+      // is kept for narrower widths (see the 420dp test below).
       expect(
-        def.top,
-        greaterThanOrEqualTo(term.bottom - 1),
-        reason: 'the definition should start under the headword',
+        def.left,
+        greaterThanOrEqualTo(term.right),
+        reason: 'the definition should start to the right of the headword',
       );
+      expect(def.top, lessThan(term.bottom), reason: 'the gloss shares the term\'s row');
     });
 
-    testWidgets('the gloss gets the whole column, not a flex share', (WidgetTester tester) async {
+    testWidgets('two columns survive the real desktop window, not just a 1x test', (
+      WidgetTester tester,
+    ) async {
+      // A 1600px *physical* Windows window runs at 1.5x devicePixelRatio, so
+      // it is only ~1067 logical px wide. After the 232dp sidebar and the
+      // paper's padding, the word table is laid out with roughly 787dp of
+      // content width. The first cut of the two-column grid used a 960dp
+      // threshold: every widget test (pumped at devicePixelRatio 1) passed,
+      // yet the actual 1600px window still showed the stacked layout. Pump at
+      // that real content width and insist the gloss is beside the term.
+      await pumpWordsAt(tester, 787);
+
+      final term = rectOf(tester, kLongTerm);
+      final def = rectOf(tester, kLongGloss);
+      expect(
+        def.left,
+        greaterThanOrEqualTo(term.right),
+        reason: 'a 1600px@1.5x window must still spend its width on two columns',
+      );
+      expect(tester.takeException(), isNull, reason: 'the gloss must not overflow');
+    });
+
+    testWidgets('the wide header shares the rows\' grid', (WidgetTester tester) async {
       await pumpWordsAt(tester, 1100);
 
-      final page = tester.getRect(find.byType(WordsPage));
+      final term = rectOf(tester, kLongTerm);
       final def = rectOf(tester, kLongGloss);
+      final page = tester.getRect(find.byType(WordsPage));
 
-      // The old flex:3 / flex:4 / flex:2 split handed the gloss column ~44% of
-      // the row. Stacked, it spans the content area minus only the fixed
-      // status/action columns.
-      expect(
-        def.width,
-        greaterThan(page.width * 0.55),
-        reason: 'the gloss must not be confined to a narrow flex column',
-      );
+      // The header used to stack 「词语 / 释义」 as two captions while the row
+      // stacked a 24dp display line over a 13dp body line, so their left edges
+      // drifted ~8dp apart. Both now derive from the same grid constants: the
+      // 「词语」 caption lands on the headword's left edge to the pixel.
+      final termHeader = tester.getRect(find.text('词语').first);
+      final defHeader = tester.getRect(find.text('释义').first);
+      expect(termHeader.left, closeTo(term.left, 1), reason: 'header aligns with the term column');
+      expect(termHeader.top, lessThan(term.top), reason: 'the header sits above the first row');
+      // 「释义」 marks the gloss lane; the visible gloss text starts a pos
+      // chip later inside that lane, so it can only be to the right of it.
+      expect(defHeader.left, lessThanOrEqualTo(def.left));
+      // Spending a lane on the headword must not squeeze the gloss: the whole
+      // point was to use the empty middle of a wide window.
+      expect(def.width, greaterThan(page.width * 0.4));
     });
 
     testWidgets('a phone width keeps the gloss readable and unclipped', (

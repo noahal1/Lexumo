@@ -35,11 +35,13 @@ import '../../../../app/scope.dart';
 import '../../../core/context_feedback.dart';
 import '../../../core/system_ui.dart';
 import '../../../core/tokens.dart';
+import '../../../core/widgets/controls.dart' show KeyFocus, LexButton, showLexModal;
 import '../../../core/widgets/density.dart';
 import '../../../core/widgets/keyboard_hints.dart';
 import '../../../core/widgets/lex_icon.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../home/views/home_page.dart';
+import '../../practice/view_models/practice_view_model.dart' show PracticePlan;
 import '../../practice/views/practice_page.dart';
 import '../../profile/views/profile_page.dart';
 import '../../stats/views/stats_page.dart';
@@ -98,25 +100,46 @@ String _iconFor(PageId page) => switch (page) {
       PageId.profile => Ic.person,
     };
 
-/// One row of the shortcut help sheet.
+/// One row of the shortcut help sheet. [scopeKey] names the screen that owns
+/// the binding; null means it works everywhere. The sheet uses it to group the
+/// rows, because most of these keys are *not* global — `/` and `n` only exist
+/// on 词库, and the arrow keys only exist inside a flashcard session.
 class ShortcutHelp {
-  const ShortcutHelp(this.keys, this.labelKey);
+  const ShortcutHelp(this.keys, this.labelKey, {this.scopeKey});
   final List<String> keys;
   final String labelKey;
+  final String? scopeKey;
 }
 
-/// The sheet's contents, in declaration order — the same list the web build
-/// rendered from `SHORTCUT_HELP`.
+/// The sheet's contents, in declaration order.
+///
+/// This used to be a single flat list that claimed `/`, `n`, the arrows and the
+/// grade digits were app-wide, and labelled `←/→` as "skip". They are not:
+/// `/` and `n` are bound only in `WordsPage`, `←/→/↑` grade a flashcard
+/// (hard / good / easy) while `↓` skips it, and the quiz has its own keys.
+/// Every row below was checked against the `CallbackShortcuts` that actually
+/// owns it; see `WordsPage`, `FlashcardsPage._bindings` and `QuizPage._bindings`.
 const List<ShortcutHelp> kShortcutHelp = <ShortcutHelp>[
+  // App-wide — the shell owns these, on every page.
   ShortcutHelp(<String>['Ctrl', '1…5'], 'shortcuts.pageSwitch'),
   ShortcutHelp(<String>['?'], 'shortcuts.help'),
-  ShortcutHelp(<String>['/'], 'settings.shortcutSearch'),
-  ShortcutHelp(<String>['n'], 'settings.shortcutAdd'),
-  ShortcutHelp(<String>['空格'], 'settings.shortcutFlip'),
-  ShortcutHelp(<String>['1', '2', '3'], 'shortcuts.grade'),
-  ShortcutHelp(<String>['Ctrl', 'Z'], 'shortcuts.undo'),
-  ShortcutHelp(<String>['←', '→'], 'shortcuts.skip'),
   ShortcutHelp(<String>['Esc'], 'shortcuts.closeModal'),
+  // 词库.
+  ShortcutHelp(<String>['/'], 'settings.shortcutSearch', scopeKey: 'words'),
+  ShortcutHelp(<String>['n'], 'settings.shortcutAdd', scopeKey: 'words'),
+  ShortcutHelp(<String>['Ctrl', 'A'], 'words.selectAll', scopeKey: 'words'),
+  // 练习 · 卡片.
+  ShortcutHelp(<String>['空格'], 'settings.shortcutFlip', scopeKey: 'flashcards'),
+  ShortcutHelp(<String>['←'], 'flashcards.gradeHard', scopeKey: 'flashcards'),
+  ShortcutHelp(<String>['→'], 'flashcards.gradeGood', scopeKey: 'flashcards'),
+  ShortcutHelp(<String>['↑'], 'flashcards.gradeEasy', scopeKey: 'flashcards'),
+  ShortcutHelp(<String>['↓'], 'quiz.skip', scopeKey: 'flashcards'),
+  ShortcutHelp(<String>['1', '2', '3'], 'shortcuts.grade', scopeKey: 'flashcards'),
+  ShortcutHelp(<String>['Ctrl', 'Z'], 'flashcards.undo', scopeKey: 'flashcards'),
+  // 练习 · 测验.
+  ShortcutHelp(<String>['A', 'B', 'C', 'D'], 'quiz.chooseAnswer', scopeKey: 'quiz'),
+  ShortcutHelp(<String>['1', '2', '3', '4'], 'quiz.chooseAnswerNum', scopeKey: 'quiz'),
+  ShortcutHelp(<String>['Enter'], 'quiz.next', scopeKey: 'quiz'),
 ];
 
 /// The digit keys behind Ctrl/Cmd+1…5, in page order. Spelled out because
@@ -163,6 +186,9 @@ class _AppShellState extends State<AppShell> {
   /// chrome only; a wide window has no bar to fold, so it is not tracked there
   /// and `_barCollapsed` is held open for whenever the window narrows again.
   void _onPageScroll() {
+    // A programmatic restore jumps the offset in one synchronous step; that is
+    // not the reader dragging the page, so it must not fold the tab bar.
+    if (_restoringScroll) return;
     if (!_isMobile) return;
     final controller = _scrollers[_vm.page];
     if (controller == null || !controller.hasClients) return;
@@ -184,6 +210,33 @@ class _AppShellState extends State<AppShell> {
   /// The last scroll offset the bar reacted to, so a direction can be derived
   /// from the difference between two events rather than from a velocity.
   double _lastPixels = 0;
+
+  /// The practice round currently in progress, or null on the front page.
+  ///
+  /// It lives here rather than in [PracticePage] because the shell rebuilds a
+  /// page's widget tree on a destination change. A round is a sitting, not a
+  /// page: leaving 练习 for another tab and coming back must not silently end
+  /// it. The plan is enough to resume — each grade is written to the store as
+  /// it happens, and the sub-page re-reads the deck on mount.
+  PracticePlan? _practicePlan;
+
+  /// The last scroll offset of each destination, so returning to a page reads
+  /// like coming back to it rather than starting over.
+  ///
+  /// [PageStorageKey] was the obvious mechanism and was deliberately not used:
+  /// the bucket keys a scroll view by *every* [PageStorageKey] on its ancestor
+  /// path, so one key on the page would be shared by the body scroller and all
+  /// the little horizontal tab/segment scrollers inside it. They would all
+  /// write to the same slot and whichever scrolled last would decide where the
+  /// body resumes. The shell already owns one long-lived [ScrollController]
+  /// per page, so it can simply sample and restore those directly, with no
+  /// chance of two scrollers sharing an identifier.
+  final Map<PageId, double> _savedScroll = <PageId, double>{};
+
+  /// True while a programmatic offset restore is in flight, so the scroll
+  /// notification it emits is not mistaken for the reader dragging the page
+  /// (which would fold the phone tab bar on a mere tab switch).
+  bool _restoringScroll = false;
 
   void _setBarCollapsed(bool value) {
     if (_barCollapsed == value) return;
@@ -234,16 +287,59 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _navigate(PageId page) {
+    final PageId previous = _vm.page;
     if (!_vm.navigate(page)) return;
-    // A fresh page starts at the top; the scroll offset of the page we left is
-    // dropped deliberately (the web build reset it too).
-    final controller = _scrollers[page];
-    if (controller != null && controller.hasClients) controller.jumpTo(0);
-    // A destination starts at its own top, so its bar starts unfolded. The
-    // last offset the bar reacted to belonged to the page we are leaving, and
-    // keeping it would read the new page's first event as a jump.
-    _lastPixels = 0;
+
+    // The outgoing page's Scrollable is still attached at this instant — the
+    // rebuild is only scheduled, not run — so its offset is still readable.
+    // Save it under the page id before the swap. A [PageStorageKey] on the
+    // page was rejected: the bucket keys a scroll view by *every* key on its
+    // ancestor path, so the body scroller and the little horizontal tab /
+    // segment scrollers inside the page would all share one slot and clobber
+    // each other. Shell-owned sampling has no such collision.
+    final ScrollController? outgoing = _scrollers[previous];
+    if (outgoing != null && outgoing.hasClients) {
+      _savedScroll[previous] = outgoing.position.pixels;
+    }
+
+    // The offset the destination was left at, or the top on a first visit.
+    final double target = _savedScroll[page] ?? 0.0;
+    // A destination opens with its chrome showing, and the first real scroll
+    // is measured from the restored offset rather than from zero — otherwise
+    // returning deep into a list would read as one giant downward jump and
+    // instantly re-fold the tab bar.
+    _lastPixels = target;
     _setBarCollapsed(false);
+
+    if (target > 0) _restoreScroll(page, target);
+  }
+
+  /// Applies a saved offset after the destination's [Scrollable] has attached
+  /// and laid out. [jumpTo] is synchronous, so the [_restoringScroll] flag is
+  /// held only around that one call; a retry is scheduled if the controller is
+  /// not ready yet (a frame that was already in flight can drain post-frame
+  /// callbacks before the rebuild that inflates the new page).
+  void _restoreScroll(PageId page, double target, [int attempt = 0]) {
+    if (!mounted || attempt > 3) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // A faster second navigation wins: never restore into a page the reader
+      // has already left.
+      if (!mounted || _vm.page != page) return;
+      final ScrollController? incoming = _scrollers[page];
+      if (incoming == null ||
+          !incoming.hasClients ||
+          !incoming.position.hasContentDimensions) {
+        _restoreScroll(page, target, attempt + 1);
+        return;
+      }
+      final double max = incoming.position.maxScrollExtent;
+      _restoringScroll = true;
+      try {
+        incoming.jumpTo(target.clamp(0.0, max));
+      } finally {
+        _restoringScroll = false;
+      }
+    });
   }
 
   @override
@@ -294,49 +390,56 @@ class _AppShellState extends State<AppShell> {
                 isDark: _vm.isDark,
                 statusOnPaper: mobile,
               ),
-              child: Scaffold(
-                // A phone keeps nothing stone on screen — the tab bar is a
-                // paper dock and nothing owns a strip at the top — so the
-                // window's background is the paper itself, and the status bar
-                // floats over it. The wider layouts show the stone frame
-                // around the paper, as the desktop always has.
-                backgroundColor:
-                    mobile ? Palette.of(context).bg : Palette.of(context).frame,
-                // The bar owns no strip of its own on a phone: the page's paper
-                // runs to the bottom edge and the capsule floats over it. That
-                // is the difference between "the bar folded away" and "the bar
-                // turned see-through" — the first is a page you can scroll to
-                // the end of, the second is a hole in the chrome. Without this,
-                // a transparent slot would reveal the stone `Scaffold` behind
-                // it instead of the page.
-                extendBody: mobile,
-                body: SafeArea(
-                  bottom: false,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (!mobile)
-                        _Sidebar(
-                          vm: _vm,
-                          rail: rail,
-                          narrow: narrow,
-                          onNavigate: _navigate,
-                          onHelp: () => showShortcutSheet(context),
+              child: ShellChrome(
+                // Published to every PageShell below: the bar is drawn from
+                // the window *width*, so the page's tail padding has to come
+                // from the same decision, not from the platform (which says
+                // "mouse" on a 620dp-wide Windows window). See [ShellChrome].
+                hasBottomBar: mobile,
+                child: Scaffold(
+                  // A phone keeps nothing stone on screen — the tab bar is a
+                  // paper dock and nothing owns a strip at the top — so the
+                  // window's background is the paper itself, and the status bar
+                  // floats over it. The wider layouts show the stone frame
+                  // around the paper, as the desktop always has.
+                  backgroundColor:
+                      mobile ? Palette.of(context).bg : Palette.of(context).frame,
+                  // The bar owns no strip of its own on a phone: the page's
+                  // paper runs to the bottom edge and the capsule floats over
+                  // it. That is the difference between "the bar folded away"
+                  // and "the bar turned see-through" — the first is a page you
+                  // can scroll to the end of, the second is a hole in the
+                  // chrome. Without this, a transparent slot would reveal the
+                  // stone `Scaffold` behind it instead of the page.
+                  extendBody: mobile,
+                  body: SafeArea(
+                    bottom: false,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (!mobile)
+                          _Sidebar(
+                            vm: _vm,
+                            rail: rail,
+                            narrow: narrow,
+                            onNavigate: _navigate,
+                            onHelp: () => showShortcutSheet(context),
+                          ),
+                        Expanded(
+                          child: _Paper(mobile: mobile, child: _pageFor(page)),
                         ),
-                      Expanded(
-                        child: _Paper(mobile: mobile, child: _pageFor(page)),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
+                  bottomNavigationBar: mobile
+                      ? _TabBar(
+                          vm: _vm,
+                          onNavigate: _navigate,
+                          collapsed: _barCollapsed,
+                        )
+                      : null,
+                  floatingActionButton: null,
                 ),
-                bottomNavigationBar: mobile
-                    ? _TabBar(
-                        vm: _vm,
-                        onNavigate: _navigate,
-                        collapsed: _barCollapsed,
-                      )
-                    : null,
-                floatingActionButton: null,
               ),
             ),
           ),
@@ -352,12 +455,25 @@ class _AppShellState extends State<AppShell> {
     // forgiving on purpose: an id the shell does not know is ignored rather than
     // throwing out of a page's button callback. [ShellViewModel.navigateToId]
     // owns that rule.
+    //
+    // The shell swaps page widgets in a `switch`, so a destination's Scrollable
+    // is disposed and recreated on every visit. Its [ScrollController] is
+    // shell-owned and long-lived, though, which is what lets [_navigate] save
+    // and restore the offset directly (see [_savedScroll]) instead of relying
+    // on [PageStorageKey] — deliberately, because a page-level key would be
+    // shared by the little horizontal tab/segment scrollers inside the page.
     return NavScope(
       onNavigate: (id) => _navigateToId(id),
       child: switch (page) {
         PageId.home => HomePage(controller: controller),
         PageId.words => WordsPage(controller: controller),
-        PageId.practice => PracticePage(controller: controller),
+        PageId.practice => PracticePage(
+          controller: controller,
+          plan: _practicePlan,
+          onPlanChanged: (PracticePlan? plan) {
+            setState(() => _practicePlan = plan);
+          },
+        ),
         PageId.stats => StatsPage(controller: controller),
         PageId.profile => ProfilePage(controller: controller),
       },
@@ -431,7 +547,6 @@ class _Sidebar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    final stats = vm.studyStats;
     final dark = vm.isDark;
     // Declared once and laid out on whichever axis the current mode uses, so
     // the rail and the full sidebar can never disagree about which buttons
@@ -564,52 +679,66 @@ class _Sidebar extends StatelessWidget {
             // things in the column. Wordmark first, destinations under it.
             Padding(
               padding: const EdgeInsets.fromLTRB(Sp.x3, 0, Sp.x3, Sp.x4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // The app mark: the same drawing as docs/icon/icon.svg — a
-                  // stone frame holding a paper sheet, an azurite spine and
-                  // one ink dot. It is the one mark in the chrome that is
-                  // neither text nor an icon, and it is what makes the slab
-                  // read as a cover rather than a menu.
-                  const LexMark(size: 20, semanticLabel: 'Lexumo'),
-                  const SizedBox(width: Sp.x2),
-                  Expanded(
-                    child: Text(
-                      context.t('common.appName'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontFamily: Fonts.display,
-                        fontSize: Fs.md,
-                        height: Lh.tight,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.02,
-                        color: p.frameInk,
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // The app mark: the same drawing as docs/icon/icon.svg —
+                      // a stone frame holding a paper sheet, an azurite spine
+                      // and one ink dot. It is the one mark in the chrome that
+                      // is neither text nor an icon, and it is what makes the
+                      // slab read as a cover rather than a menu.
+                      const LexMark(size: 20, semanticLabel: 'Lexumo'),
+                      const SizedBox(width: Sp.x2),
+                      Expanded(
+                        child: Text(
+                          context.t('common.appName'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: Fonts.display,
+                            fontSize: Fs.md,
+                            height: Lh.tight,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.02,
+                            color: p.frameInk,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
+                  ),
+                  const SizedBox(height: Sp.x1),
+                  // The tagline used to sit as its own paragraph at the very
+                  // bottom, under the footer buttons — fixed space that named
+                  // the product a second time and explained no task. One quiet
+                  // line beside the wordmark keeps the character without a
+                  // paragraph of chrome.
+                  Text(
+                    context.t('common.appTagline'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: Fs.xs, height: Lh.body, color: p.frameInk3),
                   ),
                 ],
               ),
             ),
             ...navItems,
             const Spacer(),
-            _StreakCard(streak: stats.streak, today: stats.today),
-            const SizedBox(height: Sp.x2),
+            // The streak/review figures used to sit here as a card too. They
+            // are the home and stats pages' own subject — repeating them in
+            // permanent chrome made three screens claim the same numbers. The
+            // destinations own their data; the slab only navigates.
+            //
             // Expanded, the three footer buttons share one row: the slab is
             // 232dp wide and each button is a 32dp tile, so they fit with room
             // to spare. (The collapsed capsule stacks them instead — see the
             // rail branch above, where 44dp touch targets cannot share a 64dp
             // slot.) One list, two axes, so the buttons cannot drift apart.
             Row(children: footerButtons),
-            const SizedBox(height: Sp.x2),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Sp.x2),
-              child: Text(
-                context.t('common.appTagline'),
-                style: TextStyle(fontSize: Fs.xs, height: Lh.body, color: p.frameInk3),
-              ),
-            ),
           ],
         ),
       ),
@@ -699,7 +828,10 @@ class _NavItemState extends State<_NavItem> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
-      child: MouseRegion(
+      child: KeyFocus(
+        label: context.t(widget.item.labelKey),
+        onActivate: widget.onTap,
+        builder: (bool focused) => MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
@@ -716,7 +848,14 @@ class _NavItemState extends State<_NavItem> {
               // A capsule, like every other selected thing in the app. The
               // pill is the system's word for "this one", so the sidebar's
               // current page wears one rather than a soft-cornered tile.
-              decoration: BoxDecoration(color: bg, borderRadius: R.borderPill),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: R.borderPill,
+                border: Border.all(
+                  color: focused ? p.frameAccent : Colors.transparent,
+                  width: focused ? 2 : 1,
+                ),
+              ),
               child: Stack(
                 alignment: Alignment.centerLeft,
                 children: [
@@ -741,6 +880,7 @@ class _NavItemState extends State<_NavItem> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -772,6 +912,7 @@ class _SidebarButton extends StatefulWidget {
 
 class _SidebarButtonState extends State<_SidebarButton> {
   bool _hover = false;
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
@@ -779,111 +920,73 @@ class _SidebarButtonState extends State<_SidebarButton> {
     return Tooltip(
       message: widget.tooltip,
       waitDuration: const Duration(milliseconds: 500),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          behavior: HitTestBehavior.opaque,
-          child: TapTarget(
-            // The hover tint fades in over `dur-2` rather than snapping. On a
-            // strip of three unlabelled icons a sudden fill reads as a state
-            // change; a fade reads as the pointer arriving.
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0, end: _hover ? 1 : 0),
-              duration: Motion.dur2,
-              curve: Motion.ease,
-              builder: (BuildContext context, double t, Widget? child) {
-                return Container(
-                  width: Layout.controlHSm,
-                  height: Layout.controlHSm,
-                  margin: const EdgeInsets.only(right: 2),
-                  decoration: BoxDecoration(
-                    color: Color.lerp(fadeFrom(p.frame3), p.frame3, t),
-                    borderRadius: R.borderSm,
-                  ),
-                  child: Center(
-                    child: AnimatedRotation(
-                      turns: widget.quarterTurns / 4,
-                      duration: Motion.dur3,
-                      curve: Motion.ease,
-                      child: LexIcon(
-                        widget.icon,
-                        size: 16,
-                        color: Color.lerp(p.frameInk3, p.frameInk, t)!,
+      child: Semantics(
+        // A tooltip only names the control while it is showing on hover: the
+        // framework sets `semanticsTooltip` inside `if (_visible)` only. At
+        // rest a screen reader reached three unnamed icons. This is the
+        // permanent name, and `button: true` makes the node actionable.
+        label: widget.tooltip,
+        button: true,
+        onTap: widget.onTap,
+        child: Focus(
+          // Tab now reaches the tile and Enter/Space activate it — the pointer
+          // was the only way in before. Focus borrows the hover tint so a
+          // keyboard user can see where they are, and `handled` stops the key
+          // from also reaching the shell's shortcuts.
+          onKeyEvent: (FocusNode node, KeyEvent event) {
+            if (event is KeyDownEvent &&
+                (event.logicalKey == LogicalKeyboardKey.enter ||
+                    event.logicalKey == LogicalKeyboardKey.space)) {
+              widget.onTap();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          onFocusChange: (bool focused) => setState(() => _focused = focused),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (_) => setState(() => _hover = true),
+            onExit: (_) => setState(() => _hover = false),
+            child: GestureDetector(
+              onTap: widget.onTap,
+              behavior: HitTestBehavior.opaque,
+              child: TapTarget(
+                // The tint fades in over `dur-2` rather than snapping. On a
+                // strip of three unlabelled icons a sudden fill reads as a
+                // state change; a fade reads as the pointer (or focus) arriving.
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(
+                      begin: 0, end: (_hover || _focused) ? 1 : 0),
+                  duration: Motion.dur2,
+                  curve: Motion.ease,
+                  builder: (BuildContext context, double t, Widget? child) {
+                    return Container(
+                      width: Layout.controlHSm,
+                      height: Layout.controlHSm,
+                      margin: const EdgeInsets.only(right: 2),
+                      decoration: BoxDecoration(
+                        color: Color.lerp(fadeFrom(p.frame3), p.frame3, t),
+                        borderRadius: R.borderSm,
                       ),
-                    ),
-                  ),
-                );
-              },
+                      child: Center(
+                        child: AnimatedRotation(
+                          turns: widget.quarterTurns / 4,
+                          duration: Motion.dur3,
+                          curve: Motion.ease,
+                          child: LexIcon(
+                            widget.icon,
+                            size: 16,
+                            color: Color.lerp(p.frameInk3, p.frameInk, t)!,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _StreakCard extends StatelessWidget {
-  const _StreakCard({required this.streak, required this.today});
-
-  final int streak;
-  final int today;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return Container(
-      padding: const EdgeInsets.all(Sp.x3),
-      // A filled block, no outline: on the stone frame a hairline border read
-      // as a second edge next to the sidebar's own right edge. The figure is
-      // the only thing here that needs weight, and it carries the display face
-      // like every other figure in the app.
-      decoration: BoxDecoration(
-        color: p.frame2,
-        borderRadius: R.borderLg,
-      ),
-      child: Row(
-        children: [
-          LexIcon(Ic.flame, size: 18, color: p.frameWarm),
-          const SizedBox(width: Sp.x3),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      '$streak',
-                      style: TextStyle(
-                        fontFamily: Fonts.display,
-                        fontSize: Fs.xl,
-                        height: Lh.title,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.02,
-                        color: p.frameInk,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                    const SizedBox(width: Sp.x1),
-                    Text(
-                      context.t('stats.streakUnit'),
-                      style: TextStyle(fontSize: Fs.xs, color: p.frameInk3),
-                    ),
-                  ],
-                ),
-                Text(
-                  '${context.t('stats.reviewsToday')} $today',
-                  style: TextStyle(fontSize: Fs.xs, height: Lh.snug, color: p.frameInk3),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1132,7 +1235,10 @@ class _TabItem extends StatelessWidget {
     // previous vocabulary — a third one, since nothing else in the app marked a
     // selection with a line under it — and at phone size the rule read as an
     // underline belonging to the label rather than as "you are here".
-    return GestureDetector(
+    return KeyFocus(
+      label: context.t(item.labelKey),
+      onActivate: onTap,
+      builder: (bool focused) => GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
@@ -1153,6 +1259,10 @@ class _TabItem extends StatelessWidget {
         decoration: BoxDecoration(
           color: active ? p.accentSoft : fadeFrom(p.accentSoft),
           borderRadius: R.borderPill,
+          border: Border.all(
+            color: focused ? p.accent : Colors.transparent,
+            width: focused ? 2 : 1,
+          ),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1259,6 +1369,7 @@ class _TabItem extends StatelessWidget {
           ],
         ),
       ),
+      ),
     );
   }
 }
@@ -1271,15 +1382,43 @@ class _TabItem extends StatelessWidget {
 class ShortcutSheet extends StatelessWidget {
   const ShortcutSheet({super.key});
 
+  /// Group headings are built from existing i18n keys — no new copy. The
+  /// page-specific rows live under 词库 and the two halves of 练习; the shell
+  /// owns no label for "everywhere", so the app-wide rows are the unlabelled
+  /// block at the top and the first group heading sets them apart.
+  static String _scopeLabel(BuildContext context, String scope) => switch (scope) {
+        'words' => context.t('nav.words'),
+        'flashcards' =>
+          '${context.t('nav.practice')} · ${context.t('practice.cards')}',
+        'quiz' => '${context.t('nav.practice')} · ${context.t('practice.quiz')}',
+        _ => scope,
+      };
+
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    final List<Widget> rows = <Widget>[];
+    String? group;
+    for (final ShortcutHelp row in kShortcutHelp) {
+      if (row.scopeKey != group) {
+        group = row.scopeKey;
+        if (group != null) {
+          rows.add(const SizedBox(height: Sp.x2));
+          rows.add(
+            SectionTitle(
+              label: _scopeLabel(context, group),
+              padded: false,
+            ),
+          );
+        }
+      }
+      rows.add(ShortcutRow(keys: row.keys, label: context.t(row.labelKey)));
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final row in kShortcutHelp)
-          ShortcutRow(keys: row.keys, label: context.t(row.labelKey)),
+        ...rows,
         const SizedBox(height: Sp.x4),
         Container(
           padding: const EdgeInsets.all(Sp.x3),
@@ -1308,87 +1447,23 @@ class ShortcutSheet extends StatelessWidget {
 
 /// Shown once on the first frame of the shell so the help sheet is reachable
 /// from the keyboard alone.
+///
+/// Uses [showLexModal] rather than a bare `showDialog`: that gives the sheet an
+/// Esc binding (`CallbackShortcuts` → `maybePop`), an autofocused focus scope,
+/// a `maxHeight`, and a `SingleChildScrollView` body. The old hand-rolled
+/// dialog had none of those — the growing, now page-grouped table could not
+/// scroll and its own help text advertised an Esc key that did not work.
 Future<void> showShortcutSheet(BuildContext context) {
-  return showDialog<void>(
+  return showLexModal<void>(
     context: context,
-    builder: (ctx) {
-      final p = Palette.of(ctx);
-      return Dialog(
-        backgroundColor: p.surface,
-        shape: const RoundedRectangleBorder(borderRadius: R.borderLg),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 560),
-          child: Padding(
-            padding: const EdgeInsets.all(Sp.x6),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  ctx.t('settings.shortcuts'),
-                  style: TextStyle(
-                    fontFamily: Fonts.display,
-                    fontSize: Fs.lg,
-                    height: Lh.title,
-                    fontWeight: FontWeight.w600,
-                    color: p.ink,
-                  ),
-                ),
-                const SizedBox(height: Sp.x1),
-                Text(
-                  ctx.t('shell.shortcutsSub'),
-                  style: TextStyle(fontSize: Fs.sm, color: p.ink3, height: Lh.snug),
-                ),
-                const SizedBox(height: Sp.x4),
-                const ShortcutSheet(),
-                const SizedBox(height: Sp.x5),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    _PrimaryButton(
-                      label: ctx.t('common.gotIt'),
-                      onTap: () => Navigator.of(ctx).pop(),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    },
-  );
-}
-
-class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({required this.label, required this.onTap});
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = Palette.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Container(
-          height: Layout.controlH,
-          padding: const EdgeInsets.symmetric(horizontal: Sp.x4),
-          decoration: BoxDecoration(color: p.accent, borderRadius: R.borderMd),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: Fs.base,
-                fontWeight: FontWeight.w500,
-                color: p.onAccent,
-              ),
-            ),
-          ),
-        ),
+    title: context.t('settings.shortcuts'),
+    subtitle: context.t('shell.shortcutsSub'),
+    body: const ShortcutSheet(),
+    footer: Builder(
+      builder: (ctx) => LexButton(
+        label: ctx.t('common.gotIt'),
+        onPressed: () => Navigator.of(ctx).pop(),
       ),
-    );
-  }
+    ),
+  );
 }

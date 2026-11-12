@@ -42,6 +42,68 @@ enum BtnKind {
 
 enum BtnSize { sm, md, lg }
 
+/// Keyboard and screen-reader semantics for the custom controls in this file.
+///
+/// None of them are `InkWell`/`Button`: they are `GestureDetector` +
+/// `MouseRegion` so they can keep their own hover/press paint. That left Tab
+/// unable to reach them and Enter/Space doing nothing. `KeyFocus` wraps the
+/// *outside* of that paint (the `GestureDetector` stays in the tree, so the
+/// 44dp touch target and the layout tests still see it), owns one `Focus`, and
+/// reports the focused flag back through [builder] so each control can draw its
+/// own accent ring. The web build's rule about focus moving *colour*, never
+/// width, is kept: `Border.all` strokes inside, so 1 -> 2 does not reflow.
+class KeyFocus extends StatefulWidget {
+  const KeyFocus({
+    super.key,
+    required this.label,
+    required this.onActivate,
+    required this.builder,
+    this.enabled = true,
+    this.toggled,
+  });
+
+  final String label;
+  final VoidCallback onActivate;
+  final Widget Function(bool focused) builder;
+  final bool enabled;
+  final bool? toggled;
+
+  @override
+  State<KeyFocus> createState() => _KeyFocusState();
+}
+
+class _KeyFocusState extends State<KeyFocus> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: widget.label,
+      button: widget.toggled == null,
+      toggled: widget.toggled,
+      onTap: widget.enabled ? widget.onActivate : null,
+      child: Focus(
+        canRequestFocus: widget.enabled,
+        skipTraversal: !widget.enabled,
+        onKeyEvent: (FocusNode node, KeyEvent event) {
+          if (widget.enabled &&
+              event is KeyDownEvent &&
+              (event.logicalKey == LogicalKeyboardKey.enter ||
+                  event.logicalKey == LogicalKeyboardKey.space)) {
+            widget.onActivate();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        onFocusChange: (bool focused) {
+          if (_focused != focused) setState(() => _focused = focused);
+        },
+        child: widget.builder(_focused),
+      ),
+    );
+  }
+}
+
 class LexButton extends StatefulWidget {
   const LexButton({
     super.key,
@@ -52,6 +114,7 @@ class LexButton extends StatefulWidget {
     this.icon,
     this.block = false,
     this.trailing,
+    this.busy = false,
   });
 
   final String label;
@@ -61,6 +124,11 @@ class LexButton extends StatefulWidget {
   final String? icon;
   final bool block;
   final Widget? trailing;
+
+  /// While true the button shows an inline spinner and ignores every input.
+  /// It deliberately does *not* dim (that is what [onPressed] == null means),
+  /// so an in-flight action still reads as the active thing on the screen.
+  final bool busy;
 
   @override
   State<LexButton> createState() => _LexButtonState();
@@ -128,11 +196,21 @@ class _LexButtonState extends State<LexButton> {
       BtnSize.lg => Sp.x5,
     };
 
+    // A busy button keeps its colours and its label; only the leading glyph
+    // is swapped for a spinner and every activation path is closed.
+    final canActivate = enabled && !widget.busy;
     final content = Row(
       mainAxisSize: widget.block ? MainAxisSize.max : MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        if (widget.icon != null) ...[
+        if (widget.busy) ...[
+          SizedBox(
+            width: fontSize,
+            height: fontSize,
+            child: CircularProgressIndicator(strokeWidth: 2, color: fg),
+          ),
+          const SizedBox(width: Sp.x2),
+        ] else if (widget.icon != null) ...[
           LexIcon(widget.icon!, size: 16, color: fg),
           const SizedBox(width: Sp.x2),
         ],
@@ -151,39 +229,53 @@ class _LexButtonState extends State<LexButton> {
       ],
     );
 
-    return Opacity(
-      opacity: enabled ? 1 : 0.55,
-      // A press has to be visible on touch too, where there is no hover to
-      // signal that the button was in fact aimed at. `onTapDown`/`onTapCancel`
-      // bracket the gesture; `onTap` still owns the callback so a drag that
-      // turns into a scroll cancels the press without firing.
-      child: AnimatedScale(
-        scale: _pressed && enabled ? 0.985 : 1,
-        duration: _pressed ? Motion.dur1 : Motion.dur2,
-        curve: Motion.ease,
-        child: MouseRegion(
-          cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-          onEnter: (_) => setState(() => _hover = true),
-          onExit: (_) => setState(() => _hover = false),
-          child: GestureDetector(
-            onTap: widget.onPressed,
-            onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
-            onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
-            onTapCancel: enabled ? () => setState(() => _pressed = false) : null,
-            child: AnimatedContainer(
-              duration: Motion.dur1,
-              curve: Motion.ease,
-              height: height,
-              padding: EdgeInsets.symmetric(horizontal: padH),
-              decoration: BoxDecoration(
-                color: bg,
-                // Every button is a capsule. The page's reading surface is the
-                // only square-cornered thing left, so a button reads as an
-                // object you press rather than a piece of the page.
-                borderRadius: R.borderPill,
-                border: Border.all(color: line),
+    return KeyFocus(
+      label: widget.label,
+      enabled: canActivate,
+      onActivate: widget.onPressed ?? () {},
+      builder: (bool focused) => Opacity(
+        // Busy does not dim the button: only a null onPressed means "off".
+        opacity: enabled ? 1 : 0.55,
+        // A press has to be visible on touch too, where there is no hover to
+        // signal that the button was in fact aimed at. `onTapDown`/`onTapCancel`
+        // bracket the gesture; `onTap` still owns the callback so a drag that
+        // turns into a scroll cancels the press without firing.
+        child: AnimatedScale(
+          scale: _pressed && canActivate ? 0.985 : 1,
+          duration: _pressed ? Motion.dur1 : Motion.dur2,
+          curve: Motion.ease,
+          child: MouseRegion(
+            cursor: canActivate ? SystemMouseCursors.click : SystemMouseCursors.basic,
+            onEnter: (_) => setState(() => _hover = true),
+            onExit: (_) => setState(() => _hover = false),
+            child: GestureDetector(
+              onTap: canActivate ? widget.onPressed : null,
+              onTapDown: canActivate ? (_) => setState(() => _pressed = true) : null,
+              onTapUp: canActivate ? (_) => setState(() => _pressed = false) : null,
+              onTapCancel: canActivate ? () => setState(() => _pressed = false) : null,
+              child: AnimatedContainer(
+                duration: Motion.dur1,
+                curve: Motion.ease,
+                height: height,
+                padding: EdgeInsets.symmetric(horizontal: padH),
+                decoration: BoxDecoration(
+                  color: bg,
+                  // Every button is a capsule. The page's reading surface is
+                  // the only square-cornered thing left, so a button reads as
+                  // an object you press rather than a piece of the page.
+                  borderRadius: R.borderPill,
+                  // Primary's border is normally invisible on its accent fill,
+                  // so its focus ring is drawn in the on-accent colour. The
+                  // stroke is inside the box: 1 -> 2 never reflows the row.
+                  border: Border.all(
+                    color: focused
+                        ? (widget.kind == BtnKind.primary ? p.onAccent : p.accent)
+                        : line,
+                    width: focused ? 2 : 1,
+                  ),
+                ),
+                child: ContentCenter(child: content),
               ),
-              child: ContentCenter(child: content),
             ),
           ),
         ),
@@ -447,16 +539,15 @@ class _SelectButton<T> extends StatefulWidget {
 }
 
 class _SelectButtonState<T> extends State<_SelectButton<T>> {
-  bool _focus = false;
-
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     return MenuAnchor(
-      builder: (ctx, controller, child) => MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: Focus(
-          onFocusChange: (v) => setState(() => _focus = v),
+      builder: (ctx, controller, child) => KeyFocus(
+        label: widget.labelOf(widget.value),
+        onActivate: () => controller.isOpen ? controller.close() : controller.open(),
+        builder: (bool focused) => MouseRegion(
+          cursor: SystemMouseCursors.click,
           child: GestureDetector(
             onTap: () => controller.isOpen ? controller.close() : controller.open(),
             child: Container(
@@ -465,7 +556,10 @@ class _SelectButtonState<T> extends State<_SelectButton<T>> {
               decoration: BoxDecoration(
                 color: p.surface2,
                 borderRadius: R.borderSm,
-                border: Border.all(color: _focus ? p.accent : p.lineControl),
+                border: Border.all(
+                  color: focused ? p.accent : p.lineControl,
+                  width: focused ? 2 : 1,
+                ),
               ),
               child: Row(
                 children: [
@@ -550,10 +644,11 @@ class _LexSwitchState extends State<LexSwitch> {
   Widget build(BuildContext context) {
     final p = Palette.of(context);
     final on = widget.checked;
-    return Semantics(
+    return KeyFocus(
       toggled: on,
       label: widget.label,
-      child: MouseRegion(
+      onActivate: () => widget.onChanged(!on),
+      builder: (bool focused) => MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
@@ -580,7 +675,10 @@ class _LexSwitchState extends State<LexSwitch> {
                   color: on ? p.accent : p.surface2,
                   borderRadius: BorderRadius.circular(R.full),
                   border: Border.all(
-                    color: on ? p.accent : (_hover ? p.accent : p.lineStrong),
+                    color: focused
+                        ? p.accent
+                        : (on ? p.accent : (_hover ? p.accent : p.lineStrong)),
+                    width: focused ? 2 : 1,
                   ),
                 ),
                 child: AnimatedAlign(

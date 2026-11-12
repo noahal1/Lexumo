@@ -23,6 +23,24 @@ set -euo pipefail
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && { pwd -W 2>/dev/null || pwd; })"
 cd "$WS/flutter"
 
+# The version shown on 我的 → 关于 Lexumo comes from `String.fromEnvironment`
+# in `app_installer.dart`, not from the exe's Win32 resource: on Windows the
+# plugin has no method channel, so it falls back to the --dart-define values.
+# The Android build (`tool/release.sh`) has always passed them; the Windows one
+# never did, which is why the desktop app always displayed 0.0.0. Read the
+# same `version: name+build` line from pubspec.yaml and pass both halves.
+PUBSPEC_VERSION=$(grep -E '^version:' pubspec.yaml | head -1 | sed 's/^version:[[:space:]]*//' | tr -d '\r')
+if [ -z "$PUBSPEC_VERSION" ]; then
+  echo "no 'version:' line in pubspec.yaml" >&2
+  exit 1
+fi
+VERSION_NAME="${PUBSPEC_VERSION%%+*}"
+VERSION_CODE="${PUBSPEC_VERSION#*+}"
+if [ "$VERSION_NAME" = "$PUBSPEC_VERSION" ] || [ -z "$VERSION_CODE" ]; then
+  echo "pubspec.yaml version '$PUBSPEC_VERSION' has no build number" >&2
+  exit 1
+fi
+
 export HOME="$WS/.flutter-home"
 export USERPROFILE="$WS/.flutter-home"
 export APPDATA="$WS/.flutter-home/AppData/Roaming"
@@ -45,7 +63,10 @@ cmd //c "windows\flutter\ephemeral\_mklinks.bat" >/dev/null 2>&1 || true
 # this. The C++ side rebuilds in well under a minute.
 rm -rf build/windows
 
-../.flutter-sdk/flutterc build windows --release "$@"
+../.flutter-sdk/flutterc build windows --release \
+  --dart-define=LEXUMO_VERSION="$VERSION_NAME" \
+  --dart-define=LEXUMO_BUILD="$VERSION_CODE" \
+  "$@"
 
 EXE="$WS/flutter/build/windows/x64/runner/Release/lexumo.exe"
 if [ -f "$EXE" ]; then

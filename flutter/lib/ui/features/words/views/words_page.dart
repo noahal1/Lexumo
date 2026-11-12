@@ -137,6 +137,41 @@ class _WordsPageState extends State<WordsPage> {
     );
   }
 
+  /* ---- keyboard ---------------------------------------------------- */
+
+  /// Whether the keyboard is currently going into a text field.
+  ///
+  /// The page's single-key shortcuts (`/`, `n`) hang off a `CallbackShortcuts`
+  /// that wraps the *whole* page, which puts the search field inside the
+  /// binding rather than beside it. Space and Enter are safe — Flutter's
+  /// `DefaultTextEditingShortcuts` claims them with
+  /// `DoNothingAndStopPropagationTextIntent` — but an ordinary letter is claimed
+  /// by nothing, so typing `n` in the search box reached this page's binding
+  /// first and opened the editor instead of inserting the letter.
+  ///
+  /// Walked from the primary focus rather than from a list of known
+  /// `FocusNode`s: `LexInput`/`LexTextArea` may or may not be handed one (the
+  /// list manager's rename field is not), and a field added later must not need
+  /// this predicate edited too. Every text entry surface ends up as an
+  /// `EditableText`, so its presence on the ancestor chain is the general
+  /// answer.
+  ///
+  /// Read it *inside* a callback, never during `build`: it consults the live
+  /// focus, and a value captured while building is one frame stale.
+  bool get _typing {
+    final BuildContext? focused = FocusManager.instance.primaryFocus?.context;
+    if (focused == null) return false;
+    bool inField = false;
+    focused.visitAncestorElements((Element element) {
+      if (element.widget is EditableText) {
+        inField = true;
+        return false;
+      }
+      return true;
+    });
+    return inField;
+  }
+
   /* ---- build ------------------------------------------------------- */
 
   @override
@@ -182,13 +217,21 @@ class _WordsPageState extends State<WordsPage> {
         return CallbackShortcuts(
           bindings: <ShortcutActivator, VoidCallback>{
             const SingleActivator(LogicalKeyboardKey.slash): () {
-              if (_vm.selectMode) return;
+              // A `/` typed into a field is a slash, not a jump. The guard is
+              // read here rather than captured above so it sees the focus of
+              // the key press, not of the last build.
+              if (_vm.selectMode || _typing) return;
               _searchFocus.requestFocus();
             },
             const SingleActivator(LogicalKeyboardKey.keyN): () {
-              if (_vm.selectMode) return;
+              if (_vm.selectMode || _typing) return;
               _openEditor();
             },
+            // Ctrl/Cmd+A is a text-editing shortcut: the field's own binding
+            // consumes it before it can bubble here, so select-all only needs
+            // the select-mode gate. Escape deliberately has none either — while
+            // a field has focus, Escape clearing the query is the behaviour the
+            // field's reader expects.
             const SingleActivator(LogicalKeyboardKey.keyA, control: true): () {
               if (_vm.selectMode) _vm.selectAllVisible();
             },
@@ -1385,14 +1428,17 @@ class _WordTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
-    // The term and its gloss share one column (term on top, definition
-    // underneath) instead of sitting side by side. Side-by-side split the
-    // available width two ways, so a long English term and a long Chinese
-    // gloss both ended up ellipsised on a phone. Stacking gives each one the
-    // full column width, which is what "show the whole entry" needs.
+    // Below [_kWideColumnsBreakpoint] the term and its gloss share one column
+    // (term on top, definition underneath): side-by-side split the available
+    // width two ways, so a long English term and a long Chinese gloss both
+    // ended up ellipsised on a phone. Once there is room for a 320dp headword
+    // lane the wide layout puts them side by side, and the header follows the
+    // exact same grid — that shared grid is what stops the two left edges
+    // drifting apart and makes a 1600dp library read as one table.
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < _kCompactBreakpoint;
+        final columns = constraints.maxWidth >= _kWideColumnsBreakpoint;
         // No card. A library is a list, and a list is hairlines on the page —
         // the card wrapper put 400 rows inside a rounded rectangle that said
         // nothing except "a component lives here", and its inset edges fought
@@ -1407,7 +1453,9 @@ class _WordTable extends StatelessWidget {
           rule: false,
           children: [
             // A phone row already reads as two stacked lines, so a header
-            // would just eat vertical space and repeat itself.
+            // would just eat vertical space and repeat itself. On a wide
+            // library the header is a single row of captions over the same
+            // columns as the rows beneath it.
             if (!compact)
               Container(
                 padding: const EdgeInsets.only(
@@ -1419,20 +1467,42 @@ class _WordTable extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border(bottom: BorderSide(color: p.line)),
                 ),
-                child: Row(
-                  children: [
-                    if (selectMode) const SizedBox(width: Sp.x6),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                child: columns
+                    ? Row(
                         children: [
-                          _HeadCell(label: context.t('words.term')),
-                          _HeadCell(label: context.t('common.definition')),
+                          if (selectMode) const SizedBox(width: _kSelectLane),
+                          SizedBox(
+                            width: _kWideTermColumn,
+                            child: _HeadCell(label: context.t('words.term')),
+                          ),
+                          const SizedBox(width: _kWideColumnGap),
+                          Expanded(
+                            child: _HeadCell(
+                              label: context.t('common.definition'),
+                            ),
+                          ),
+                          if (!selectMode)
+                            const SizedBox(
+                              width: _kWideActionsGap + _kWideActionsWidth,
+                            ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          if (selectMode) const SizedBox(width: Sp.x6),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _HeadCell(label: context.t('words.term')),
+                                _HeadCell(
+                                  label: context.t('common.definition'),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
               ),
             for (var i = 0; i < words.length; i++)
               FadeRise(
@@ -1447,6 +1517,7 @@ class _WordTable extends StatelessWidget {
                   query: query,
                   selectMode: selectMode,
                   compact: compact,
+                  columns: columns,
                   picked: selected.contains(words[i].id),
                   last: i == words.length - 1,
                   index: i,
@@ -1635,6 +1706,29 @@ class _KanaChart extends StatelessWidget {
 /// Below this content width the row folds into a phone-shaped two-liner.
 const double _kCompactBreakpoint = 640;
 
+/// Wide enough to spend a fixed lane on the headword. Below this the term and
+/// its gloss still stack: a narrow column has no room to give a short English
+/// word 320dp of its own while keeping the gloss readable.
+///
+/// Calibrated against the real desktop window, not the widget test. The test
+/// pumps at devicePixelRatio 1, but Windows runs at 1.5x, so a 1600px window
+/// is only ~1067 logical px and, after the 232dp sidebar and the paper's
+/// padding, this table sees roughly 787dp. A 960dp threshold silently left
+/// that window on the stacked layout. 720dp clears it with ~67dp to spare;
+/// at 720dp a 320dp lane + the gaps + two 32dp row actions still leave the
+/// gloss about 250dp, so a two-line definition does not ellipsis.
+const double _kWideColumnsBreakpoint = 720;
+
+/// One grid, shared by the wide rows AND their header. The old header stacked
+/// 「词语 / 释义」 as two captions while the row stacked a 24dp display line
+/// above a 13dp body line, so the two left edges drifted about 8dp apart.
+/// Deriving both from these constants makes them line up to the pixel.
+const double _kWideTermColumn = 320;
+const double _kWideColumnGap = Sp.x4;
+const double _kWideActionsGap = Sp.x4;
+const double _kWideActionsWidth = Layout.controlHSm * 2;
+const double _kSelectLane = 18 + Sp.x3; // the checkbox plus its trailing air
+
 /// The page's horizontal gutter.
 ///
 /// The shell runs `bleed: true` so that each word's status stripe can sit on
@@ -1683,6 +1777,7 @@ class _WordRow extends StatefulWidget {
     required this.query,
     required this.selectMode,
     required this.compact,
+    required this.columns,
     required this.picked,
     required this.last,
     required this.index,
@@ -1695,6 +1790,7 @@ class _WordRow extends StatefulWidget {
   final String query;
   final bool selectMode;
   final bool compact;
+  final bool columns;
   final bool picked;
   final bool last;
   final int index;
@@ -1750,7 +1846,9 @@ class _WordRowState extends State<_WordRow> {
               ),
               child: widget.compact
                   ? _buildCompact(context, p, w)
-                  : _buildWide(context, p, w),
+                  : widget.columns
+                      ? _buildColumns(context, p, w)
+                      : _buildWide(context, p, w),
             ),
             // Painted last so a row's hover fill cannot wash it out: the
             // stripe is the row's state, not part of whatever the pointer is
@@ -1804,6 +1902,41 @@ class _WordRowState extends State<_WordRow> {
         if (!widget.selectMode) ...[
           const SizedBox(width: Sp.x2),
           _RowActions(word: w, onFavorite: widget.onFavorite, onPlay: widget.onPlay),
+        ],
+      ],
+    );
+  }
+
+  /// Very wide: one fixed headword lane, one flexible gloss lane, and the
+  /// actions pinned to the right. The header above uses the same constants,
+  /// so 「词语」 lines up with the headword and 「释义」 with the gloss rather
+  /// than the two captions drifting ~8dp off the rows they describe.
+  Widget _buildColumns(BuildContext context, Palette p, Word w) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.selectMode) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: _CheckBox(on: widget.picked),
+          ),
+          const SizedBox(width: Sp.x3),
+        ],
+        SizedBox(
+          width: _kWideTermColumn,
+          child: _TermLine(word: w, query: widget.query, maxLines: 1),
+        ),
+        const SizedBox(width: _kWideColumnGap),
+        Expanded(
+          child: _DefinitionLine(word: w, query: widget.query, maxLines: 2),
+        ),
+        if (!widget.selectMode) ...[
+          const SizedBox(width: _kWideActionsGap),
+          _RowActions(
+            word: w,
+            onFavorite: widget.onFavorite,
+            onPlay: widget.onPlay,
+          ),
         ],
       ],
     );
@@ -2088,7 +2221,7 @@ class _RowAction extends StatefulWidget {
 
   final String icon;
   final String tooltip;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool active;
   final bool danger;
 
@@ -2102,8 +2235,15 @@ class _RowActionState extends State<_RowAction> {
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
+    // A null onTap is a real disabled state, not a no-op closure. The last
+    // remaining list cannot be deleted; the trash used to look enabled and
+    // silently do nothing, which is the same as a broken button. Dim the glyph,
+    // drop the hover tint and keep the tooltip so the reason is discoverable.
+    final enabled = widget.onTap != null;
     final Color fg;
-    if (widget.active) {
+    if (!enabled) {
+      fg = p.ink4;
+    } else if (widget.active) {
       fg = p.accent;
     } else if (_hover && widget.danger) {
       fg = p.danger;
@@ -2117,8 +2257,8 @@ class _RowActionState extends State<_RowAction> {
       message: widget.tooltip,
       waitDuration: const Duration(milliseconds: 500),
       child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
+        cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+        onEnter: enabled ? (_) => setState(() => _hover = true) : null,
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
           onTap: widget.onTap,
@@ -2129,7 +2269,7 @@ class _RowActionState extends State<_RowAction> {
               height: Layout.controlHSm,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: _hover ? p.surface2 : fadeFrom(p.surface2),
+                color: _hover && enabled ? p.surface2 : fadeFrom(p.surface2),
                 borderRadius: R.borderXs,
               ),
               child: LexIcon(widget.icon, size: 15, color: fg),
@@ -2205,7 +2345,10 @@ class _BulkBar extends StatelessWidget {
             label: context.t('words.deleteSelected'),
             icon: Ic.trash,
             size: BtnSize.sm,
-            kind: BtnKind.quiet,
+            // Deleting the selection is destructive and has no undo. It wears
+            // the same danger recipe as the delete-a-list confirmation instead
+            // of hiding among the three quiet toolbar buttons.
+            kind: BtnKind.danger,
             onPressed: count == 0 ? null : onDelete,
           ),
           const Spacer(),
@@ -2722,7 +2865,7 @@ class _ListRow extends StatelessWidget {
                 _RowAction(
                   icon: Ic.trash,
                   tooltip: context.t('common.delete'),
-                  onTap: canDelete ? onDelete : () {},
+                  onTap: canDelete ? onDelete : null,
                   danger: true,
                 ),
               ] else
