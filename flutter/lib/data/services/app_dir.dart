@@ -18,7 +18,10 @@
 /// `AppDir.override` lets a test point at a temp directory.
 library;
 
+import 'dart:developer' as developer;
 import 'dart:io';
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 /// The owning app identifier, used to build the Windows folder name.
 const String kAppFolder = 'Lexumo';
@@ -37,10 +40,40 @@ abstract final class AppDir {
     final cached = _cached;
     if (cached != null) return cached;
 
-    final dir = _resolve();
-    Directory(dir).createSync(recursive: true);
+    final dir = _prepare(_candidates());
     _cached = dir;
     return dir;
+  }
+
+  /// Creates the first candidate the process can actually write to.
+  ///
+  /// This getter used to resolve a single path and call `createSync` on it with
+  /// no guard. Every store, the sync engine and the update service reach it
+  /// during `main`, so a read-only or missing parent threw *before the first
+  /// frame*, and the phone showed the launch window instead of the app — white
+  /// on a light theme, black on a dark one. A data directory the platform will
+  /// not hand over is a bad day, not a reason to be unusable: the snapshot still
+  /// loads, and the worst case is that later writes report the IO error in a
+  /// place the user can see.
+  ///
+  /// If no candidate can be created the preferred one is returned unresolved;
+  /// the first real write will then fail loudly with a path in the message
+  /// rather than the app failing here with nothing on screen.
+  static String _prepare(List<String> candidates) {
+    for (final dir in candidates) {
+      try {
+        Directory(dir).createSync(recursive: true);
+        return dir;
+      } on FileSystemException catch (e) {
+        // Read-only volume, a parent that is a file, or a sandbox denial.
+        // Nothing to do but note it and try the next folder.
+        developer.log('cannot use $dir: ${e.message}', name: 'AppDir');
+      }
+    }
+    final first = candidates.first;
+    developer.log('no writable data directory; falling back to $first',
+        name: 'AppDir');
+    return first;
   }
 
   static String get dataFile => '$dataDir${Platform.pathSeparator}lexumo.json';
@@ -70,18 +103,25 @@ abstract final class AppDir {
     return '$dataDir${sep}updates';
   }
 
-  static String _resolve() {
+  /// Every place durable data could live, best first.
+  ///
+  /// A list rather than one path because [dataDir] must be able to survive a
+  /// folder it cannot create. The order is the same preference order the single
+  /// resolver used to encode: the platform's private files dir first, then any
+  /// user-writable location, then somewhere the process happens to sit.
+  static List<String> _candidates() {
     final sep = Platform.pathSeparator;
+    final found = <String>[];
 
     if (Platform.isWindows) {
       final appData = Platform.environment['APPDATA'] ??
           Platform.environment['LOCALAPPDATA'];
       if (appData != null && appData.isNotEmpty) {
-        return '$appData$sep$kAppFolder';
+        found.add('$appData$sep$kAppFolder');
       }
       final profile = Platform.environment['USERPROFILE'];
       if (profile != null && profile.isNotEmpty) {
-        return '$profile$sep$kAppFolder';
+        found.add('$profile$sep$kAppFolder');
       }
     }
 
@@ -92,22 +132,44 @@ abstract final class AppDir {
       final tmp = Platform.environment['TMPDIR'];
       if (tmp != null && tmp.isNotEmpty) {
         final idx = tmp.lastIndexOf('/cache');
-        if (idx > 0) return '${tmp.substring(0, idx)}$sep$kAppFolder';
-        return '$tmp$sep$kAppFolder';
+        if (idx > 0) {
+          found.add('${tmp.substring(0, idx)}$sep$kAppFolder');
+        } else {
+          found.add('$tmp$sep$kAppFolder');
+        }
+        // The cache dir itself is always writable, so it is the one fallback
+        // that cannot be refused. Data there can be evicted by the system, which
+        // costs the user their words — but a startable app that might forget is
+        // better than an app that never starts at all.
+        found.add('$tmp$sep$kAppFolder');
       }
       final home = Platform.environment['HOME'];
-      if (home != null && home.isNotEmpty) return '$home$sep$kAppFolder';
+      if (home != null && home.isNotEmpty) found.add('$home$sep$kAppFolder');
     }
 
     final xdg = Platform.environment['XDG_DATA_HOME'];
-    if (xdg != null && xdg.isNotEmpty) return '$xdg$sep$kAppFolder';
+    if (xdg != null && xdg.isNotEmpty) found.add('$xdg$sep$kAppFolder');
     final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
-    if (home != null && home.isNotEmpty) return '$home$sep.lexumo';
+    if (home != null && home.isNotEmpty) found.add('$home$sep.lexumo');
 
     // Last resort: relative to the process, which is writable on desktop.
-    return '${Directory.current.path}$sep.lexumo-data';
+    found.add('${Directory.current.path}$sep.lexumo-data');
+
+    // Distinct order-preserving: an Android box can report the same cache dir
+    // twice, and trying the same folder twice wastes a failed syscall.
+    final unique = <String>[];
+    for (final dir in found) {
+      if (!unique.contains(dir)) unique.add(dir);
+    }
+    return unique;
   }
 
   /// Forget the memoised path. Only tests need this.
   static void resetCache() => _cached = null;
+
+  /// Test-only: run the candidate walk over paths the test controls, so the
+  /// "keep trying after a refusal" rule can be exercised without a read-only
+  /// filesystem.
+  @visibleForTesting
+  static String debugPrepare(List<String> candidates) => _prepare(candidates);
 }

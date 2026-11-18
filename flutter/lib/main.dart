@@ -28,6 +28,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import 'app/boot_guard.dart';
 import 'app/scope.dart';
 import 'app/update_scope.dart';
 import 'data/models/sync_config.dart';
@@ -51,76 +52,117 @@ import 'ui/features/shell/views/app_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  installErrorHandlers();
 
-  // Draw under the system bars before anything is mounted, so the first frame
-  // is already edge-to-edge. Awaiting matters here: `runApp` below would
-  // otherwise race the platform channel and the first frame would be drawn
-  // letterboxed, then jump.
-  await enableEdgeToEdge();
+  // Every await below happens before the first frame, so a failure here is
+  // invisible: the window keeps showing the launch drawable. `step` names the
+  // one in progress, and [BootFailureApp] reports it. Written in the user's
+  // language because the language setting is part of what may have failed.
+  var step = '准备界面';
+  var reported = false;
 
-  final store = Store(
-    persistence: SnapshotStore(),
-    seed: seedData,
-  );
-  await store.init();
+  void report(Object error, StackTrace stack, {String? hint}) {
+    if (reported) return;
+    reported = true;
+    runApp(BootFailureApp(step: step, error: error, stack: stack, hint: hint));
+  }
 
-  // The sync engine starts here, after the snapshot is readable: it reads the
-  // saved session at boot and, if this device has never completed a round,
-  // runs that first round. Failing to read the saved session is not fatal:
-  // the engine comes up signed out.
-  //
-  // One transport serves both backends; it routes on the server URL, so the
-  // engine never learns whether it is talking to server/ or to Supabase.
-  //
-  // The project key is handed over here rather than left to the first sign-in:
-  // it is the same public key for every install of this build, and priming it
-  // means a "test connection" tap before anyone signs in still gets through the
-  // gateway instead of coming back `unauthorized`.
-  final transport = BackendTransport(key: kDefaultAnonKey);
-  final sync = SyncEngine(
-    store: store,
-    configStore: const FileSyncConfigStore(),
-    transport: transport,
-  );
-  await sync.init();
+  // A boot that never returns is indistinguishable from one that threw, and a
+  // platform channel that never answers is the one failure a try/catch cannot
+  // see. The deadline turns it into a page the user can screenshot.
+  final watchdog = Timer(kBootDeadline, () {
+    report(
+      TimeoutException(
+        '启动在 ${kBootDeadline.inSeconds} 秒内没有完成。',
+        kBootDeadline,
+      ),
+      StackTrace.current,
+      hint: '很可能是某次读取一直没有返回。关掉应用重开通常就好；'
+          '如果每次都停在这里，请把这一屏截图发给开发者。',
+    );
+  });
 
-  final update = UpdateService(
-    installer: appInstaller,
-    network: IoUpdateNetwork(),
-    // The check bookkeeping lives beside the snapshot but *outside* it: which
-    // release the user dismissed is a fact about this device's attention, not a
-    // preference to sync to their other machines.
-    stateStore: FileUpdateStateStore(
-      '${AppDir.dataDir}${Platform.pathSeparator}update-state.json',
-    ),
-    // Must be the folder `file_paths.xml` exposes, or the installer cannot read
-    // what we hand it. See `AppDir.updateDir`.
-    downloadDir: Directory(AppDir.updateDir),
-    manifestUrl: updateManifestUrl(),
-    now: DateTime.now,
-  );
-  // Before the first frame, so the settings page can draw the real version
-  // immediately instead of flashing a placeholder. One platform round trip,
-  // and a failure is absorbed: an unknown version means "cannot tell", not a
-  // crash.
-  await update.load();
+  try {
+    // Draw under the system bars before anything is mounted, so the first frame
+    // is already edge-to-edge. Awaiting matters here: `runApp` below would
+    // otherwise race the platform channel and the first frame would be drawn
+    // letterboxed, then jump.
+    await enableEdgeToEdge();
 
-  // Whether this device has been set up is a fact about *this install*, so it
-  // lives in its own sidecar rather than in the snapshot — the argument is in
-  // `onboarding_store.dart`. Reading it before the first frame is what lets the
-  // gate be the first thing drawn instead of the shell flashing and being
-  // replaced.
-  final onboarding = FileOnboardingStore(
-    '${AppDir.dataDir}${Platform.pathSeparator}onboarding.json',
-  );
-  await onboarding.load();
+    step = '读取词库';
+    final store = Store(
+      persistence: SnapshotStore(),
+      seed: seedData,
+    );
+    await store.init();
 
-  runApp(LexumoApp(
-    store: store,
-    sync: sync,
-    update: update,
-    onboarding: onboarding,
-  ));
+    // The sync engine starts here, after the snapshot is readable: it reads the
+    // saved session at boot and, if this device has never completed a round,
+    // runs that first round. Failing to read the saved session is not fatal:
+    // the engine comes up signed out.
+    //
+    // One transport serves both backends; it routes on the server URL, so the
+    // engine never learns whether it is talking to server/ or to Supabase.
+    //
+    // The project key is handed over here rather than left to the first sign-in:
+    // it is the same public key for every install of this build, and priming it
+    // means a "test connection" tap before anyone signs in still gets through the
+    // gateway instead of coming back `unauthorized`.
+    step = '读取同步会话';
+    final transport = BackendTransport(key: kDefaultAnonKey);
+    final sync = SyncEngine(
+      store: store,
+      configStore: const FileSyncConfigStore(),
+      transport: transport,
+    );
+    await sync.init();
+
+    step = '读取版本信息';
+    final update = UpdateService(
+      installer: appInstaller,
+      network: IoUpdateNetwork(),
+      // The check bookkeeping lives beside the snapshot but *outside* it: which
+      // release the user dismissed is a fact about this device's attention, not a
+      // preference to sync to their other machines.
+      stateStore: FileUpdateStateStore(
+        '${AppDir.dataDir}${Platform.pathSeparator}update-state.json',
+      ),
+      // Must be the folder `file_paths.xml` exposes, or the installer cannot read
+      // what we hand it. See `AppDir.updateDir`.
+      downloadDir: Directory(AppDir.updateDir),
+      manifestUrl: updateManifestUrl(),
+      now: DateTime.now,
+    );
+    // Before the first frame, so the settings page can draw the real version
+    // immediately instead of flashing a placeholder. One platform round trip,
+    // and a failure is absorbed: an unknown version means "cannot tell", not a
+    // crash.
+    await update.load();
+
+    // Whether this device has been set up is a fact about *this install*, so it
+    // lives in its own sidecar rather than in the snapshot — the argument is in
+    // `onboarding_store.dart`. Reading it before the first frame is what lets the
+    // gate be the first thing drawn instead of the shell flashing and being
+    // replaced.
+    step = '读取首次使用记录';
+    final onboarding = FileOnboardingStore(
+      '${AppDir.dataDir}${Platform.pathSeparator}onboarding.json',
+    );
+    await onboarding.load();
+
+    watchdog.cancel();
+    runApp(LexumoApp(
+      store: store,
+      sync: sync,
+      update: update,
+      onboarding: onboarding,
+    ));
+  } catch (error, stack) {
+    // Nothing above is allowed to leave the user on a launch window. The app is
+    // still not running, but now it says so — and says where.
+    watchdog.cancel();
+    report(error, stack);
+  }
 }
 
 class LexumoApp extends StatefulWidget {

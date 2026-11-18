@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!-- The launch window on API < 21. `minSdk` is 24, so no device reaching this
+     file exists; it is kept identical to drawable-v21 so the two cannot drift
+     into saying different things about what a launch looks like. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@android:color/white" />
+    <item android:drawable="@color/frame" />
 
     <!-- You can insert your own image assets here -->
     <!-- <item>

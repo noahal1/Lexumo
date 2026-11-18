@@ -1,7 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!-- The launch window, painted by the OS before Dart exists.
+
+     Deliberately `@color/frame` — the stone frame the app itself draws — and not
+     `?android:colorBackground`. That attribute resolves to white under
+     `Theme.Light.NoTitleBar`, so every launch began on a white rectangle that
+     then cut to the app's paper surface: a flash on a healthy device, and on a
+     device where the boot stalls, a white screen with no explanation. `frame`
+     makes the launch window and the first Flutter frame the same surface, and a
+     stalled boot at least looks like this app rather than a blank page.
+
+     Kept in step with values-night by using the same colour: `frame` is the same
+     stone in both themes (see colors.xml). -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="?android:colorBackground" />
+    <item android:drawable="@color/frame" />
 
     <!-- You can insert your own image assets here -->
     <!-- <item>
