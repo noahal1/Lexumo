@@ -183,6 +183,10 @@ enum ReminderTimeOption {
 ///
 /// `text` produces the notification body for [dueCount] due cards; the service
 /// itself never builds a sentence, so the i18n stays in the UI layer.
+// The private fields below cannot be initializing formals: a named parameter
+// may not start with an underscore, which is the whole point of the field.
+// Same trade-off `store.dart` makes.
+// ignore_for_file: prefer_initializing_formals
 class ReminderService {
   ReminderService({
     required NotificationPort notifications,
