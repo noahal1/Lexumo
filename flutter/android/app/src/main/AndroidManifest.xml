@@ -31,6 +31,17 @@
          user to trust the app with their files. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
+    <!-- The daily review reminder (docs/reminder-plan.md). Runtime permission:
+         on API 33+ POST_NOTIFICATIONS must be requested at runtime, which
+         PluginNotifications.requestPermission does when the user turns the
+         reminder on. RECEIVE_BOOT_COMPLETED lets the plugin's scheduled
+         notifications survive a reboot (flutter_local_notifications reschedules
+         them from its boot receiver). SCHEDULE_EXACT_ALARM is deliberately
+         absent: an inexact daily nudge does not need it and the exemption
+         would cost a Play-review flag. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
     <application
         android:label="lexumo"
         android:name="${applicationName}"

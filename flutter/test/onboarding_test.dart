@@ -38,6 +38,8 @@ import 'package:lexumo/data/services/app_installer.dart';
 import 'package:lexumo/data/services/snapshot_store.dart';
 import 'package:lexumo/data/services/sync_transport.dart';
 import 'package:lexumo/domain/models/seed.dart';
+import 'package:lexumo/data/repositories/reminder_service.dart';
+import 'package:lexumo/data/services/notifications.dart';
 import 'package:lexumo/main.dart';
 import 'package:lexumo/ui/core/widgets/controls.dart';
 import 'package:lexumo/ui/features/home/views/home_page.dart';
@@ -179,6 +181,15 @@ Future<_Harness> _pumpApp(
       sync: harness.sync,
       update: harness.update,
       onboarding: harness.onboarding,
+      // Widget tests run on the host (Windows/Linux), where the notification
+      // port is unsupported; the fallback no-op service keeps the reminder
+      // group invisible, which is what every existing assertion expects.
+      reminder: ReminderService(
+        notifications: const NoNotifications(),
+        store: harness.store,
+        prefs: MemoryReminderPrefsStore(),
+        text: (due) => '$due',
+      ),
     ),
   );
   await tester.pumpAndSettle();

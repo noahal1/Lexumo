@@ -31,9 +31,12 @@ import 'dart:io';
 
 import 'package:flutter/material.dart' hide Card;
 
+import '../../../../app/reminder_scope.dart';
 import '../../../../app/scope.dart';
 import '../../../../app/update_scope.dart';
 import '../../../../data/repositories/onboarding_store.dart';
+import '../../../../data/repositories/reminder_service.dart'
+    show ReminderTimeOption;
 import '../../../../data/services/app_dir.dart';
 import '../../../../data/repositories/sync_engine.dart';
 import '../../../../data/repositories/update_service.dart';
@@ -178,6 +181,7 @@ class _SettingsPageState extends State<SettingsPage> {
       previewImport: _previewImport,
       engine: _engine,
       update: _update,
+      reminder: context.reminder,
     );
   }
 
@@ -308,6 +312,44 @@ class _SettingsPageState extends State<SettingsPage> {
                       ],
                     ),
                     const SizedBox(height: Sp.x5),
+                    // The reminder group renders only on a platform that can
+                    // show a notification. Absent scope (a widget test) or an
+                    // unsupported platform draws nothing — the same treatment
+                    // the audio group gives a missing TTS engine, minus the
+                    // warning: a desktop without notifications is the normal
+                    // case, not a fault.
+                    if (vm.reminderSupported)
+                      ...[
+                        _Section(
+                          title: context.t('settings.reminder'),
+                          children: [
+                            _Row(
+                              label: context.t('settings.reminder'),
+                              hint: context.t('settings.reminderHint'),
+                              control: LexSwitch(
+                                checked: vm.reminderEnabled,
+                                label: context.t('settings.reminder'),
+                                onChanged: (v) => vm.setReminderEnabled(v),
+                              ),
+                            ),
+                            if (vm.reminderEnabled)
+                              _Row(
+                                label: context.t('settings.reminderTime'),
+                                control: LexSelect<String>(
+                                  value: vm.reminderTimeKey,
+                                  options: ReminderTimeOption.all
+                                      .map((o) => o.key)
+                                      .toList(),
+                                  labelOf: (key) =>
+                                      context.t(ReminderTimeOption.byKey(key).labelKey),
+                                  onChanged: (key) =>
+                                      vm.setReminderTime(ReminderTimeOption.byKey(key).time),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: Sp.x5),
+                      ],
                     _Section(
                       title: context.t('settings.audio'),
                       // Only note the absence once the engine has actually said

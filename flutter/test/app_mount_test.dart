@@ -41,6 +41,8 @@ import 'package:lexumo/data/services/app_installer.dart';
 import 'package:lexumo/data/services/snapshot_store.dart';
 import 'package:lexumo/data/services/sync_transport.dart';
 import 'package:lexumo/domain/models/seed.dart';
+import 'package:lexumo/data/repositories/reminder_service.dart';
+import 'package:lexumo/data/services/notifications.dart';
 import 'package:lexumo/main.dart';
 import 'package:lexumo/ui/core/widgets/toast.dart';
 import 'package:lexumo/ui/features/home/views/home_page.dart';
@@ -139,7 +141,18 @@ Future<_Harness> _pumpApp(
   addTearDown(tester.view.reset);
 
   await tester.pumpWidget(
-    LexumoApp(store: harness.store, sync: harness.sync, update: harness.update),
+    LexumoApp(
+      store: harness.store,
+      sync: harness.sync,
+      update: harness.update,
+      // See onboarding_test.dart: the no-op reminder keeps the group invisible.
+      reminder: ReminderService(
+        notifications: const NoNotifications(),
+        store: harness.store,
+        prefs: MemoryReminderPrefsStore(),
+        text: (due) => '$due',
+      ),
+    ),
   );
   await tester.pumpAndSettle();
   return harness;

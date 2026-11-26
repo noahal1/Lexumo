@@ -29,16 +29,19 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'app/boot_guard.dart';
+import 'app/reminder_scope.dart';
 import 'app/scope.dart';
 import 'app/update_scope.dart';
 import 'data/models/sync_config.dart';
 import 'data/repositories/onboarding_store.dart';
+import 'data/repositories/reminder_service.dart';
 import 'data/repositories/store.dart';
 import 'data/repositories/sync_engine.dart';
 import 'data/repositories/update_service.dart';
 import 'data/services/app_dir.dart';
 import 'data/services/app_installer.dart';
 import 'data/services/backend_transport.dart';
+import 'data/services/notifications.dart';
 import 'data/services/snapshot_store.dart';
 import 'domain/models/seed.dart';
 import 'domain/models/types.dart';
@@ -150,11 +153,30 @@ Future<void> main() async {
     );
     await onboarding.load();
 
+    // The daily review reminder. Its preferences are also device-local —
+    // settings sync wholesale and would carry one phone's reminder to a
+    // desktop that cannot show one; see `reminder_service.dart` and
+    // `docs/reminder-plan.md`. Not awaited: the platform channel it may touch
+    // (Android 13 permission) has nothing on screen depending on it, and the
+    // settings page reads `prefs` which is ready the moment init's read lands.
+    final reminder = ReminderService(
+      notifications: buildNotifications(),
+      store: store,
+      prefs: FileReminderPrefsStore(
+        '${AppDir.dataDir}${Platform.pathSeparator}reminder.json',
+      ),
+      text: (due) => I18n(store.data.settings.uiLang)
+          .t('reminder.body')
+          .replaceAll('{n}', '$due'),
+    );
+    unawaited(reminder.init());
+
     watchdog.cancel();
     runApp(LexumoApp(
       store: store,
       sync: sync,
       update: update,
+      reminder: reminder,
       onboarding: onboarding,
     ));
   } catch (error, stack) {
@@ -171,12 +193,17 @@ class LexumoApp extends StatefulWidget {
     required this.store,
     required this.sync,
     required this.update,
+    required this.reminder,
     this.onboarding,
   });
 
   final Store store;
   final SyncEngine sync;
   final UpdateService update;
+
+  /// The daily review reminder. Always provided in production; a widget test
+  /// mounting the shell directly passes a no-op-backed service or null.
+  final ReminderService? reminder;
 
   /// Whether this device was set up to sync or to stay local.
   ///
@@ -259,6 +286,10 @@ class _LexumoAppState extends State<LexumoApp> with WidgetsBindingObserver {
     // different app's dialog, the user may have cancelled it, and Android says
     // nothing either way. If the build number moved, it happened.
     if (state == AppLifecycleState.resumed) {
+      // The due count may have moved while the app was away; the scheduled
+      // notification's body is stale until this runs. Cheap (one list pass),
+      // cancel-then-schedule, and a no-op when reminders are off.
+      widget.reminder?.refresh();
       unawaited(_confirmInstalled());
     }
   }
@@ -296,42 +327,53 @@ class _LexumoAppState extends State<LexumoApp> with WidgetsBindingObserver {
         notifier: _syncNotifier,
         child: UpdateScope(
           notifier: _updateNotifier,
-          child: I18nScope(
-            i18n: i18n,
-            child: _ThemeHost(
-              mode: settings.theme,
-              child: MaterialApp(
-                title: i18n.t('common.appName'),
-                debugShowCheckedModeBanner: false,
-                theme: buildTheme(Palette.light),
-                darkTheme: buildTheme(Palette.dark),
-                themeMode: _themeMode(settings.theme),
-                // The toast stack goes in `builder`, never above `MaterialApp`.
-                //
-                // [ToastHost] draws a bare [Stack], and a `Stack` resolves its
-                // default `AlignmentDirectional.topStart` through the ambient
-                // [Directionality]. `MaterialApp` is what installs that; above
-                // it there is none, so layout threw
-                // `Null check operator used on a null value` inside
-                // `AlignmentDirectional.resolve` on the very first frame, no
-                // page was ever painted, and the app looked frozen showing
-                // whatever the window happened to hold.
-                //
-                // `builder` runs *inside* MaterialApp (Directionality,
-                // MediaQuery and Theme all present) but *around* the Navigator,
-                // so a toast still floats above every page and every dialog
-                // pushed on top of them.
-                builder: (BuildContext context, Widget? child) => ToastHost(
-                  key: _toastKey,
-                  child: child ?? const SizedBox.shrink(),
+          child: ReminderScope(
+            service: widget.reminder ??
+                ReminderService(
+                  notifications: const NoNotifications(),
+                  store: widget.store,
+                  prefs: MemoryReminderPrefsStore(),
+                  text: (due) => i18n
+                      .t('reminder.body')
+                      .replaceAll('{n}', '$due'),
                 ),
-                home: _configured
-                    ? const AppShell()
-                    : OnboardingPage(
-                        engine: widget.sync,
-                        onboarding: _onboarding,
-                        onConfigured: _onConfigured,
-                      ),
+            child: I18nScope(
+              i18n: i18n,
+              child: _ThemeHost(
+                mode: settings.theme,
+                child: MaterialApp(
+                  title: i18n.t('common.appName'),
+                  debugShowCheckedModeBanner: false,
+                  theme: buildTheme(Palette.light),
+                  darkTheme: buildTheme(Palette.dark),
+                  themeMode: _themeMode(settings.theme),
+                  // The toast stack goes in `builder`, never above `MaterialApp`.
+                  //
+                  // [ToastHost] draws a bare [Stack], and a `Stack` resolves its
+                  // default `AlignmentDirectional.topStart` through the ambient
+                  // [Directionality]. `MaterialApp` is what installs that; above
+                  // it there is none, so layout threw
+                  // `Null check operator used on a null value` inside
+                  // `AlignmentDirectional.resolve` on the very first frame, no
+                  // page was ever painted, and the app looked frozen showing
+                  // whatever the window happened to hold.
+                  //
+                  // `builder` runs *inside* MaterialApp (Directionality,
+                  // MediaQuery and Theme all present) but *around* the Navigator,
+                  // so a toast still floats above every page and every dialog
+                  // pushed on top of them.
+                  builder: (BuildContext context, Widget? child) => ToastHost(
+                    key: _toastKey,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                  home: _configured
+                      ? const AppShell()
+                      : OnboardingPage(
+                          engine: widget.sync,
+                          onboarding: _onboarding,
+                          onConfigured: _onConfigured,
+                        ),
+                ),
               ),
             ),
           ),

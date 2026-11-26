@@ -36,6 +36,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../../data/repositories/reminder_service.dart';
 import '../../../../data/repositories/store.dart';
 import '../../../../data/repositories/sync_engine.dart';
 import '../../../../data/repositories/update_service.dart';
@@ -137,6 +138,7 @@ class SettingsViewModel extends ViewModel {
     required ImportPreviewPrompt previewImport,
     SyncEngine? engine,
     UpdateService? update,
+    ReminderService? reminder,
     int Function()? clock,
   })  : _store = store,
         _feedback = feedback,
@@ -145,6 +147,7 @@ class SettingsViewModel extends ViewModel {
         _previewImport = previewImport,
         _engine = engine,
         _update = update,
+        _reminder = reminder,
         _clock = clock ?? _systemClock {
     // One relay closure, stored, so subscribe and unsubscribe are guaranteed to
     // use the same callable.
@@ -170,6 +173,7 @@ class SettingsViewModel extends ViewModel {
   final ImportPreviewPrompt _previewImport;
   final SyncEngine? _engine;
   final UpdateService? _update;
+  final ReminderService? _reminder;
   final int Function() _clock;
 
   /// [refresh] as a stored closure, for the listener lists below.
@@ -212,6 +216,34 @@ class SettingsViewModel extends ViewModel {
   /// [update] as well would notify twice for one change.
   void patch(Settings Function(Settings settings) fn) =>
       _store.updateSettings(fn);
+
+  /* ---------------------------------------------------------------- */
+  /* Reminder                                                          */
+  /* ---------------------------------------------------------------- */
+
+  /// Whether the reminder group should render at all: a scope with a port
+  /// that can notify. Absent scope (widget tests) and desktops draw nothing.
+  bool get reminderSupported => _reminder?.supported ?? false;
+
+  bool get reminderEnabled => _reminder?.prefs.enabled ?? false;
+
+  /// The persisted time, surfaced as the matching preset's key so the select
+  /// always shows a real option even against a hand-edited sidecar.
+  String get reminderTimeKey => ReminderTimeOption.of(_reminder?.prefs.time ?? ReminderTime.evening).key;
+
+  Future<void> setReminderEnabled(bool enabled) async {
+    final r = _reminder;
+    if (r == null) return;
+    await r.setEnabled(enabled);
+    refresh();
+  }
+
+  Future<void> setReminderTime(ReminderTime time) async {
+    final r = _reminder;
+    if (r == null) return;
+    await r.setTime(time);
+    refresh();
+  }
 
   /* ---------------------------------------------------------------- */
   /* Speech                                                            */
