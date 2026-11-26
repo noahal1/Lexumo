@@ -48,6 +48,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // flutter_local_notifications (the review reminder) uses java.time and
+        // friends on Android below API 26, which the desugared runtime backports.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -172,4 +175,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Pairs with isCoreLibraryDesugaringEnabled above; the plugin's AAR
+    // metadata check refuses to build without it.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
