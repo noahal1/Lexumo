@@ -130,7 +130,9 @@ class _UpdateBodyState extends State<_UpdateBody> {
               ),
               const SizedBox(height: Sp.x2),
               SelectableText(
-                _vm.releasesUrlText,
+                // Never null: the getter falls back to the releases page when
+                // the manifest names no installer.
+                _vm.desktopDownloadUrl!,
                 style: TextStyle(
                   fontFamily: Fonts.mono,
                   fontSize: Fs.xs,
@@ -138,6 +140,13 @@ class _UpdateBodyState extends State<_UpdateBody> {
                   color: p.ink3,
                 ),
               ),
+              if (_vm.desktopDownloadSize != null) ...[
+                const SizedBox(height: Sp.x2),
+                Text(
+                  _vm.desktopDownloadSize!,
+                  style: TextStyle(fontSize: Fs.xs, color: p.ink3),
+                ),
+              ],
             ],
           ],
         );

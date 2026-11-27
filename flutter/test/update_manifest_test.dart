@@ -38,6 +38,7 @@ Map<String, Object?> manifestJson({
   Object? notes,
   Object? published,
   Object? minSupportedBuild,
+  Object? exe,
 }) {
   return <String, Object?>{
     'version': version,
@@ -47,6 +48,7 @@ Map<String, Object?> manifestJson({
     'published': published ?? '2026-11-02T10:00:00Z',
     'minSupportedBuild': minSupportedBuild,
     'apk': <String, Object?>{'url': url, 'size': size, 'sha256': sha256},
+    if (exe != null) 'exe': exe,
   };
 }
 
@@ -184,6 +186,29 @@ void main() {
             .isRequiredFor(ReleaseVersion.tryParse(name: '0.1.0', build: 1)!),
         isFalse,
       );
+    });
+
+    test('exe is optional and parsed with the same rules as apk', () {
+      // A pre-desktop manifest carries no exe entry at all.
+      expect(ReleaseManifest.parse(manifestJson())!.exe, isNull);
+
+      final withExe = ReleaseManifest.parse(manifestJson(exe: <String, Object?>{
+        'url': 'https://example.test/lexumo-0.2.25-setup.exe',
+        'size': 24536618,
+        'sha256': kShaB,
+      }))!;
+      expect(withExe.exe, isNotNull);
+      expect(withExe.exe!.url.toString(), 'https://example.test/lexumo-0.2.25-setup.exe');
+      expect(withExe.exe!.bytes, 24536618);
+      expect(withExe.exe!.sha256, kShaB);
+
+      // A malformed exe must not invalidate the whole document: the manifest
+      // still works for Android, and the desktop UI falls back to the page.
+      final badExe = ReleaseManifest.parse(
+        manifestJson(exe: <String, Object?>{'url': 'http://example.test/x.exe'}),
+      )!;
+      expect(badExe.exe, isNull);
+      expect(badExe.apk.url, isNotNull);
     });
   });
 }

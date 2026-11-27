@@ -52,10 +52,17 @@ env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
-  build:
-    name: Build and publish
+  # The Android APK: built on Linux, signed with the release keystore, and the
+  # artifact the manifest's `apk` entry names.
+  build-android:
+    name: Build and publish (Android)
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    # Consumed by build-windows: one source of truth for the version, not a
+    # second grep of pubspec.yaml on the Windows runner.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      code: ${{ steps.version.outputs.code }}
     steps:
       - name: Checkout the tag
         uses: actions/checkout@v4
@@ -204,6 +211,15 @@ jobs:
               published: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
               apk: { url, size: Number(size), sha256: sha },
             };
+            // The Windows installer this same workflow attaches right after
+            // this job. The URL is deterministic (tag + fixed name), so it can
+            // be written before the asset exists; the Windows job HEAD-checks
+            // it once uploaded, so a manifest naming a 404 fails the run
+            // instead of shipping a dead link to every desktop user.
+            const exeName = `lexumo-${name}-${code}-setup.exe`;
+            manifest.exe = {
+              url: `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/${process.env.TAG}/${exeName}`,
+            };
             // Same shapes `tool/release.sh --notes-file` accepts: a JSON object
             // of {lang: text}, or one plain body filed under Chinese.
             const notesPath = "notes.json";
@@ -256,3 +272,73 @@ jobs:
             "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/update.json" \
             > /dev/null
           echo "published $TAG"
+
+  # The Windows installer: built on a Windows runner, packaged with Inno Setup,
+  # and named by the manifest's optional `exe` entry. Publishes nothing itself:
+  # the manifest must name a URL that exists, and the Android job owns the
+  # manifest and the release, so the exe job only attaches its asset to a
+  # release that already exists — meaning it must run after, not beside, the
+  # Android job. needs is the dependency that guarantees the order.
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 40
+    needs: build-android
+    if: ${{ !inputs.skip_publish }}
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build the release bundle
+        working-directory: flutter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The runner has a normal environment — no nuget/symlink workarounds
+          # needed; those live in the local tool/build_windows.sh only.
+          flutter pub get
+          flutter build windows --release `
+            --dart-define="LEXUMO_VERSION=${{ needs.build-android.outputs.version }}" `
+            --dart-define="LEXUMO_BUILD=${{ needs.build-android.outputs.code }}"
+
+      - name: Package the installer with Inno Setup
+        working-directory: flutter
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The runner ships Inno Setup 6 preinstalled; iscc.exe is on PATH via
+          # its install dir. AppVersion/AppBuild come from the Android job's
+          # outputs — one source of truth for the version, not a second grep.
+          & "${env:ProgramFiles(x86)}/Inno Setup 6/iscc.exe" `
+            "/DAppVersion=${{ needs.build-android.outputs.version }}" `
+            "/DAppBuild=${{ needs.build-android.outputs.code }}" `
+            tool/windows-installer.iss
+          Get-Item build/installer/lexumo-*-setup.exe
+
+      - name: Attach the installer to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The release already exists (the Android job created it). Re-running
+          # this job for the same tag must repair, not refuse — same --clobber
+          # contract as the APK upload.
+          $exe = Get-Item flutter/build/installer/lexumo-*-setup.exe
+          gh release upload "$env:TAG" $exe.FullName --clobber
+          # The manifest (already published) names this URL deterministically;
+          # if it does not resolve, every desktop user was just offered a dead
+          # link, so fail the run rather than ship a 404.
+          $exeUrl = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:TAG/$($exe.Name)"
+          $head = Invoke-WebRequest -Uri $exeUrl -Method Head -MaximumRedirection 5
+          if ($head.StatusCode -ge 400) { throw "manifest exe URL does not resolve: $exeUrl" }
+          Write-Host "installer attached and verified: $exeUrl"

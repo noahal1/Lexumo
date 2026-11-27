@@ -22,6 +22,11 @@
 ///     "url": "https://github.com/noahal1/Lexumo/releases/download/v0.2.0/lexumo-0.2.0.apk",
 ///     "size": 20462854,
 ///     "sha256": "…64 hex…"
+///   },
+///   "exe": {                            // optional; desktop builds read this
+///     "url": "https://github.com/noahal1/Lexumo/releases/download/v0.2.25/lexumo-0.2.25-26-setup.exe",
+///     "size": 24536618,
+///     "sha256": "…64 hex…"
 ///   }
 /// }
 /// ```
@@ -39,7 +44,12 @@ import 'dart:convert';
 
 import './version.dart';
 
-/// Where an APK can be downloaded, and how to prove it arrived intact.
+/// Where a downloadable artifact lives, and how to prove it arrived intact.
+///
+/// The name is historical — the field was written for Android APKs — but the
+/// shape serves the Windows installer (`exe`) identically: one https URL, an
+/// optional advertised size, and the digest the app checks before trusting
+/// the file.
 class ApkArtifact {
   const ApkArtifact({
     required this.url,
@@ -105,6 +115,7 @@ class ReleaseManifest {
   const ReleaseManifest({
     required this.version,
     required this.apk,
+    this.exe,
     this.notes = const <String, String>{},
     this.published,
     this.minSupportedBuild,
@@ -112,6 +123,11 @@ class ReleaseManifest {
 
   final ReleaseVersion version;
   final ApkArtifact apk;
+
+  /// The Windows installer, when the release ships one. Null on releases that
+  /// predate the desktop build — the desktop UI falls back to the releases
+  /// page rather than a dead link.
+  final ApkArtifact? exe;
 
   /// Release notes keyed by UI language (`zh`, `en`). A missing key is normal:
   /// see [notesFor].
@@ -155,6 +171,9 @@ class ReleaseManifest {
     return ReleaseManifest(
       version: version,
       apk: apk,
+      // Optional and lenient: a manifest with a malformed `exe` is still a
+      // valid Android update; the desktop UI just falls back to the page.
+      exe: ApkArtifact.fromJson(decoded['exe']),
       notes: _notes(decoded['notes']),
       published: _date(decoded['published']),
       minSupportedBuild: _positiveIntOrNull(decoded['minSupportedBuild']),

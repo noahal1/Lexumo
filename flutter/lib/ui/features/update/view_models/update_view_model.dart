@@ -255,8 +255,30 @@ class UpdateViewModel extends ViewModel {
   /// The sentence explaining the desktop case.
   String get desktopText => _feedback.t('settings.updateDesktop');
 
+  /// The URL the desktop download row should offer, or null when the release
+  /// ships no Windows installer.
+  ///
+  /// Prefers the manifest's `exe` entry — one click lands the right file — and
+  /// falls back to the releases page for older manifests that never named one.
+  String? get desktopDownloadUrl {
+    final exe = _state.available?.manifest.exe;
+    return exe?.url.toString() ?? _releasesUrl(_service.manifestUrl).toString();
+  }
+
+  /// Whether the desktop row should say the file's size, when the manifest
+  /// advertised one.
+  String? get desktopDownloadSize {
+    final int? bytes = _state.available?.manifest.exe?.bytes;
+    return bytes == null ? null : _formatBytes(bytes);
+  }
+
   /// The releases page, as text, so it can be copied without a launcher plugin.
   String get releasesUrlText => _releasesUrl(_service.manifestUrl).toString();
+
+  /// The manifest-shaped fallback when a release advertises no installer —
+  /// kept for tests; the UI now reads [desktopDownloadUrl] instead.
+  @Deprecated('Use desktopDownloadUrl, which prefers the manifest exe entry')
+  String get desktopReleasesUrlText => releasesUrlText;
 
   /* ---- the footer's derivations ------------------------------------- */
 
