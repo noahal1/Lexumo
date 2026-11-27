@@ -81,7 +81,7 @@ NotificationPort buildNotifications() {
 class PluginNotifications implements NotificationPort {
   PluginNotifications() {
     tzdata.initializeTimeZones();
-    tz.setLocalLocation(tz.getLocation(_localTimeZoneName()));
+    _initLocalLocation();
     final plugin = FlutterLocalNotificationsPlugin();
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
@@ -89,14 +89,38 @@ class PluginNotifications implements NotificationPort {
     _plugin = plugin;
   }
 
-  /// The device's time zone name, for `tz.setLocalLocation`. Falls back to UTC
-  /// when the platform cannot answer: a reminder then fires on UTC time until
-  /// the real zone resolves, which is still a reminder.
-  static String _localTimeZoneName() {
+  /// A `tz.Location` for this device's current offset, built rather than
+  /// looked up.
+  ///
+  /// `DateTime.timeZoneName` returns an *abbreviation* ("CST", "GMT+8") which
+  /// is almost never a name in the tz database, so `getLocation(name)` throws
+  /// `LocationNotFoundException` — and this constructor runs in `main`, where
+  /// an exception is a white screen, not a missing reminder. The offset itself
+  /// always exists, so the fallback is a location that is merely at UTC when
+  /// the abbreviation lookup fails; a reminder then fires at UTC-shifted local
+  /// time until the next launch picks up a resolvable zone, which is still a
+  /// reminder rather than a crash.
+  static void _initLocalLocation() {
     try {
-      return DateTime.now().timeZoneName;
-    } catch (_) {
-      return 'UTC';
+      tz.setLocalLocation(tz.getLocation(DateTime.now().timeZoneName));
+    } on Exception {
+      final offset = DateTime.now().timeZoneOffset;
+      final name = 'lexumo-local${offset.isNegative ? '-' : '+'}'
+          '${offset.inHours.abs()}h${offset.inMinutes.abs() % 60}m';
+      // One zone with one transition in the far past: a fixed-offset location
+      // that never throws, whatever the platform reports as its zone name.
+      tz.setLocalLocation(tz.Location(
+        name,
+        [tz.TZDateTime.minMillisecondsSinceEpoch],
+        [0],
+        [
+          tz.TimeZone(
+            offset.inMilliseconds,
+            isDst: false,
+            abbreviation: name,
+          ),
+        ],
+      ));
     }
   }
 
