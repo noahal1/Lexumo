@@ -42,7 +42,11 @@ val keystoreProperties = Properties().apply {
 
 android {
     namespace = "dev.lexumo.lexumo"
-    compileSdk = flutter.compileSdkVersion
+    // compileSdk 37: flutter_local_notifications 23's AAR metadata (and the
+    // androidx.core 1.19 it pulls) refuses anything lower; Flutter 3.47's
+    // flutter.compileSdkVersion is 36. targetSdk stays on Flutter's default —
+    // compileSdk only widens what we may compile against.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
