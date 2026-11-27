@@ -85,7 +85,7 @@ class PluginNotifications implements NotificationPort {
     final plugin = FlutterLocalNotificationsPlugin();
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const settings = InitializationSettings(android: android);
-    plugin.initialize(settings);
+    plugin.initialize(settings: settings);
     _plugin = plugin;
   }
 
@@ -115,7 +115,7 @@ class PluginNotifications implements NotificationPort {
         [0],
         [
           tz.TimeZone(
-            offset.inMilliseconds,
+            offset,
             isDst: false,
             abbreviation: name,
           ),
@@ -165,11 +165,11 @@ class PluginNotifications implements NotificationPort {
       next = next.add(const Duration(days: 1));
     }
     await _plugin.zonedSchedule(
-      id,
-      title,
-      body,
-      tz.TZDateTime.from(next, tz.local),
-      const NotificationDetails(android: _androidDetails),
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: tz.TZDateTime.from(next, tz.local),
+      notificationDetails: const NotificationDetails(android: _androidDetails),
       // Android 14+ demands a schedule mode; inexact is right for a daily
       // study nudge and spares the user the exact-alarm permission dialog.
       androidScheduleMode: AndroidScheduleMode.inexact,
@@ -178,5 +178,5 @@ class PluginNotifications implements NotificationPort {
   }
 
   @override
-  Future<void> cancel(int id) => _plugin.cancel(id);
+  Future<void> cancel(int id) => _plugin.cancel(id: id);
 }
