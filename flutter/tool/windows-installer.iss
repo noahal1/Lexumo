@@ -59,8 +59,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; \
 ; The whole Release bundle: exe, DLLs and the data/ folder Flutter requires.
 ; recurse is what picks up icudtl.dat and the subdirectories; missing files
 ; here fail at compile time, which is the cheapest place to find out.
-Source: "..\build\windows\x64\runner\Release\*"
-DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
