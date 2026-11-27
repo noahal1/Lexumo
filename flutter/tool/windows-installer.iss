@@ -44,7 +44,11 @@ WizardStyle=modern
 UninstallDisplayIcon={app}\{#AppExe}
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; ChineseSimplified.isl is not part of the Inno Setup installer itself (only
+; Default.isl ships); it lives in the upstream Languages repo, so the workflow
+; fetches it beside the script before running iscc. Name must stay lowercase
+; with the isl extension — iscc resolves relative to the script's directory.
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]

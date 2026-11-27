@@ -310,6 +310,18 @@ jobs:
             --dart-define="LEXUMO_VERSION=${{ needs.build-android.outputs.version }}" `
             --dart-define="LEXUMO_BUILD=${{ needs.build-android.outputs.code }}"
 
+      - name: Fetch the Chinese wizard language file
+        working-directory: flutter/tool
+        shell: pwsh
+        run: |
+          # Inno Setup ships only Default.isl; the translated languages live in
+          # the upstream repo. Pinned to a commit so a moved file cannot break
+          # a release build silently.
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri `
+            'https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/ChineseSimplified.isl' `
+            -OutFile ChineseSimplified.isl
+
       - name: Package the installer with Inno Setup
         working-directory: flutter
         shell: pwsh
