@@ -48,7 +48,7 @@ Map<String, Object?> manifestJson({
     'published': published ?? '2026-11-02T10:00:00Z',
     'minSupportedBuild': minSupportedBuild,
     'apk': <String, Object?>{'url': url, 'size': size, 'sha256': sha256},
-    ?'exe': exe,
+    'exe': ?exe,
   };
 }
 
